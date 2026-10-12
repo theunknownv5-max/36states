@@ -5,9 +5,11 @@ import { WarMap } from './ui/warmap.js';
 import { Net } from './core/net.js';
 import { Input, isTouch } from './core/input.js';
 import { audio } from './core/audio.js';
+import { music } from './core/music.js';
 import { PRESETS, detectQuality, saveQuality } from './core/quality.js';
 import * as T from './core/textures.js';
 import { Game } from './game.js';
+import { api, IS_APP } from './core/server.js';
 import { STATE_BY_ID } from '../../shared/states.js';
 import { FACTIONS, RESPAWN, GEMS } from '../../shared/config.js';
 
@@ -34,6 +36,8 @@ const settings = {
   sensitivity: +store.get('36s.sens', isTouch() ? 1.3 : 1),
   fov: +store.get('36s.fov', 80),
   volume: +store.get('36s.vol', 0.8),
+  music: +store.get('36s.music', 0.45),
+  touchSens: +store.get('36s.touch', 1),
   quality: qualityName,
   invertY: store.get('36s.invert') === '1'
 };
@@ -76,7 +80,7 @@ async function preload() {
   await Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 2500))]);
   boot.set(0.35, null);
   // Warm the texture cache so the first battle opens faster.
-  T.setTextureSize(PRESETS[settings.quality].textureSize >= 1024 ? 512 : 256);
+  T.setTextureSize(PRESETS[settings.quality].textureSize >= 2048 ? 1024 : PRESETS[settings.quality].textureSize >= 1024 ? 512 : 256);
   const steps = [T.concreteTexture, T.mudTexture, T.plasterTexture, T.sandbagTexture, T.zincTexture, T.crateTexture, T.rockTexture, T.barkTexture];
   for (let i = 0; i < steps.length; i++) {
     steps[i]();
@@ -84,7 +88,7 @@ async function preload() {
     await new Promise((r) => setTimeout(r, 0));
   }
   try {
-    const r = await fetch('/api/lobby');
+    const r = await fetch(api('/api/lobby'));
     if (r.ok) boot.lobby = (await r.json()).states;
   } catch {
     /* server offline, will retry on connect */
@@ -165,13 +169,25 @@ function showLobby() {
   inGame = false;
   $('game').hidden = true;
   $('lobby').hidden = false;
+  music.play('menu');
   net.send({ t: 'lobby' });
   clearInterval(lobbyTimer);
   lobbyTimer = setInterval(() => !inGame && net.send({ t: 'lobby' }), 4000);
 }
 
+// On phones (in the browser) go full screen and hold landscape, like a real mobile shooter.
+function goFullscreen() {
+  if (!isTouch() || IS_APP) return;
+  const el = document.documentElement;
+  const p = el.requestFullscreen?.({ navigationUI: 'hide' }) || el.webkitRequestFullscreen?.();
+  Promise.resolve(p)
+    .then(() => screen.orientation?.lock?.('landscape'))
+    .catch(() => {});
+}
+
 function deploy(state, faction) {
   audio.unlock();
+  goFullscreen();
   $('join-error').hidden = true;
   $('btn-deploy').disabled = true;
   $('btn-deploy').textContent = 'DEPLOYING…';
@@ -186,6 +202,18 @@ function bindSettings() {
     store.set('36s.fov', settings.fov);
     store.set('36s.vol', settings.volume);
     store.set('36s.invert', settings.invertY ? '1' : '');
+    store.set('36s.music', settings.music);
+    store.set('36s.touch', settings.touchSens);
+  };
+  $('set-music').oninput = (e) => {
+    settings.music = +e.target.value;
+    music.setVolume(settings.music);
+    save();
+  };
+  $('set-touch').oninput = (e) => {
+    settings.touchSens = +e.target.value;
+    input.touchSens = settings.touchSens;
+    save();
   };
   $('set-sens').oninput = (e) => {
     settings.sensitivity = +e.target.value;
@@ -204,6 +232,7 @@ function bindSettings() {
   $('set-invert').onchange = (e) => {
     settings.invertY = e.target.checked;
     input.invertY = settings.invertY;
+input.touchSens = settings.touchSens;
     save();
   };
   $('set-quality').onchange = (e) => {
@@ -216,7 +245,9 @@ function bindSettings() {
   $('btn-settings-lobby').onclick = () => {
     modal(`<h2>Settings</h2>
       <p><label>Mouse sensitivity <input type="range" id="ls-sens" min="0.2" max="3" step="0.05" value="${settings.sensitivity}"></label></p>
-      <p><label>Volume <input type="range" id="ls-vol" min="0" max="1" step="0.05" value="${settings.volume}"></label></p>
+      <p><label>Sound effects <input type="range" id="ls-vol" min="0" max="1" step="0.05" value="${settings.volume}"></label></p>
+      <p><label>Music <input type="range" id="ls-music" min="0" max="1" step="0.05" value="${settings.music}"></label></p>
+      <p><label>Touch look speed <input type="range" id="ls-touch" min="0.3" max="3" step="0.05" value="${settings.touchSens}"></label></p>
       <p><label>Graphics <select id="ls-q">${Object.keys(PRESETS).map((k) => `<option value="${k}" ${k === settings.quality ? 'selected' : ''}>${PRESETS[k].name}</option>`).join('')}</select></label></p>`);
     $('ls-sens').oninput = (e) => {
       settings.sensitivity = +e.target.value;
@@ -226,6 +257,16 @@ function bindSettings() {
     $('ls-vol').oninput = (e) => {
       settings.volume = +e.target.value;
       audio.setVolume(settings.volume);
+      save();
+    };
+    $('ls-music').oninput = (e) => {
+      settings.music = +e.target.value;
+      music.setVolume(settings.music);
+      save();
+    };
+    $('ls-touch').oninput = (e) => {
+      settings.touchSens = +e.target.value;
+      input.touchSens = settings.touchSens;
       save();
     };
     $('ls-q').onchange = (e) => {
@@ -245,6 +286,8 @@ audio.setVolume(settings.volume);
   await preload();
   await boot.ready();
   audio.unlock();
+  music.setVolume(settings.music);
+  music.play('menu');
   boot.hide();
   bindSettings();
   warmap = new WarMap({ onDeploy: deploy });
@@ -283,6 +326,7 @@ audio.setVolume(settings.volume);
     $('game').hidden = false;
     game.quality = PRESETS[settings.quality];
     game.start(m);
+    music.play('battle');
     if (lastSpawn) game.onSpawn(lastSpawn);
     warmap.renderInfo();
   });

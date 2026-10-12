@@ -1,0 +1,12 @@
+{
+  "appId": "ng.thirtysixstates.game",
+  "appName": "36 States",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#05070a",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

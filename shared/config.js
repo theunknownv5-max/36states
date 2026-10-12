@@ -90,6 +90,19 @@ export const GEAR = {
   medkit: { name: 'First aid kit', price: 400, max: 1, heal: 50, useTime: 3 }
 };
 
+// Oil drums. Only the ones holding fuel or gas explode when shot; water drums just ring.
+export const DRUMS = {
+  fuelShare: 0.45, // share of drums on a map that hold fuel
+  health: 45, // damage a fuel drum takes before it blows
+  blast: 6.5, // explosion radius (m)
+  dmg: 150, // damage at the centre, falling off with distance
+  burnRadius: 5.5, // anyone this close catches fire
+  burnSecs: 4.5,
+  burnDps: 11,
+  chainDelayMs: 280, // nearby fuel drums go up one after another
+  fireSecs: 9 // how long the wreck keeps burning
+};
+
 export const KILLSTREAKS = {
   uav: { name: 'Recon drone', kills: 3, duration: 20 },
   artillery: { name: 'Artillery barrage', kills: 5, shells: 7, spread: 11, delay: 2.6, interval: 0.55, blast: 8, dmg: 170 }

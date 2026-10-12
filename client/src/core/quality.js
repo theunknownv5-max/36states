@@ -1,44 +1,9 @@
-// Quality presets. Medium is tuned for mid-range Android phones. (Shared with Eko Pulse.)
+// Quality presets. Medium is tuned for mid-range Android phones; Ultra is for gaming PCs.
 export const PRESETS = {
-  low: {
-    name: 'Low',
-    pixelRatio: 1,
-    shadows: false,
-    shadowMapSize: 512,
-    postprocessing: false,
-    bloom: false,
-    antialias: true,
-    pedestrians: 40,
-    traffic: 6,
-    textureSize: 512,
-    drawDistance: 900
-  },
-  medium: {
-    name: 'Medium',
-    pixelRatio: 1.25,
-    shadows: true,
-    shadowMapSize: 1024,
-    postprocessing: true,
-    bloom: true,
-    antialias: false,
-    pedestrians: 90,
-    traffic: 14,
-    textureSize: 1024,
-    drawDistance: 1600
-  },
-  high: {
-    name: 'High',
-    pixelRatio: 2,
-    shadows: true,
-    shadowMapSize: 2048,
-    postprocessing: true,
-    bloom: true,
-    antialias: false,
-    pedestrians: 160,
-    traffic: 24,
-    textureSize: 1024,
-    drawDistance: 2600
-  }
+  low: { name: 'Low', pixelRatio: 1, shadows: false, shadowMapSize: 512, postprocessing: false, bloom: false, antialias: true, grade: false, textureSize: 512, minPixelRatio: 0.6 },
+  medium: { name: 'Medium', pixelRatio: 1.25, shadows: true, shadowMapSize: 1024, postprocessing: true, bloom: true, antialias: false, grade: true, textureSize: 1024, minPixelRatio: 0.75 },
+  high: { name: 'High', pixelRatio: 2, shadows: true, shadowMapSize: 2048, postprocessing: true, bloom: true, antialias: false, grade: true, textureSize: 1024, minPixelRatio: 1 },
+  ultra: { name: 'Ultra', pixelRatio: 2, shadows: true, shadowMapSize: 4096, postprocessing: true, bloom: true, antialias: false, grade: true, textureSize: 2048, minPixelRatio: 1 }
 };
 
 export function detectQuality() {

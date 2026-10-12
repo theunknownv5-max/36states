@@ -8,7 +8,7 @@ import { STATE_BY_ID } from '../../../shared/states.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => '₦' + Math.round(n).toLocaleString();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const WNAME = (w) => (w === 'artillery' ? 'Artillery' : w === 'frag' ? 'Grenade' : w === 'bleed' ? 'Bled out' : WEAPONS[w]?.name || w || '');
+const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Bled out', drum: 'Fuel drum', fire: 'Burned' })[w] || WEAPONS[w]?.name || w || '';
 
 export class Hud {
   constructor() {

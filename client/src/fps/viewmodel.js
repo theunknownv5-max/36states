@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { buildGun } from './guns.js';
 import { FACTIONS, WEAPONS } from '../../../shared/config.js';
-import { flashStar } from '../core/textures.js';
+import { flashStar, fabricTexture } from '../core/textures.js';
 
 const up = new THREE.Vector3(0, 1, 0);
 
@@ -59,7 +59,8 @@ export class ViewModel {
 
   setUniform(faction, skinIndex = 1) {
     const u = FACTIONS[faction]?.uniform || FACTIONS.police.uniform;
-    this.sleeve = new THREE.MeshStandardMaterial({ color: u.top, roughness: 0.9 });
+    const fab = fabricTexture();
+    this.sleeve = new THREE.MeshStandardMaterial({ color: u.top, map: fab.map, normalMap: fab.normalMap, roughness: 0.9 });
     const skin = ['#3a2216', '#48291b', '#2e1b11', '#553220'][skinIndex % 4];
     this.skin = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.55 });
     this.glove = new THREE.MeshStandardMaterial({ color: faction === 'army' || faction === 'police' || faction === 'civildefence' ? '#151515' : skin, roughness: 0.7 });

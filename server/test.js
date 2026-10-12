@@ -11,7 +11,7 @@ Date.now = () => fakeNow;
 
 const { Match } = await import('./match.js');
 const { AdManager } = await import('./ads.js');
-const { GEMS, RESPAWN, PLAYER, MATCH, priceFor, WEAPONS } = await import('../shared/config.js');
+const { GEMS, RESPAWN, PLAYER, MATCH, priceFor, WEAPONS, DRUMS } = await import('../shared/config.js');
 const { generateMap } = await import('../shared/map.js');
 const { STATES } = await import('../shared/states.js');
 
@@ -176,6 +176,71 @@ run(m2, 8);
 check(wsB.log.some((x) => x.t === 'incoming'), 'incoming shell warnings sent');
 check(wsB.log.some((x) => x.t === 'boom' && x.w === 'artillery'), 'artillery shells land');
 
+section('Fuel drums explode, water drums do not');
+{
+  const { insideAnyBox } = await import('../shared/physics.js');
+  // Find a state with a fuel drum we can line up a shot on, with a victim on the far side.
+  let setup = null;
+  for (const st of STATES) {
+    const mm = new Match(st.id, hooks);
+    for (const bi of mm.map.drums) {
+      const b = mm.map.boxes[bi];
+      if (!b.fuel) continue;
+      const cx = (b.x0 + b.x1) / 2;
+      const cz = (b.z0 + b.z1) / 2;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const sx = cx - dx * 10, sz = cz - dz * 10; // shooter
+        const vx = cx + dx * 2.2, vz = cz + dz * 2.2; // victim behind the drum
+        if (Math.abs(sx) > 100 || Math.abs(sz) > 100) continue;
+        if (insideAnyBox(mm.map.index, sx, 0, sz) || insideAnyBox(mm.map.index, vx, 0, vz)) continue;
+        // Line of sight to the drum's middle, stopping just short of it.
+        if (lineBlocked(mm.map.index, sx, 1.62, sz, cx - dx * 0.5, 0.5, cz - dz * 0.5)) continue;
+        setup = { mm, bi, b, cx, cz, sx, sz, vx, vz };
+        break;
+      }
+      if (setup) break;
+    }
+    if (setup) break;
+  }
+  check(!!setup, 'found a fuel drum to test');
+  if (setup) {
+    const { mm, bi, b, cx, cz, sx, sz, vx, vz } = setup;
+    const ws1 = fakeWs();
+    const ws2 = fakeWs();
+    const S = mm.addHuman(ws1, 'police', profile('Shooter')).player;
+    const V = mm.addHuman(ws2, 'bandit', profile('Victim')).player;
+    for (const p of [...mm.players.values()]) if (!p.human) mm.players.delete(p.id);
+    fakeNow += 5000;
+    Object.assign(S, { x: sx, y: 0, z: sz, protectUntil: 0 });
+    Object.assign(V, { x: vx, y: 0, z: vz, protectUntil: 0, armor: 0, health: 100 });
+    const top = b.y1;
+    for (let i = 0; i < 4 && !mm.drumsDead.includes(b.drum); i++) {
+      fakeNow += 1000;
+      const o = [S.x, PLAYER.eye, S.z];
+      mm.handle(S, { t: 'fire', w: 'p9', o, d: [cx - o[0], 0.5 - o[1], cz - o[2]], ts: fakeNow });
+      run(mm, 0.5);
+    }
+    check(mm.drumsDead.includes(b.drum), 'shooting a fuel drum makes it explode');
+    check(ws2.log.some((m) => m.t === 'drum') && ws2.log.some((m) => m.t === 'boom' && m.w === 'drum'), 'drum explosion broadcast to players');
+    check(V.status !== 'alive' || V.health < 100, `player beside the drum is hurt (health ${Math.round(V.health)}, ${V.status})`);
+    check(V.status !== 'alive' || V.burnUntil > fakeNow || ws2.log.filter((m) => m.t === 'hurt').length > 1, 'nearby player catches fire');
+    check(b.y1 < 0, 'destroyed drum no longer blocks bullets or movement');
+    // A water drum just takes the hits.
+    const water = mm.map.drums.map((i) => mm.map.boxes[i]).find((x) => !x.fuel);
+    if (water) {
+      const before = mm.drumsDead.length;
+      mm.hitDrum(mm.map.boxes.indexOf(water), 999, S);
+      run(mm, 1);
+      check(mm.drumsDead.length === before, 'water drums do not explode');
+    }
+    // Far away players are untouched.
+    const far = Math.hypot(S.x - cx, S.z - cz);
+    check(far > DRUMS.blast || S.health > 50, 'shooter 10 m away is safe');
+    mm.reset();
+    check(mm.drumsDead.length === 0 && b.y1 === top, 'drums are back for the next round');
+  }
+}
+
 section('Advertiser analytics');
 const img = 'data:image/png;base64,' + Buffer.from('fakepng').toString('base64');
 const ad = await ads.create({ advertiser: 'Test Brand', imageDataUrl: img, states: ['kano'], priceNaira: 100000 });
@@ -188,6 +253,7 @@ m2.handle(B, { t: 'views', slots: ['kano:0'] });
 check(ad.stats.views === 3 && ad.stats.uniques === 2, `views de-duplicated per player (views ${ad.stats.views}, uniques ${ad.stats.uniques})`);
 check(ad.stats.bySide.sec === 2 && ad.stats.bySide.out === 1, 'views split by side');
 check(ad.stats.byState.kano === 3, 'views split by state');
+if (A.status !== 'alive') m2.spawn(A); // the artillery test may have set off a fuel drum near A
 Object.assign(A, { x: m2.map.adWalls[2].gem.x, z: m2.map.adWalls[2].gem.z });
 m2.gems[2] = 0;
 run(m2, 0.2);

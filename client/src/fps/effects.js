@@ -99,6 +99,7 @@ export class Effects {
     this.rocketMat = new THREE.MeshStandardMaterial({ color: '#4d5a2f', emissive: '#ff6a00', emissiveIntensity: 0.3 });
     // Artillery zones.
     this.zones = [];
+    this.fires = [];
     this.ringTex = T.ringTex();
   }
 
@@ -180,6 +181,26 @@ export class Effects {
       this.debris.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 12, 4 + Math.random() * 8, (Math.random() - 0.5) * 12), spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0), life: 2.5 });
     }
     this.addDecal(this.scorchMat, new THREE.Vector3(pos.x, 0.02, pos.z), new THREE.Vector3(0, 1, 0), radius * 0.8, 90);
+  }
+
+  // A burst fuel drum keeps burning for a while: flames, embers, smoke and flickering light.
+  burningWreck(x, z, secs) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const flames = [];
+    for (let i = 0; i < 6; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.flameTex(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+      sp.position.set((Math.random() - 0.5) * 1.4, 0.6, (Math.random() - 0.5) * 1.4);
+      sp.userData.ph = Math.random() * 10;
+      g.add(sp);
+      flames.push(sp);
+    }
+    const light = new THREE.PointLight('#ff7a2a', 40, 14, 1.8);
+    light.position.y = 1.2;
+    g.add(light);
+    this.scene.add(g);
+    this.addDecal(this.scorchMat, new THREE.Vector3(x, 0.02, z), new THREE.Vector3(0, 1, 0), 4.5, 120);
+    this.fires.push({ g, flames, light, life: secs, max: secs });
   }
 
   flashbang(pos) {
@@ -318,6 +339,21 @@ export class Effects {
       if (z.life <= 0) this.scene.remove(z.m);
     }
     this.zones = this.zones.filter((z) => z.life > 0);
+    for (const f of this.fires) {
+      f.life -= dt;
+      const k = Math.min(1, f.life / 2); // die down over the last two seconds
+      const t = performance.now() / 1000;
+      f.flames.forEach((sp) => {
+        const flick = 0.75 + Math.sin(t * 11 + sp.userData.ph) * 0.15 + Math.random() * 0.1;
+        sp.scale.set(1.6 * flick * k, 2.6 * flick * k, 1);
+        sp.position.y = 0.9 * k + Math.sin(t * 3 + sp.userData.ph) * 0.1;
+      });
+      f.light.intensity = (32 + Math.random() * 18) * k;
+      if (Math.random() < dt * 8) this.dust.spawn(new THREE.Vector3(f.g.position.x, 1.6, f.g.position.z), { colour: '#2a2522', size: 1.2, life: 3, v: new THREE.Vector3((Math.random() - 0.5) * 0.5, 1.6, (Math.random() - 0.5) * 0.5), grow: 3, opacity: 0.6 * k });
+      if (Math.random() < dt * 10) this.sparks.spawn(new THREE.Vector3(f.g.position.x, 0.8, f.g.position.z), { colour: '#ffb04a', size: 0.05, life: 1, v: new THREE.Vector3((Math.random() - 0.5) * 1.5, 2 + Math.random() * 2, (Math.random() - 0.5) * 1.5), g: -0.5 });
+      if (f.life <= 0) this.scene.remove(f.g);
+    }
+    this.fires = this.fires.filter((f) => f.life > 0);
     this.shake *= Math.pow(0.02, dt);
   }
 }

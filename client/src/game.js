@@ -6,9 +6,11 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GradeShader } from './fps/grade.js';
 import { generateMap } from '../../shared/map.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
-import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS } from '../../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
 import { Soldier } from './characters/soldiers.js';
@@ -16,6 +18,7 @@ import { ViewModel } from './fps/viewmodel.js';
 import { Effects } from './fps/effects.js';
 import { Hud } from './ui/hud.js';
 import { audio } from './core/audio.js';
+import { music } from './core/music.js';
 import { isTouch } from './core/input.js';
 
 const WEAPON_IDS = Object.keys(WEAPONS); // same order as the server
@@ -65,6 +68,7 @@ export class Game {
     this.walls = new AdWalls(scene, this.map);
     this.walls.setGems(info.gems);
     this.walls.loadAds(info.state);
+    for (const i of info.drums || []) this.arena.killDrum(i);
     this.siteMarkers = new SiteMarkers(scene, this.map);
     this.siteMarkers.apply(info.sites);
     this.fx = new Effects(scene);
@@ -112,6 +116,7 @@ export class Game {
     this.aimRing.rotation.x = -Math.PI / 2;
     this.aimRing.visible = false;
     scene.add(this.aimRing);
+    this.pixelRatio = Math.min(devicePixelRatio, this.quality.pixelRatio);
     this.setupComposer();
     // Compile every shader now so the first look at a new object does not hitch.
     try {
@@ -125,6 +130,7 @@ export class Game {
     this.hud.hideMatchEnd();
     for (const k of ['buy', 'scoreboard', 'pause', 'death', 'downed', 'spirit', 'medevac']) $(k).hidden = true;
     $('touch').hidden = !isTouch();
+    this.touchKey = null;
     if (isTouch() && !this.touchBound) {
       this.input.bindTouch($('touch'));
       this.touchBound = true;
@@ -173,22 +179,28 @@ export class Game {
     this.composer = null;
     if (!this.quality.postprocessing) return;
     const size = r.getSize(new THREE.Vector2());
+    const q = this.quality;
     const c = new EffectComposer(r);
     c.addPass(new RenderPass(this.scene, this.camera));
     const vmPass = new RenderPass(this.vm.scene, this.vm.camera);
     vmPass.clear = false;
     vmPass.clearDepth = true;
     c.addPass(vmPass);
-    if (this.quality.bloom) c.addPass(new UnrealBloomPass(size, 0.32, 0.55, 0.92));
-    if (!this.quality.antialias) c.addPass(new SMAAPass(size.x * r.getPixelRatio(), size.y * r.getPixelRatio()));
+    if (q.bloom) c.addPass(new UnrealBloomPass(size, 0.28, 0.5, 0.92));
     c.addPass(new OutputPass());
+    if (q.grade) {
+      this.grade = new ShaderPass(GradeShader);
+      c.addPass(this.grade);
+    }
+    if (!q.antialias) c.addPass(new SMAAPass(size.x * r.getPixelRatio(), size.y * r.getPixelRatio()));
     this.composer = c;
   }
 
   resize() {
     const w = innerWidth;
     const h = innerHeight;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.quality.pixelRatio));
+    this.pixelRatio ??= Math.min(devicePixelRatio, this.quality.pixelRatio);
+    this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -207,6 +219,7 @@ export class Game {
     });
     on('shot', (m) => this.onShot(m));
     on('hit', (m) => {
+      music.excite(m.kill ? 0.3 : 0.06);
       this.hud.hitmarker(m.head, m.kill);
       audio.hitmarker(m.head, m.kill);
     });
@@ -264,6 +277,11 @@ export class Game {
     });
     on('boom', (m) => this.onBoom(m));
     on('gem', (m) => this.walls.collected(m.i, m.until));
+    on('drum', (m) => {
+      this.arena.killDrum(m.i);
+      this.fx.burningWreck(m.x, m.z, DRUMS.fireSecs);
+      audio.fire({ x: m.x, y: 0.8, z: m.z }, DRUMS.fireSecs);
+    });
     on('site', (m) => {
       if (m.neutral) this.hud.toast(`${m.label} is neutral again`, 'info');
       else {
@@ -309,6 +327,7 @@ export class Game {
     });
     on('matchEnd', (m) => {
       this.hud.matchEnd(m, this.side);
+      music.sting(m.winner === this.side);
       this.input.unlock();
       this.ended = true;
     });
@@ -318,6 +337,8 @@ export class Game {
       this.ended = false;
       this.hud.hideMatchEnd();
       this.walls.setGems(m.gems);
+      this.arena.restoreDrums();
+      for (const i of m.drums || []) this.arena.killDrum(i);
       this.siteMarkers.apply(m.sites);
       this.score = m.score;
       this.msLeft = m.timeLimit - (m.serverTime - m.startedAt);
@@ -339,6 +360,12 @@ export class Game {
       const st = { t: m.ts, x, y, z, yaw, pitch, flags, w: WEAPON_IDS[wi], hp };
       this.latest.push({ id, ...st, side: this.roster.get(id)?.side });
       if (id === this.myId) {
+        const burning = !!(flags & 1024);
+        if (burning !== this.burning) {
+          this.burning = burning;
+          $('burn').classList.toggle('on', burning);
+          if (burning) this.hud.toast('🔥 You are on fire! Water puts it out.', 'bad', 2500);
+        }
         this.myFlags = flags;
         continue;
       }
@@ -384,6 +411,7 @@ export class Game {
     audio.helicopter(now === 'medevac');
     $('tint').className = ['spirit', 'dead', 'medevac'].includes(now) ? now : '';
     if (now === 'dead') {
+      music.calm();
       this.hud.deadSince = performance.now();
       this.input.unlock();
       this.closeMenus();
@@ -415,6 +443,7 @@ export class Game {
     const w = WEAPONS[m.w];
     const from = sol && sol.visible ? sol.muzzleWorld(new THREE.Vector3()) : new THREE.Vector3(...m.o);
     audio.gunshot(w?.sound || 'rifle', { x: from.x, y: from.y, z: from.z });
+    if (from.distanceTo(this.camera.position) < 45) music.excite(0.03);
     this.fx.muzzle(from, 0.7);
     if (sol) sol.firedAt = performance.now();
     const eye = this.camera.position;
@@ -433,6 +462,7 @@ export class Game {
   }
 
   onHurt(m) {
+    music.excite(0.15);
     audio.hurt(m.dmg);
     this.fx.shake = Math.min(1, this.fx.shake + m.dmg / 60);
     this.punch.p += 0.02 + m.dmg / 2000;
@@ -464,6 +494,7 @@ export class Game {
     this.fx.explosion(p, m.r, m.w);
     audio.explosion(p, m.w === 'artillery' || m.w === 'rpg' ? 1.3 : 1);
     const d = p.distanceTo(this.camera.position);
+    if (d < 40) music.excite(0.12);
     this.fx.shake = Math.min(1.5, this.fx.shake + Math.max(0, (m.r * 4 - d) / (m.r * 4)) * 1.2);
   }
 
@@ -580,6 +611,8 @@ export class Game {
       $('set-vol').value = this.settings.volume;
       $('set-quality').value = this.settings.quality;
       $('set-invert').checked = this.settings.invertY;
+      $('set-music').value = this.settings.music;
+      $('set-touch').value = this.settings.touchSens;
     } else if (!isTouch() && this.status !== 'dead') this.input.lock();
   }
 
@@ -733,6 +766,7 @@ export class Game {
     this.pitch = clamp(this.pitch + k * 0.45, -1.5, 1.5);
     this.vm.fire();
     audio.gunshot(w.sound, null, true);
+    music.excite(0.02);
     const muzzle = this.camera.localToWorld(new THREE.Vector3(0.12, -0.1, -0.6));
     this.fx.muzzle(muzzle, w.pellets ? 1.3 : 1);
     this.fx.shake = Math.min(1, this.fx.shake + (w.pellets || w.dmg > 50 ? 0.25 : 0.06));
@@ -857,8 +891,11 @@ export class Game {
   frame() {
     if (!this.running) return;
     this.raf = requestAnimationFrame(() => this.frame());
-    const dt = Math.min(0.05, this.clock.getDelta());
+    const raw = this.clock.getDelta();
+    const dt = Math.min(0.05, raw);
     const now = performance.now();
+    this.adaptResolution(raw);
+    if (this.grade) this.grade.uniforms.uTime.value = (now / 1000) % 100;
     const sNow = this.net.serverNow();
     if (!this.me) {
       this.render();
@@ -920,6 +957,25 @@ export class Game {
     this.render();
   }
 
+  // Keep the game smooth: if frames are slow, render at a lower resolution
+  // (down to the preset's floor); raise it again when there is headroom.
+  adaptResolution(dt) {
+    if (dt > 0.5) return; // tab was hidden
+    this.ftAvg = (this.ftAvg ?? 1 / 60) * 0.95 + dt * 0.05;
+    this.ftCheck = (this.ftCheck || 0) + dt;
+    if (this.ftCheck < 2) return;
+    this.ftCheck = 0;
+    const max = Math.min(devicePixelRatio, this.quality.pixelRatio);
+    const min = Math.min(max, this.quality.minPixelRatio ?? 0.75);
+    let pr = this.pixelRatio;
+    if (this.ftAvg > 1 / 40) pr = Math.max(min, pr - 0.15);
+    else if (this.ftAvg < 1 / 57) pr = Math.min(max, pr + 0.1);
+    if (Math.abs(pr - this.pixelRatio) > 0.01) {
+      this.pixelRatio = pr;
+      this.resize();
+    }
+  }
+
   anyMenu() {
     return this.menus.buy || this.menus.pause || this.menus.chat || this.ended;
   }
@@ -957,7 +1013,7 @@ export class Game {
       return;
     }
     // Crouch (hold Ctrl or C), can't stand up under a low roof.
-    const wantCrouch = inp.down('ControlLeft') || inp.down('ControlRight') || inp.down('KeyC');
+    const wantCrouch = inp.down('ControlLeft') || inp.down('ControlRight') || inp.down('KeyC') || inp.touch.crouch;
     if (wantCrouch) b.crouch = true;
     else if (b.crouch && !insideAnyBox(this.map.index, b.x, b.y, b.z, false)) b.crouch = false;
     const forward = mv.y > 0.3;
@@ -1128,6 +1184,7 @@ export class Game {
       else if (this.inBuyZone() && sNow < (m.buyUntil || 0)) prompt = `<kbd>${isTouch() ? '₦' : 'B'}</kbd> Buy · ${Math.ceil((m.buyUntil - sNow) / 1000)}s`;
     }
     if (!this.artilleryAim) this.hud.prompt(prompt);
+    if (isTouch()) this.syncTouch(st, m);
     // "Click to fight" whenever the mouse is free during play (desktop only).
     const ctp = isTouch() || this.input.locked || this.anyMenu() || !(st === 'alive' || st === 'spirit');
     if (ctp !== this.ctpHidden) {
@@ -1171,6 +1228,23 @@ export class Game {
       this.labelsT = 0;
       this.hud.worldLabels(this.camera, this.labelItems(sNow));
     }
+  }
+
+  // Show only the touch buttons that make sense right now.
+  syncTouch(st, m) {
+    const show = !this.ended && !this.menus.buy && !this.menus.pause && !this.menus.score && (st === 'alive' || st === 'spirit' || st === 'downed');
+    const combat = st === 'alive';
+    const use = combat && !!this.downedMate();
+    const med = combat && m.medkit > 0 && m.health < 100;
+    const key = `${show}${combat}${use}${med}`;
+    if (key === this.touchKey) return;
+    this.touchKey = key;
+    const t = $('touch');
+    t.hidden = !show;
+    t.classList.toggle('combat-off', !combat);
+    t.querySelector('.t-use').hidden = !use;
+    t.querySelector('.t-med').hidden = !med;
+    if (!show || !combat) this.input.resetTouch(t);
   }
 
   labelItems(sNow) {

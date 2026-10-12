@@ -85,6 +85,18 @@ Every advert wall carries a glowing gem. Walking into it gives you +1 life gem a
 
 ---
 
+### Fuel drums
+
+Red steel drums stencilled **PMS / FLAMMABLE** hold fuel; blue plastic drums hold water.
+
+- Shoot a fuel drum (or catch it in a grenade, rocket or artillery blast) and it explodes.
+- Anyone close is hurt or killed depending on distance, teammates included. People within a few metres also **catch fire** and keep burning for a few seconds; jumping into water puts the flames out.
+- Fuel drums next to each other set each other off in a chain.
+- The wreck keeps burning for a while. All drums are back at the start of the next round.
+- Water drums only ring when shot.
+
+Tune it in `shared/config.js` → `DRUMS`.
+
 ## Selling the walls: the advertiser dashboard
 
 To sell the walls, open **`/admin`** and sign in with your `ADMIN_KEY`. From there you can:
@@ -143,6 +155,28 @@ Any key you provide replaces the synthesised version. Only use recordings you ha
 
 ---
 
+## Music
+
+The soundtrack is also composed live in code, with talking drum, shekere, congas, kalimba, pads and bass:
+
+- **Menu theme:** slow and cinematic.
+- **Battle theme:** gets more intense as the fighting around you heats up, and calms down in quiet moments.
+- **Victory and defeat** stingers at the end of each round.
+
+Players set music and sound-effect volume separately in Settings.
+
+## Android app (APK)
+
+Every push to `main` builds an Android APK with GitHub Actions (`.github/workflows/android.yml`) and publishes it on the repo's **Releases** page.
+
+1. Push the code to GitHub.
+2. Open the repo → **Actions** and wait for "Android APK" to finish (about 5–8 minutes).
+3. Open **Releases**, download `36-states.apk` on your phone and install it (allow "Install unknown apps" when asked).
+
+The app connects to `https://three6states.onrender.com`. To point it at another server, add a repository variable `GAME_SERVER` under **Settings → Secrets and variables → Actions → Variables**.
+
+The app opens full screen in landscape, with its own icon and splash screen (from `android-res/`). This is a debug-signed build for testing and sharing. Publishing on the Play Store needs a release signing key; ask and the workflow can be extended.
+
 ## Controls
 
 | Desktop | |
@@ -164,7 +198,15 @@ Any key you provide replaces the synthesised version. Only use recordings you ha
 | Y / U | All chat / team chat |
 | Esc | Menu and settings |
 
-On phones and tablets, the game shows a joystick, look-drag and on-screen buttons automatically.
+On phones and tablets the game switches to touch controls:
+
+- **Move:** a joystick appears wherever your left thumb lands. Push it to the top edge to sprint.
+- **Look:** drag anywhere on the right half.
+- **Fire:** the big button on the right, or the small one on the left. Both also steer your aim while held.
+- **Buttons:** aim (toggle), reload, jump, crouch (toggle), switch weapon and grenade. Revive and first-aid buttons appear only when you can use them.
+- **Top right:** buy, scores and menu.
+
+In the browser, the game goes full screen in landscape when you deploy. Players set touch look speed in Settings.
 
 You can link straight into a battle with `/?state=lagos&as=police`.
 
@@ -180,7 +222,7 @@ client/            browser game (Vite)
   src/world/       arena (terrain, buildings, sky, water), props (trees, landmarks, machinery), markers (ad walls, gems, sites)
   src/characters/  jointed soldiers in faction uniforms
   src/fps/         first-person viewmodel, procedural guns, effects
-  src/core/        audio, input, network, textures, quality presets
+  src/core/        audio, music, input, network, server address, textures, quality presets
   src/ui/          cinematic boot, war map, HUD
 server/
   index.js         HTTP, WebSocket, accounts, lobby, admin API
@@ -190,6 +232,8 @@ server/
   admin.html       advertiser dashboard
   test.js          simulation tests
 shared/            states, config, map generator and physics, used by both client and server
+android-res/       app icon and splash screen for the Android build
+capacitor.config.json, .github/workflows/android.yml   Android app build
 ```
 
 ## Deploying
@@ -204,6 +248,6 @@ One server process runs every state's battle. For very large player counts, the 
 
 ## Honest limits of this version
 
-- **Graphics.** Everything (textures, weapons, soldiers) is generated in code, so the game loads instantly and needs no asset downloads. For a AAA look, swap in scanned textures and rigged 3D models (`.glb`); the code is structured so those can replace the generated ones.
+- **Graphics.** Everything (textures, weapons, soldiers) is generated in code, so the game loads instantly and needs no asset downloads. The renderer uses PBR lighting, shadows, bloom, colour grading, sun glare and blended terrain, with an Ultra setting for gaming PCs. The resolution adapts automatically to keep the frame rate smooth. For a true AAA look, swap in photo-scanned textures and rigged 3D models (`.glb`); the code is structured so those can replace the generated ones.
 - **Testing.** Gameplay, networking and the server were tested headlessly. Rendering was checked with a software renderer, so test it on your target phones before launch.
 - **Anti-cheat.** The server checks speed, teleporting, walls, fire rate and shot origin. A public launch should add rate-limits per IP and server-side logging.

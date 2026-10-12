@@ -3,7 +3,7 @@
 import { mulberry32, range, pick } from './rng.js';
 import { STATE_BY_ID, RESOURCES, BIOMES, stateSeed } from './states.js';
 import { buildIndex } from './physics.js';
-import { MATCH } from './config.js';
+import { MATCH, DRUMS } from './config.js';
 
 export const HALF = 110; // map runs from -110 to 110 metres on x and z
 const NAV_CELL = 2;
@@ -272,7 +272,19 @@ function tryGenerate(state, seed) {
     discoverySpots.push({ x, z });
   }
 
+  // Which drums hold fuel (explosive) and which hold water. Hash of position, so it
+  // never shifts the random sequence the rest of the map depends on.
+  const drums = [];
+  boxes.forEach((b, i) => {
+    if (b.prop !== 'drum') return;
+    const h = Math.abs(Math.sin(b.x0 * 12.9898 + b.z0 * 78.233) * 43758.5453) % 1;
+    b.fuel = h < DRUMS.fuelShare;
+    b.drum = drums.length;
+    drums.push(i);
+  });
+
   const map = {
+    drums,
     stateId: state.id,
     state,
     biome: state.biome,

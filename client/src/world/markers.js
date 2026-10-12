@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import * as T from '../core/textures.js';
 import { GEMS } from '../../../shared/config.js';
 import { RESOURCES } from '../../../shared/states.js';
+import { api } from '../core/server.js';
 
 const SIDE_COL = { sec: new THREE.Color('#4f9dff'), out: new THREE.Color('#ff5a4f'), none: new THREE.Color('#e8e8e8'), contested: new THREE.Color('#ffd23f'), discovery: new THREE.Color('#ffc13b') };
 
@@ -86,14 +87,14 @@ export class AdWalls {
   // Apply the paid adverts served for this state.
   async loadAds(stateId) {
     try {
-      const r = await fetch(`/api/ads?state=${encodeURIComponent(stateId)}`);
+      const r = await fetch(api(`/api/ads?state=${encodeURIComponent(stateId)}`));
       if (!r.ok) return;
       const { slots } = await r.json();
       const loader = new THREE.TextureLoader();
       for (const w of this.walls) {
         const s = slots[w.a.id];
         if (!s?.image) continue;
-        loader.load(s.image, (tex) => {
+        loader.load(api(s.image), (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.anisotropy = 8;
           w.mat.map = tex;
@@ -257,7 +258,7 @@ export class SiteMarkers {
       if (s.contested && Math.sin(t * 10) > 0) col = SIDE_COL.contested;
       rec.ring.material.color.copy(col);
       rec.beam.material.color.copy(col);
-      rec.beam.material.opacity = (s.id === 'D' ? 0.45 : 0.28) + Math.sin(t * 2) * 0.06;
+      rec.beam.material.opacity = (s.id === 'D' ? 0.32 : 0.16) + Math.sin(t * 2) * 0.04;
       rec.ring.rotation.z += dt * 0.15;
       rec.label.material.color.copy(col);
     }

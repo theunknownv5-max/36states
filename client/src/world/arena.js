@@ -109,7 +109,7 @@ export class Arena {
     this.animated = []; // { update(dt, t, camera) }
     const rng = mulberry32(map.seed ^ 0xa5a5);
     this.rng = rng;
-    T.setTextureSize(quality.textureSize >= 1024 ? 512 : 256);
+    T.setTextureSize(quality.textureSize >= 2048 ? 1024 : quality.textureSize >= 1024 ? 512 : 256);
 
     this.buildAtmosphere(rng);
     this.buildTerrain();
@@ -254,6 +254,27 @@ export class Arena {
     };
     const green = map.look.grass;
     const mat = new THREE.MeshStandardMaterial({ map: tex.map, normalMap: tex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, vertexColors: true });
+    // Blend a second surface in natural patches and add large-scale tone variation,
+    // so the ground never looks like one repeated tile.
+    const patchTex = T.groundPatchTexture(map.biome).map;
+    const mask = T.maskTexture();
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uPatch = { value: patchTex };
+      sh.uniforms.uMask = { value: mask };
+      sh.fragmentShader = 'uniform sampler2D uPatch;\nuniform sampler2D uMask;\n' + sh.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+          vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+          vec3 patchCol = texture2D( uPatch, vMapUv * 1.31 + 0.17 ).rgb;
+          float m = texture2D( uMask, vMapUv * 0.043 ).r;
+          float m2 = texture2D( uMask, vMapUv * 0.009 + 0.37 ).r;
+          float blend = smoothstep( 0.46, 0.62, m );
+          sampledDiffuseColor.rgb = mix( sampledDiffuseColor.rgb, patchCol, blend );
+          sampledDiffuseColor.rgb *= 0.82 + m2 * 0.36;
+          diffuseColor *= sampledDiffuseColor;
+        #endif`
+      );
+    };
     // A fine grid over the battlefield and a coarse one for the land beyond the wall.
     const patch = (size, segs, drop) => {
       const geo = new THREE.PlaneGeometry(size, size, segs, segs);
@@ -407,24 +428,60 @@ export class Arena {
     }
   }
 
+  // Fuel drums (red, explode when shot) and plastic water drums (blue, harmless).
   buildDrums(list) {
+    this.drumSlots = new Map(); // drum index -> { mesh, slot, matrix }
     if (!list.length) return;
-    const tex = T.drumTexture();
-    const geo = new THREE.CylinderGeometry(0.33, 0.33, 0.92, 18);
+    const geo = new THREE.CylinderGeometry(0.33, 0.33, 0.92, 22, 1);
     geo.translate(0, 0.46, 0);
-    const mat = new THREE.MeshStandardMaterial({ map: tex.map, normalMap: tex.normalMap, roughness: 0.55, metalness: 0.45 });
-    const im = new THREE.InstancedMesh(geo, mat, list.length);
-    const m = new THREE.Matrix4();
-    const c = new THREE.Color();
-    const colours = ['#2c5f9e', '#9e2c2c', '#2c8a4a', '#d4a017', '#3a3a3a'];
-    list.forEach((b, i) => {
-      m.makeRotationY(b.x0 * 3);
-      m.setPosition((b.x0 + b.x1) / 2, 0, (b.z0 + b.z1) / 2);
-      im.setMatrixAt(i, m);
-      im.setColorAt(i, c.set(colours[Math.floor(Math.abs(Math.sin(b.x0 * 7 + b.z0)) * colours.length) % colours.length]).lerp(new THREE.Color('#ffffff'), 0.4));
-    });
-    im.castShadow = im.receiveShadow = true;
-    this.root.add(im);
+    const lid = new THREE.CylinderGeometry(0.31, 0.33, 0.02, 22);
+    const fuel = T.fuelDrumTexture();
+    const water = T.waterDrumTexture();
+    const kinds = [
+      { list: list.filter((b) => b.fuel), mat: new THREE.MeshStandardMaterial({ map: fuel.map, normalMap: fuel.normalMap, roughness: 0.5, metalness: 0.55 }) },
+      { list: list.filter((b) => !b.fuel), mat: new THREE.MeshStandardMaterial({ map: water.map, normalMap: water.normalMap, roughness: 0.38, metalness: 0 }) }
+    ];
+    for (const k of kinds) {
+      if (!k.list.length) continue;
+      const im = new THREE.InstancedMesh(geo, k.mat, k.list.length);
+      const caps = new THREE.InstancedMesh(lid, k.mat, k.list.length);
+      k.list.forEach((b, i) => {
+        const m = new THREE.Matrix4().makeRotationY(b.x0 * 3);
+        m.setPosition((b.x0 + b.x1) / 2, 0, (b.z0 + b.z1) / 2);
+        im.setMatrixAt(i, m);
+        caps.setMatrixAt(i, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.93, 0)));
+        this.drumSlots.set(b.drum, { im, caps, slot: i, m, cm: m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.93, 0)), b });
+      });
+      im.castShadow = im.receiveShadow = caps.castShadow = true;
+      this.root.add(im, caps);
+    }
+  }
+
+  // A drum blew up: hide it and sink its collision box, exactly like the server.
+  killDrum(i) {
+    const d = this.drumSlots?.get(i);
+    if (!d || d.dead) return;
+    d.dead = true;
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    d.im.setMatrixAt(d.slot, zero);
+    d.caps.setMatrixAt(d.slot, zero);
+    d.im.instanceMatrix.needsUpdate = d.caps.instanceMatrix.needsUpdate = true;
+    d.b.oy0 = d.b.y0;
+    d.b.oy1 = d.b.y1;
+    d.b.y0 = -3;
+    d.b.y1 = -2.5;
+  }
+
+  restoreDrums() {
+    for (const d of this.drumSlots?.values() || []) {
+      if (!d.dead) continue;
+      d.dead = false;
+      d.im.setMatrixAt(d.slot, d.m);
+      d.caps.setMatrixAt(d.slot, d.cm);
+      d.im.instanceMatrix.needsUpdate = d.caps.instanceMatrix.needsUpdate = true;
+      d.b.y0 = d.b.oy0;
+      d.b.y1 = d.b.oy1;
+    }
   }
 
   // ---------- rivers, creeks, lakes ----------

@@ -1,5 +1,7 @@
 // WebSocket link to the game server, with clock sync so every client agrees on
 // server time (gem cooldowns, lag-compensated shots, interpolation).
+import { WS_URL } from './server.js';
+
 export class Net {
   constructor() {
     this.ws = null;
@@ -22,9 +24,7 @@ export class Net {
   }
 
   url() {
-    const env = import.meta.env || {};
-    if (env.VITE_SERVER_URL) return env.VITE_SERVER_URL;
-    return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+    return WS_URL;
   }
 
   connect(hello) {

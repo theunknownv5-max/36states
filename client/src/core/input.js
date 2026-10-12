@@ -12,7 +12,8 @@ export class Input {
     this.sensitivity = 1;
     this.invertY = false;
     this.handlers = [];
-    this.touch = { moveX: 0, moveY: 0, fire: false, ads: false, sprint: false };
+    this.touch = { moveX: 0, moveY: 0, fire: false, ads: false, sprint: false, crouch: false };
+    this.touchSens = 1;
     this.typing = false;
 
     addEventListener('keydown', (e) => {
@@ -144,31 +145,48 @@ export class Input {
 
   // ---------- touch controls (built over the HUD) ----------
   bindTouch(root) {
+    const zone = root.querySelector('#t-move');
     const stick = root.querySelector('#t-stick');
     const knob = root.querySelector('#t-knob');
     const look = root.querySelector('#t-look');
+    const R = 52;
     let stickId = null;
     let sx = 0;
     let sy = 0;
-    stick.addEventListener('touchstart', (e) => {
+    const home = () => {
+      stick.style.left = '';
+      stick.style.top = '';
+      stick.style.bottom = '';
+    };
+    // Floating stick: it appears wherever the left thumb lands.
+    zone.addEventListener('touchstart', (e) => {
+      if (stickId !== null) return;
       const t = e.changedTouches[0];
       stickId = t.identifier;
-      const r = stick.getBoundingClientRect();
-      sx = r.left + r.width / 2;
-      sy = r.top + r.height / 2;
+      const zr = zone.getBoundingClientRect();
+      sx = t.clientX;
+      sy = t.clientY;
+      stick.style.left = `${t.clientX - zr.left - 65}px`;
+      stick.style.top = `${t.clientY - zr.top - 65}px`;
+      stick.style.bottom = 'auto';
+      stick.classList.add('on');
       e.preventDefault();
     });
-    stick.addEventListener('touchmove', (e) => {
+    zone.addEventListener('touchmove', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier !== stickId) continue;
         const dx = t.clientX - sx;
         const dy = t.clientY - sy;
-        const l = Math.min(55, Math.hypot(dx, dy));
+        const l = Math.min(R, Math.hypot(dx, dy));
         const a = Math.atan2(dy, dx);
         knob.style.transform = `translate(${Math.cos(a) * l}px, ${Math.sin(a) * l}px)`;
-        this.touch.moveX = (Math.cos(a) * l) / 55;
-        this.touch.moveY = -(Math.sin(a) * l) / 55;
-        this.touch.sprint = l > 52 && this.touch.moveY > 0.8;
+        // Small dead zone so a resting thumb does not drift.
+        const k = l < 6 ? 0 : (l - 6) / (R - 6);
+        this.touch.moveX = Math.cos(a) * k;
+        this.touch.moveY = -Math.sin(a) * k;
+        // Push to the top edge to sprint.
+        this.touch.sprint = Math.hypot(dx, dy) > R * 1.15 && this.touch.moveY > 0.75;
+        stick.classList.toggle('sprint', this.touch.sprint);
       }
       e.preventDefault();
     });
@@ -179,72 +197,99 @@ export class Input {
         knob.style.transform = '';
         this.touch.moveX = this.touch.moveY = 0;
         this.touch.sprint = false;
+        stick.classList.remove('on', 'sprint');
+        home();
       }
     };
-    stick.addEventListener('touchend', endStick);
-    stick.addEventListener('touchcancel', endStick);
-    let lookId = null;
-    let lx = 0;
-    let ly = 0;
-    look.addEventListener('touchstart', (e) => {
-      const t = e.changedTouches[0];
-      lookId = t.identifier;
-      lx = t.clientX;
-      ly = t.clientY;
-    });
-    look.addEventListener('touchmove', (e) => {
+    zone.addEventListener('touchend', endStick);
+    zone.addEventListener('touchcancel', endStick);
+    // Look: drag anywhere on the right half. Several fingers can look at once.
+    const lookIds = new Map();
+    const lookStart = (e) => {
+      for (const t of e.changedTouches) lookIds.set(t.identifier, [t.clientX, t.clientY]);
+    };
+    const lookMove = (e) => {
       for (const t of e.changedTouches) {
-        if (t.identifier !== lookId) continue;
-        this.mouse.dx += (t.clientX - lx) * 1.6;
-        this.mouse.dy += (t.clientY - ly) * 1.6;
-        lx = t.clientX;
-        ly = t.clientY;
+        const p = lookIds.get(t.identifier);
+        if (!p) continue;
+        this.mouse.dx += (t.clientX - p[0]) * 1.5 * this.touchSens;
+        this.mouse.dy += (t.clientY - p[1]) * 1.5 * this.touchSens;
+        lookIds.set(t.identifier, [t.clientX, t.clientY]);
       }
       e.preventDefault();
-    });
-    look.addEventListener('touchend', () => (lookId = null));
-    // Buttons: data-key presses a key; data-hold sets a touch flag while held.
+    };
+    const lookEnd = (e) => {
+      for (const t of e.changedTouches) lookIds.delete(t.identifier);
+    };
+    look.addEventListener('touchstart', lookStart);
+    look.addEventListener('touchmove', lookMove);
+    look.addEventListener('touchend', lookEnd);
+    look.addEventListener('touchcancel', lookEnd);
+    const vibrate = (ms) => navigator.vibrate?.(ms);
+    // data-key: a key press. data-hold: a flag while held. data-toggle: a flag that flips.
     for (const b of root.querySelectorAll('[data-key]')) {
       b.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        b.classList.add('down');
+        vibrate(8);
         this.press(b.dataset.key);
         this.keys.add(b.dataset.key);
       });
-      b.addEventListener('touchend', (e) => {
+      const up = (e) => {
         e.preventDefault();
+        b.classList.remove('down');
         this.keys.delete(b.dataset.key);
         this.release(b.dataset.key);
+      };
+      b.addEventListener('touchend', up);
+      b.addEventListener('touchcancel', up);
+    }
+    for (const b of root.querySelectorAll('[data-toggle]')) {
+      b.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const f = b.dataset.toggle;
+        this.touch[f] = !this.touch[f];
+        b.classList.toggle('on', this.touch[f]);
+        vibrate(8);
       });
     }
     for (const b of root.querySelectorAll('[data-hold]')) {
       const flag = b.dataset.hold;
       b.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        this.touch[flag] = flag === 'ads' ? !this.touch.ads : true;
-        if (flag === 'fire') {
-          this.press('Mouse0');
-          // Firing button also steers the view, like most mobile shooters.
-          const t = e.changedTouches[0];
-          lookId = t.identifier;
-          lx = t.clientX;
-          ly = t.clientY;
+        e.stopPropagation();
+        vibrate(flag === 'fire' ? 12 : 8);
+        if (flag === 'ads') {
+          this.touch.ads = !this.touch.ads;
+          b.classList.toggle('on', this.touch.ads);
+          return;
         }
+        this.touch.fire = true;
+        b.classList.add('down');
+        this.press('Mouse0');
+        // The fire buttons also steer the view, like most mobile shooters.
+        lookStart(e);
       });
       b.addEventListener('touchmove', (e) => {
+        if (flag === 'fire') lookMove(e);
+      });
+      const up = (e) => {
+        e.preventDefault();
         if (flag !== 'fire') return;
-        for (const t of e.changedTouches) {
-          if (t.identifier !== lookId) continue;
-          this.mouse.dx += (t.clientX - lx) * 1.2;
-          this.mouse.dy += (t.clientY - ly) * 1.2;
-          lx = t.clientX;
-          ly = t.clientY;
-        }
-        e.preventDefault();
-      });
-      b.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        if (flag !== 'ads') this.touch[flag] = false;
-      });
+        lookEnd(e);
+        b.classList.remove('down');
+        if (!root.querySelector('[data-hold="fire"].down')) this.touch.fire = false;
+      };
+      b.addEventListener('touchend', up);
+      b.addEventListener('touchcancel', up);
     }
+  }
+
+  // Forget touch state (e.g. after dying or opening a menu).
+  resetTouch(root) {
+    Object.assign(this.touch, { moveX: 0, moveY: 0, fire: false, sprint: false });
+    root?.querySelectorAll('.down').forEach((b) => b.classList.remove('down'));
   }
 }

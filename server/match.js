@@ -1,7 +1,7 @@
 // One live battle in one state. The server decides every hit, death, revive,
 // gem pickup, capture, explosion and payout. Bots fill empty slots.
 import { randomUUID } from 'node:crypto';
-import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, priceFor } from '../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, priceFor } from '../shared/config.js';
 import { generateMap, inWater } from '../shared/map.js';
 import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise } from '../shared/physics.js';
 import { RESOURCES } from '../shared/states.js';
@@ -40,6 +40,17 @@ export class Match {
     this.smokes = [];
     this.artillery = [];
     this.uav = { sec: 0, out: 0 };
+    // Every drum is back, full, at the start of a round.
+    for (const bi of this.map.drums) {
+      const b = this.map.boxes[bi];
+      if (b.oy1 !== undefined) {
+        b.y0 = b.oy0;
+        b.y1 = b.oy1;
+      }
+    }
+    this.drumHp = this.map.drums.map(() => DRUMS.health);
+    this.drumsDead = [];
+    this.drumQueue = [];
     for (const p of this.players.values()) {
       p.money = MONEY.start;
       p.kills = p.deaths = p.assists = p.points = 0;
@@ -200,6 +211,8 @@ export class Match {
     p.healAt = 0;
     p.history = [];
     p.damagers.clear();
+    p.burnUntil = 0;
+    p.burnAcc = 0;
     p.downedAt = p.deadAt = p.spiritUntil = p.medevacAt = 0;
     p.lastState = now();
     p.reviver = null;
@@ -274,6 +287,7 @@ export class Match {
       scoreLimit: MATCH.scoreLimit,
       sites: this.siteView(),
       gems: this.gems,
+      drums: this.drumsDead,
       discovery: this.discovery,
       roster: this.roster(),
       serverTime: now()
@@ -480,6 +494,7 @@ export class Match {
         end = [ox + dir[0] * wall.t, oy + dir[1] * wall.t, oz + dir[2] * wall.t];
         // Thin walls (mud, plank, zinc, crates) can be shot through by powerful rounds.
         const box = wall.box >= 0 ? this.map.boxes[wall.box] : null;
+        if (box?.fuel) this.hitDrum(wall.box, w.dmg * mult, p);
         const thick = box ? wall.exitT - wall.t : Infinity;
         if (box && box.pen && thick < 0.55 && w.pen > 0 && penetrations < 1) {
           penetrations++;
@@ -805,19 +820,86 @@ export class Match {
     this.projectiles = keep;
   }
 
-  explode(x, y, z, radius, dmg, owner, weapon) {
+  // env: a burst fuel drum hurts everyone nearby, teammates of the shooter included.
+  explode(x, y, z, radius, dmg, owner, weapon, env = false) {
     this.broadcast({ t: 'boom', x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), r: radius, w: weapon });
     for (const o of this.players.values()) {
       if (o.status !== 'alive' && o.status !== 'downed') continue;
       const cy = o.y + 0.9;
       const dist = Math.hypot(o.x - x, cy - y, o.z - z);
       if (dist > radius) continue;
-      if (owner && o !== owner && o.side === owner.side) continue;
+      if (!env && owner && o !== owner && o.side === owner.side) continue;
       const blocked = lineBlocked(this.map.index, x, y + 0.25, z, o.x, cy, o.z);
       let hp = dmg * Math.pow(1 - dist / radius, 1.2) * (blocked ? 0.2 : 1);
       if (o === owner) hp *= 0.5;
       if (hp < 1) continue;
-      this.damage(o, owner, hp, { zone: 'body', weapon, explosive: true, from: [x, y, z] });
+      const attacker = owner && o !== owner && o.side === owner.side ? null : owner;
+      this.damage(o, attacker, hp, { zone: 'body', weapon, explosive: true, from: [x, y, z] });
+    }
+    // Blasts set off fuel drums caught in them.
+    for (const bi of this.map.drums) {
+      const b = this.map.boxes[bi];
+      if (!b.fuel || this.drumsDead.includes(b.drum)) continue;
+      const d = Math.hypot((b.x0 + b.x1) / 2 - x, (b.z0 + b.z1) / 2 - z);
+      if (d < radius * 0.85) this.hitDrum(bi, dmg * (1.2 - d / radius), owner);
+    }
+  }
+
+  // ---------- fuel drums ----------
+  hitDrum(bi, dmg, by) {
+    const b = this.map.boxes[bi];
+    if (!b?.fuel || this.drumsDead.includes(b.drum)) return;
+    this.drumHp[b.drum] -= dmg;
+    if (this.drumHp[b.drum] <= 0 && !this.drumQueue.some((q) => q.bi === bi)) this.drumQueue.push({ bi, at: now() + (dmg > 100 ? DRUMS.chainDelayMs : 0), by: by?.id || null });
+  }
+
+  detonateDrum(bi, byId) {
+    const b = this.map.boxes[bi];
+    if (this.drumsDead.includes(b.drum)) return;
+    this.drumsDead.push(b.drum);
+    const x = (b.x0 + b.x1) / 2;
+    const z = (b.z0 + b.z1) / 2;
+    // The drum is gone: sink its collision box below the ground.
+    b.oy0 = b.y0;
+    b.oy1 = b.y1;
+    b.y0 = -3;
+    b.y1 = -2.5;
+    const by = byId ? this.players.get(byId) || null : null;
+    this.broadcast({ t: 'drum', i: b.drum, x: +x.toFixed(2), z: +z.toFixed(2), by: by?.name || null });
+    this.explode(x, 0.6, z, DRUMS.blast, DRUMS.dmg, by, 'drum', true);
+    // Burning fuel splashes over anyone close: the closer, the longer they burn.
+    const t = now();
+    for (const o of this.players.values()) {
+      if (o.status !== 'alive') continue;
+      const d = Math.hypot(o.x - x, o.z - z);
+      if (d > DRUMS.burnRadius || o.y > 2.5) continue;
+      if (lineBlocked(this.map.index, x, 0.8, z, o.x, o.y + 0.9, o.z)) continue;
+      const secs = DRUMS.burnSecs * (1.15 - (d / DRUMS.burnRadius) * 0.6);
+      o.burnUntil = Math.max(o.burnUntil || 0, t + secs * 1000);
+      o.burnBy = by && by.side !== o.side ? by.id : null;
+      o.burnAcc = o.burnAcc || 0;
+    }
+  }
+
+  stepDrums(dt) {
+    const t = now();
+    if (this.drumQueue.length) {
+      const due = this.drumQueue.filter((q) => q.at <= t);
+      this.drumQueue = this.drumQueue.filter((q) => q.at > t);
+      for (const q of due) this.detonateDrum(q.bi, q.by);
+    }
+    for (const p of this.players.values()) {
+      if (!(p.burnUntil > t)) continue;
+      if (p.status !== 'alive' || (p.y < 0.2 && inWater(this.map, p.x, p.z))) {
+        p.burnUntil = 0; // water (or going down) puts the flames out
+        continue;
+      }
+      p.burnAcc += DRUMS.burnDps * dt;
+      if (p.burnAcc >= 3) {
+        const hp = Math.floor(p.burnAcc);
+        p.burnAcc -= hp;
+        this.damage(p, (p.burnBy && this.players.get(p.burnBy)) || null, hp, { zone: 'body', weapon: 'fire', explosive: true });
+      }
     }
   }
 
@@ -1053,6 +1135,7 @@ export class Match {
     this.stepProjectiles(dt);
     this.stepArtillery();
     this.smokes = this.smokes.filter((s) => s.until > t);
+    this.stepDrums(dt);
     this.stepSites(dt);
     this.stepGems();
     this.stepDiscovery();
@@ -1110,7 +1193,8 @@ export class Match {
           (o.reloadUntil > t ? 64 : 0) |
           (o.sprint ? 128 : 0) |
           (o.status === 'dead' || o.status === 'medevac' ? 256 : 0) |
-          (uav && o.side !== me.side ? 512 : 0);
+          (uav && o.side !== me.side ? 512 : 0) |
+          (o.burnUntil > t ? 1024 : 0);
         list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
       }
       this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes });

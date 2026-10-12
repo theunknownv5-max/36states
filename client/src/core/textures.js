@@ -84,6 +84,18 @@ export function normalFromHeight(height, size, strength) {
   return toTexture(c, { srgb: false });
 }
 
+function greyCanvas(values, size) {
+  const [c, ctx] = makeCanvas(size);
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < values.length; i++) {
+    const v = Math.max(0, Math.min(255, values[i] * 255));
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
 const hex = (h) => {
   const n = parseInt(h.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -143,6 +155,80 @@ export function groundTexture(biome) {
     }
     return { c: [col[0] + grain, col[1] + grain, col[2] + grain], h };
   }, 2.5);
+}
+
+// Second ground layer blended in patches (grass, gravel, wet mud...) so the
+// terrain does not look like one repeated tile.
+const PATCH = {
+  sahel: { a: '#e4cb98', b: '#c9a771', grass: 0.0, ripples: true },
+  savanna: { a: '#8f8a4a', b: '#6e6a34', grass: 0.8 },
+  plateau: { a: '#7e7a6c', b: '#5c584c', grass: 0.2, stones: true },
+  rainforest: { a: '#4f6e2c', b: '#36501e', grass: 1 },
+  creeks: { a: '#465a2c', b: '#2f3c1c', grass: 0.7, wet: true },
+  urban: { a: '#4a4844', b: '#33312e', grass: 0, cracks: true }
+};
+export function groundPatchTexture(biome) {
+  const g = PATCH[biome] || PATCH.savanna;
+  const A = hex(g.a);
+  const B = hex(g.b);
+  return pixelSurface(`patch-${biome}`, SIZE, 131 + biome.length, (x, y, n1, n2, rng) => {
+    let col = mix(B, A, n1);
+    let h = n2;
+    if (g.ripples) {
+      const r = Math.sin((y / SIZE) * Math.PI * 28 + n1 * 6) * 0.5 + 0.5;
+      col = mix(col, [240, 220, 180], r * 0.18);
+      h = r;
+    }
+    if (g.grass && rng() < 0.35 * g.grass) {
+      // Blades seen from above: short bright and dark flecks.
+      const k = rng();
+      col = mix(col, k < 0.5 ? [150, 160, 70] : [40, 55, 20], 0.5);
+      h += 0.4;
+    }
+    if (g.stones && rng() < 0.03) {
+      col = mix(col, [150, 145, 135], 0.7);
+      h += 0.8;
+    }
+    if (g.wet) col = mix(col, [30, 32, 20], clamp01(n2 - 0.55) * 1.5);
+    const gr = (rng() - 0.5) * 16;
+    return { c: [col[0] + gr, col[1] + gr, col[2] + gr], h };
+  }, 3, g.cracks ? (ctx, s, rng) => {
+    ctx.strokeStyle = 'rgba(20,18,16,0.6)';
+    for (let i = 0; i < 18; i++) {
+      let x = rng() * s;
+      let y = rng() * s;
+      ctx.lineWidth = 1 + rng();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let k = 0; k < 6; k++) {
+        x += (rng() - 0.5) * 40;
+        y += (rng() - 0.5) * 40;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } : null);
+}
+
+// Large soft noise used as a blend mask and to break up tiling.
+export function maskTexture() {
+  if (cache.has('mask')) return cache.get('mask');
+  const size = 256;
+  const rng = mulberry32(151);
+  const n = fbm(size, 5, rng, 3);
+  const t = toTexture(greyCanvas(n, size), { srgb: false });
+  cache.set('mask', t);
+  return t;
+}
+
+// Woven uniform fabric: a light map (tinted by the uniform colour) and a normal map.
+export function fabricTexture() {
+  return pixelSurface('fabric', 256, 161, (x, y, n1, n2, rng) => {
+    const weave = ((x % 4 < 2) ^ (y % 4 < 2) ? 1 : 0.9) * (0.92 + n2 * 0.1);
+    const wear = clamp01((n1 - 0.6) * 2) * 0.15;
+    const v = 220 * weave * (1 - wear);
+    return { c: [v, v, v], h: weave + n1 * 0.6 };
+  }, 4);
 }
 
 // ---------- walls ----------
@@ -308,15 +394,51 @@ export function containerTexture() {
   }, 6);
 }
 
-export function drumTexture() {
-  return pixelSurface('drum', SIZE, 43, (x, y, n1) => {
+// Steel fuel drum: red paint, rolled hoops, a flammable diamond and "PMS" stencil.
+export function fuelDrumTexture() {
+  return pixelSurface('drum-fuel', SIZE, 43, (x, y, n1, n2) => {
     const v = y / SIZE;
-    const band = Math.abs(v - 0.33) < 0.03 || Math.abs(v - 0.66) < 0.03;
-    const rust = clamp01((n1 - 0.5) * 3);
-    let col = mix([40, 80, 140], [130, 70, 35], rust);
-    if (band) col = mix(col, [30, 30, 30], 0.4);
-    return { c: col, h: band ? 1 : 0.5 };
-  }, 4);
+    const band = Math.abs(v - 0.33) < 0.025 || Math.abs(v - 0.66) < 0.025 || v < 0.03 || v > 0.97;
+    const rust = clamp01((n1 - 0.55) * 3) + clamp01((v - 0.88) * 6) * 0.5;
+    let col = mix([168, 34, 28], [110, 58, 30], clamp01(rust));
+    col = mix(col, [60, 20, 15], clamp01(n2 - 0.7) * 0.6); // oil stains
+    if (band) col = mix(col, [40, 30, 28], 0.35);
+    return { c: col, h: band ? 1 : 0.45 + n2 * 0.1 };
+  }, 4, (ctx, s) => {
+    // Two labels around the drum.
+    for (const cx of [s * 0.25, s * 0.75]) {
+      ctx.save();
+      ctx.translate(cx, s * 0.5);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#f2c230';
+      ctx.fillRect(-s * 0.07, -s * 0.07, s * 0.14, s * 0.14);
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = s * 0.008;
+      ctx.strokeRect(-s * 0.065, -s * 0.065, s * 0.13, s * 0.13);
+      ctx.restore();
+      ctx.fillStyle = '#111';
+      ctx.font = `bold ${s * 0.06}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('🔥', cx, s * 0.52);
+      ctx.fillStyle = '#f4efe6';
+      ctx.font = `900 ${s * 0.07}px Impact, sans-serif`;
+      ctx.fillText('PMS', cx, s * 0.27);
+      ctx.font = `700 ${s * 0.032}px sans-serif`;
+      ctx.fillText('FLAMMABLE', cx, s * 0.78);
+    }
+  });
+}
+
+// Blue plastic water drum (the kind found outside every compound).
+export function waterDrumTexture() {
+  return pixelSurface('drum-water', SIZE, 44, (x, y, n1, n2) => {
+    const v = y / SIZE;
+    const rib = Math.abs(v - 0.3) < 0.02 || Math.abs(v - 0.7) < 0.02;
+    let col = mix([28, 78, 160], [40, 96, 178], n2);
+    col = mix(col, [120, 110, 90], clamp01((v - 0.85) * 4) * 0.5 + clamp01(n1 - 0.75)); // dust and mud
+    if (rib) col = mix(col, [20, 55, 120], 0.5);
+    return { c: col, h: rib ? 1 : 0.5 };
+  }, 3);
 }
 
 export function rustTexture() {

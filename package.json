@@ -1,6 +1,6 @@
 {
   "name": "thirty-six-states",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "36 States - a tactical multiplayer FPS set across all 36 states of Nigeria (Three.js)",
   "type": "module",
@@ -11,15 +11,21 @@
     "build": "vite build",
     "start": "node server/index.js",
     "preview": "npm run build && npm start",
-    "test": "node server/test.js"
+    "test": "node server/test.js",
+    "android": "npm run build && npx cap sync android"
   },
   "dependencies": {
     "three": "^0.170.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "@capacitor/cli": "^6.1.2"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -225,6 +225,7 @@ export class AudioEngine {
     g.gain.setValueAtTime(0.0001, when);
     g.gain.exponentialRampToValueAtTime(gain, when + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    if (dur > buffer.duration - 0.1) src.loop = true;
     src.connect(filt).connect(g).connect(dest);
     src.start(when, offset * (buffer.duration - dur - 0.05 > 0 ? buffer.duration - dur - 0.05 : 0));
     src.stop(when + dur + 0.05);
@@ -351,6 +352,15 @@ export class AudioEngine {
     if (!far) this.noiseHit(o.input, w, { dur: 0.25, gain: 1.0 * size, type: 'highpass', f: 1500, attack: 0.001 });
     // Falling debris crackle.
     for (let i = 0; i < 10 * size; i++) this.noiseHit(o.input, w + 0.25 + Math.random() * 1.6, { dur: 0.03, gain: 0.08 + Math.random() * 0.1, f: 1500 + Math.random() * 3000, q: 2 });
+  }
+
+  // Burning fuel: a roar with crackles, for a few seconds.
+  fire(pos, secs) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 5, rolloff: 1.2, reverb: 0.2 });
+    const t = o.when;
+    this.noiseHit(o.input, t, { dur: secs, gain: 0.5, type: 'lowpass', f: 900, attack: 0.3, buffer: this.brown });
+    for (let i = 0; i < secs * 6; i++) this.noiseHit(o.input, t + Math.random() * secs, { dur: 0.02, gain: 0.1 + Math.random() * 0.15, f: 2000 + Math.random() * 3000, q: 3 });
   }
 
   incoming(pos) {
