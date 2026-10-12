@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>36 States · Advertiser Command</title>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #0a0c0a;
+        --panel: #121612;
+        --panel2: #171c17;
+        --line: #263026;
+        --ink: #e9efe4;
+        --muted: #8a9786;
+        --gold: #e8b23a;
+        --green: #4fd18b;
+        --red: #ff5a4f;
+        --blue: #4f9dff;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 500 15px/1.45 'Rajdhani', system-ui, sans-serif; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #0f150f, #0a0c0a); position: sticky; top: 0; z-index: 5; }
+      .logo { font: 400 26px 'Black Ops One', sans-serif; letter-spacing: 0.02em; }
+      .logo span { color: var(--gold); }
+      .logo small { font: 600 13px 'Rajdhani'; color: var(--muted); margin-left: 10px; letter-spacing: 0.18em; text-transform: uppercase; }
+      main { max-width: 1240px; margin: 0 auto; padding: 22px; display: grid; gap: 20px; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+      h2 { margin: 0 0 12px; font: 700 15px 'Rajdhani'; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+      .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+      .kpi { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+      .kpi small { color: var(--muted); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+      .kpi b { display: block; font: 700 28px 'JetBrains Mono', monospace; margin-top: 2px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.12em; }
+      input, select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: #0c0f0c; color: var(--ink); font: 600 15px 'Rajdhani'; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+      button { padding: 10px 16px; border-radius: 8px; border: 0; background: var(--gold); color: #171000; font: 700 15px 'Rajdhani'; letter-spacing: 0.06em; cursor: pointer; text-transform: uppercase; }
+      button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+      button.danger { background: transparent; color: var(--red); border: 1px solid #4a2626; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 6px; }
+      .zone { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+      .zone b { display: block; font-size: 12px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+      .chip { display: inline-flex; align-items: center; gap: 4px; margin: 3px 4px 3px 0; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; font-size: 14px; user-select: none; }
+      .chip.on { background: rgba(232, 178, 58, 0.16); border-color: var(--gold); color: #ffe0a0; }
+      .chip small { color: var(--muted); font-family: 'JetBrains Mono'; font-size: 11px; }
+      .allrow { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 16px; }
+      .allrow input { width: auto; }
+      .preview { margin-top: 10px; aspect-ratio: 2.13/1; max-width: 520px; border-radius: 8px; border: 1px dashed var(--line); display: grid; place-items: center; color: var(--muted); overflow: hidden; }
+      .preview img { width: 100%; height: 100%; object-fit: cover; }
+      table { width: 100%; border-collapse: collapse; font-size: 15px; }
+      th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+      td.num { font-family: 'JetBrains Mono'; }
+      td img { width: 110px; height: 52px; object-fit: cover; border-radius: 6px; display: block; }
+      tr.sel { background: rgba(232, 178, 58, 0.06); }
+      .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+      .live { background: rgba(79, 209, 139, 0.14); color: var(--green); }
+      .off { background: rgba(255, 90, 79, 0.12); color: var(--red); }
+      .bars { display: grid; gap: 6px; }
+      .bar { display: grid; grid-template-columns: 120px 1fr 64px; gap: 10px; align-items: center; font-size: 14px; }
+      .bar i { display: block; height: 12px; border-radius: 3px; background: var(--gold); }
+      .bar span:last-child { font-family: 'JetBrains Mono'; text-align: right; color: var(--muted); }
+      .hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; align-items: end; height: 120px; }
+      .hours i { background: var(--blue); border-radius: 2px 2px 0 0; min-height: 2px; }
+      .hours-l { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; font: 500 10px 'JetBrains Mono'; color: var(--muted); text-align: center; }
+      .split { display: flex; height: 18px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+      .split i:first-child { background: var(--blue); }
+      .split i:last-child { background: var(--red); }
+      .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+      #login { max-width: 400px; margin: 14vh auto; }
+      .msg { color: var(--muted); font-size: 14px; margin-top: 8px; min-height: 1em; }
+      .note { color: var(--muted); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div id="login" class="card">
+      <div class="logo">36 <span>STATES</span></div>
+      <p class="note">Advertiser command centre</p>
+      <label for="key">Admin key</label>
+      <input id="key" type="password" placeholder="ADMIN_KEY from the server" />
+      <div class="row" style="margin-top: 14px"><button id="loginBtn">Sign in</button></div>
+      <div class="msg" id="loginMsg"></div>
+    </div>
+
+    <div id="app" hidden>
+      <header>
+        <div class="logo">36 <span>STATES</span><small>Advertiser command</small></div>
+        <div class="row"><button class="ghost" id="csvBtn">Export report (CSV)</button><button class="ghost" id="logoutBtn">Sign out</button></div>
+      </header>
+      <main>
+        <section class="card">
+          <h2>Network</h2>
+          <div class="kpis">
+            <div class="kpi"><small>Live adverts</small><b id="kLive">0</b></div>
+            <div class="kpi"><small>Ad views</small><b id="kViews">0</b></div>
+            <div class="kpi"><small>Unique players reached</small><b id="kUniq">0</b></div>
+            <div class="kpi"><small>Gem pickups at ads</small><b id="kGems">0</b></div>
+            <div class="kpi"><small>Booked revenue</small><b id="kRev">₦0</b></div>
+            <div class="kpi"><small>Players in battle</small><b id="kPlayers">0</b></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>New campaign</h2>
+          <div class="grid">
+            <div><label>Advertiser</label><input id="fAdv" placeholder="e.g. Naija Malt" /></div>
+            <div><label>Campaign</label><input id="fTitle" placeholder="e.g. Sallah promo" /></div>
+            <div><label>Price paid (₦)</label><input id="fPrice" type="number" min="0" placeholder="500000" /></div>
+            <div><label>Link (optional)</label><input id="fLink" placeholder="https://brand.ng" /></div>
+            <div><label>Start date</label><input id="fStart" type="date" /></div>
+            <div><label>End date</label><input id="fEnd" type="date" /></div>
+          </div>
+          <label>Wall artwork (PNG / JPG / WEBP, landscape about 2:1, under 2 MB)</label>
+          <input id="fImage" type="file" accept="image/png,image/jpeg,image/webp" />
+          <div class="preview" id="preview">No artwork yet</div>
+          <label>Target states</label>
+          <div class="allrow"><input type="checkbox" id="allStates" checked /> <span>All 36 states + FCT</span></div>
+          <div class="zones" id="zones"></div>
+          <div class="row" style="margin-top: 14px"><button id="createBtn">Launch campaign</button></div>
+          <div class="msg" id="createMsg"></div>
+          <p class="note">Every advert wall carries a life gem. Players walk up to your wall to collect it, and dead players run to it as spirits to come back, so walls get close, repeated attention. Views count only when your wall is on a player's screen within 45 m, once per player per minute. Advertisers see totals by state, side, faction and hour, never who the individual players are.</p>
+        </section>
+
+        <section class="card">
+          <h2>Campaigns</h2>
+          <table>
+            <thead><tr><th>Art</th><th>Advertiser</th><th>Targets</th><th>Views</th><th>Unique players</th><th>Gem pickups</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </section>
+
+        <section class="card" id="detail" hidden>
+          <h2 id="dTitle">Campaign report</h2>
+          <div class="kpis" id="dKpis"></div>
+          <div class="two" style="margin-top: 16px">
+            <div>
+              <h2>Top states</h2>
+              <div class="bars" id="dStates"></div>
+            </div>
+            <div>
+              <h2>Audience by side</h2>
+              <div class="split" id="dSplit"><i></i><i></i></div>
+              <div class="note" id="dSplitText"></div>
+              <h2 style="margin-top: 16px">By faction</h2>
+              <div class="bars" id="dFactions"></div>
+            </div>
+          </div>
+          <h2 style="margin-top: 18px">Views by hour of day</h2>
+          <div class="hours" id="dHours"></div>
+          <div class="hours-l" id="dHoursL"></div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const ZONES = { NC: 'North Central', NE: 'North East', NW: 'North West', SE: 'South East', SS: 'South South', SW: 'South West' };
+      const ZONE_OF = { abia: 'SE', adamawa: 'NE', akwaibom: 'SS', anambra: 'SE', bauchi: 'NE', bayelsa: 'SS', benue: 'NC', borno: 'NE', crossriver: 'SS', delta: 'SS', ebonyi: 'SE', edo: 'SS', ekiti: 'SW', enugu: 'SE', gombe: 'NE', imo: 'SE', jigawa: 'NW', kaduna: 'NW', kano: 'NW', katsina: 'NW', kebbi: 'NW', kogi: 'NC', kwara: 'NC', lagos: 'SW', nasarawa: 'NC', niger: 'NC', ogun: 'SW', ondo: 'SW', osun: 'SW', oyo: 'SW', plateau: 'NC', rivers: 'SS', sokoto: 'NW', taraba: 'NE', yobe: 'NE', zamfara: 'NW', fct: 'NC' };
+      const FACTION = { police: 'Police', army: 'Army', civildefence: 'Civil Defence', vigilante: 'Vigilante Hunters', bandit: 'Bandits', militant: 'Creek Militants', smuggler: 'Smugglers' };
+      let key = sessionStorage.getItem('36adminKey') || '';
+      let data = null;
+      let chosen = new Set();
+      let imageData = null;
+      let selected = null;
+      const naira = (n) => '₦' + Math.round(n || 0).toLocaleString('en-NG');
+      const num = (n) => Math.round(n || 0).toLocaleString('en-NG');
+      const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      const stateName = (id) => data?.states.find((s) => s.id === id)?.name || id;
+
+      async function api(path, opts = {}) {
+        const res = await fetch('/api/admin/' + path, { ...opts, headers: { 'content-type': 'application/json', 'x-admin-key': key, ...(opts.headers || {}) } });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Request failed');
+        return body;
+      }
+
+      async function login() {
+        try {
+          data = await api('overview');
+          sessionStorage.setItem('36adminKey', key);
+          $('login').hidden = true;
+          $('app').hidden = false;
+          renderZones();
+          render();
+        } catch (e) {
+          $('loginMsg').textContent = e.message;
+        }
+      }
+
+      function renderZones() {
+        const by = {};
+        for (const s of data.states) (by[ZONE_OF[s.id]] ||= []).push(s);
+        $('zones').innerHTML = Object.entries(ZONES)
+          .map(([z, label]) => `<div class="zone"><b>${label}</b>${(by[z] || []).map((s) => `<span class="chip" data-id="${s.id}">${esc(s.name)} <small>${s.walls}</small></span>`).join('')}</div>`)
+          .join('');
+        $('zones').querySelectorAll('.chip').forEach((c) =>
+          c.addEventListener('click', () => {
+            $('allStates').checked = false;
+            chosen.has(c.dataset.id) ? chosen.delete(c.dataset.id) : chosen.add(c.dataset.id);
+            c.classList.toggle('on', chosen.has(c.dataset.id));
+          })
+        );
+      }
+
+      function isLive(a) {
+        const now = Date.now();
+        return !a.paused && (!a.start || now >= Date.parse(a.start)) && (!a.end || now <= Date.parse(a.end) + 86400000);
+      }
+
+      function render() {
+        const ads = data.ads;
+        $('kLive').textContent = ads.filter(isLive).length;
+        $('kViews').textContent = num(ads.reduce((s, a) => s + (a.stats?.views || 0), 0));
+        $('kUniq').textContent = num(ads.reduce((s, a) => s + (a.stats?.uniques || 0), 0));
+        $('kGems').textContent = num(ads.reduce((s, a) => s + (a.stats?.gems || 0) + (a.stats?.spiritGems || 0), 0));
+        $('kRev').textContent = naira(ads.reduce((s, a) => s + (a.priceNaira || 0), 0));
+        $('kPlayers').textContent = num(data.lobby.reduce((s, l) => s + l.humans, 0));
+        $('rows').innerHTML = ads
+          .slice()
+          .reverse()
+          .map((a) => {
+            const s = a.stats || {};
+            const targets = a.states.includes('all') ? 'All states' : a.states.length > 3 ? `${a.states.length} states` : a.states.map(stateName).join(', ');
+            return `<tr data-id="${a.id}" class="${selected === a.id ? 'sel' : ''}">
+              <td><img src="/ads/${a.file}" alt=""></td>
+              <td><b>${esc(a.advertiser)}</b><br><span class="note">${esc(a.title || '')}</span></td>
+              <td>${esc(targets)}</td>
+              <td class="num">${num(s.views)}</td>
+              <td class="num">${num(s.uniques)}</td>
+              <td class="num">${num((s.gems || 0) + (s.spiritGems || 0))}</td>
+              <td class="num">${naira(a.priceNaira)}</td>
+              <td><span class="pill ${isLive(a) ? 'live' : 'off'}">${isLive(a) ? 'LIVE' : a.paused ? 'PAUSED' : 'SCHEDULED/ENDED'}</span></td>
+              <td><div class="row"><button class="ghost" data-view="${a.id}">Report</button><button class="ghost" data-pause="${a.id}">${a.paused ? 'Resume' : 'Pause'}</button><button class="danger" data-del="${a.id}">Delete</button></div></td>
+            </tr>`;
+          })
+          .join('');
+        if (selected) renderDetail(ads.find((a) => a.id === selected));
+      }
+
+      function bars(el, entries, colour) {
+        const max = Math.max(1, ...entries.map((e) => e[1]));
+        el.innerHTML = entries.length
+          ? entries.map(([k, v]) => `<div class="bar"><span>${esc(k)}</span><i style="width:${(v / max) * 100}%;${colour ? `background:${colour}` : ''}"></i><span>${num(v)}</span></div>`).join('')
+          : '<div class="note">No views yet.</div>';
+      }
+
+      function renderDetail(a) {
+        if (!a) return ($('detail').hidden = true);
+        $('detail').hidden = false;
+        const s = a.stats || { byState: {}, bySide: {}, byFaction: {}, byHour: new Array(24).fill(0) };
+        $('dTitle').textContent = `${a.advertiser}${a.title ? ' · ' + a.title : ''}`;
+        const cpm = s.views ? (a.priceNaira / s.views) * 1000 : 0;
+        $('dKpis').innerHTML = `
+          <div class="kpi"><small>Views</small><b>${num(s.views)}</b></div>
+          <div class="kpi"><small>Unique players</small><b>${num(s.uniques)}</b></div>
+          <div class="kpi"><small>Gems collected at your walls</small><b>${num(s.gems)}</b></div>
+          <div class="kpi"><small>Spirit revivals at your walls</small><b>${num(s.spiritGems)}</b></div>
+          <div class="kpi"><small>Cost per 1,000 views</small><b>${naira(cpm)}</b></div>`;
+        bars($('dStates'), Object.entries(s.byState).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [stateName(k), v]));
+        const sec = s.bySide.sec || 0;
+        const out = s.bySide.out || 0;
+        const tot = Math.max(1, sec + out);
+        const [a1, a2] = $('dSplit').children;
+        a1.style.width = `${(sec / tot) * 100}%`;
+        a2.style.width = `${(out / tot) * 100}%`;
+        $('dSplitText').textContent = `Security Forces ${num(sec)} (${Math.round((sec / tot) * 100)}%) · Outlaws ${num(out)} (${Math.round((out / tot) * 100)}%)`;
+        bars($('dFactions'), Object.entries(s.byFaction).sort((x, y) => y[1] - x[1]).map(([k, v]) => [FACTION[k] || k, v]), '#4f9dff');
+        const hmax = Math.max(1, ...s.byHour);
+        $('dHours').innerHTML = s.byHour.map((v) => `<i title="${num(v)} views" style="height:${(v / hmax) * 100}%"></i>`).join('');
+        $('dHoursL').innerHTML = s.byHour.map((_, h) => `<span>${h % 3 === 0 ? h : ''}</span>`).join('');
+      }
+
+      $('fImage').addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        if (f.size > 2 * 1024 * 1024) return ($('createMsg').textContent = 'Artwork must be under 2 MB.');
+        const r = new FileReader();
+        r.onload = () => {
+          imageData = r.result;
+          $('preview').innerHTML = `<img src="${imageData}" alt="">`;
+        };
+        r.readAsDataURL(f);
+      });
+      $('allStates').addEventListener('change', () => {
+        if ($('allStates').checked) {
+          chosen.clear();
+          document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+        }
+      });
+
+      $('createBtn').onclick = async () => {
+        const states = $('allStates').checked ? ['all'] : [...chosen];
+        if (!imageData) return ($('createMsg').textContent = 'Upload the artwork first.');
+        if (!states.length) return ($('createMsg').textContent = 'Choose at least one state, or all states.');
+        $('createMsg').textContent = 'Launching…';
+        try {
+          await api('ads', {
+            method: 'POST',
+            body: JSON.stringify({
+              advertiser: $('fAdv').value,
+              title: $('fTitle').value,
+              priceNaira: Number($('fPrice').value) || 0,
+              link: $('fLink').value || null,
+              start: $('fStart').value || null,
+              end: $('fEnd').value || null,
+              states,
+              imageDataUrl: imageData
+            })
+          });
+          $('createMsg').textContent = 'Campaign live. It appears on battlefield walls within seconds.';
+          imageData = null;
+          $('fImage').value = '';
+          $('preview').textContent = 'No artwork yet';
+          data = await api('overview');
+          render();
+        } catch (e) {
+          $('createMsg').textContent = e.message;
+        }
+      };
+
+      $('rows').addEventListener('click', async (e) => {
+        const t = e.target.closest('button');
+        if (!t) return;
+        if (t.dataset.view) {
+          selected = t.dataset.view;
+          render();
+          $('detail').scrollIntoView({ behavior: 'smooth' });
+          return;
+        }
+        if (t.dataset.del && confirm('Delete this campaign? Its report is deleted too.')) {
+          await api('ads/' + t.dataset.del, { method: 'DELETE' });
+          if (selected === t.dataset.del) selected = null;
+        }
+        if (t.dataset.pause) {
+          const ad = data.ads.find((a) => a.id === t.dataset.pause);
+          await api('ads/' + t.dataset.pause, { method: 'PATCH', body: JSON.stringify({ paused: !ad.paused }) });
+        }
+        data = await api('overview');
+        render();
+      });
+
+      $('csvBtn').onclick = async () => {
+        const res = await fetch('/api/admin/report.csv', { headers: { 'x-admin-key': key } });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(await res.blob());
+        link.download = '36-states-ad-report.csv';
+        link.click();
+      };
+      $('loginBtn').onclick = () => {
+        key = $('key').value;
+        login();
+      };
+      $('key').addEventListener('keydown', (e) => e.key === 'Enter' && $('loginBtn').click());
+      $('logoutBtn').onclick = () => {
+        sessionStorage.removeItem('36adminKey');
+        location.reload();
+      };
+      if (key) login();
+      setInterval(async () => {
+        if ($('app').hidden) return;
+        try {
+          data = await api('overview');
+          render();
+        } catch {}
+      }, 10000);
+    </script>
+  </body>
+</html>

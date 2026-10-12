@@ -1,0 +1,1121 @@
+// One live battle in one state. The server decides every hit, death, revive,
+// gem pickup, capture, explosion and payout. Bots fill empty slots.
+import { randomUUID } from 'node:crypto';
+import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, priceFor } from '../shared/config.js';
+import { generateMap, inWater } from '../shared/map.js';
+import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise } from '../shared/physics.js';
+import { RESOURCES } from '../shared/states.js';
+import { mulberry32 } from '../shared/rng.js';
+import { BotBrain, botName, botLoadout } from './bots.js';
+
+export const WEAPON_IDS = Object.keys(WEAPONS);
+const now = () => Date.now();
+const DISCOVERY_RES = ['gold', 'lithium', 'crude', 'gemstones', 'tin', 'gas', 'tantalite', 'bitumen'];
+
+export class Match {
+  constructor(stateId, hooks) {
+    this.stateId = stateId;
+    this.hooks = hooks; // { profileOf(token), saveProfile(), ads }
+    this.map = generateMap(stateId);
+    this.players = new Map();
+    this.projectiles = [];
+    this.smokes = [];
+    this.artillery = [];
+    this.uav = { sec: 0, out: 0 };
+    this.gems = this.map.adWalls.map(() => 0); // available-at time for each wall's gem
+    this.rng = mulberry32((Date.now() & 0xffff) ^ 0x5eed);
+    this.emptySince = now();
+    this.reset();
+  }
+
+  reset() {
+    this.score = { sec: 0, out: 0 };
+    this.startedAt = now();
+    this.ended = false;
+    this.endsAt = 0;
+    this.sites = this.map.sites.map((s) => ({ ...s, progress: 0, owner: null, contested: false }));
+    this.discovery = null;
+    this.nextDiscoveryAt = now() + MATCH.discoveryEveryMs;
+    this.projectiles = [];
+    this.smokes = [];
+    this.artillery = [];
+    this.uav = { sec: 0, out: 0 };
+    for (const p of this.players.values()) {
+      p.money = MONEY.start;
+      p.kills = p.deaths = p.assists = p.points = 0;
+      p.streak = 0;
+      p.streaksAvail = {};
+      this.spawn(p, true);
+    }
+    this.balanceBots();
+  }
+
+  // ---------- players ----------
+  humans() {
+    return [...this.players.values()].filter((p) => p.human);
+  }
+
+  sideCount(side, humansOnly = false) {
+    return [...this.players.values()].filter((p) => p.side === side && (!humansOnly || p.human)).length;
+  }
+
+  addHuman(conn, faction, profile) {
+    if (!FACTIONS[faction]) faction = 'police';
+    if (this.humans().length >= MATCH.maxHumans) return { error: 'This state is full. Pick another state.' };
+    const side = FACTIONS[faction].side;
+    // Auto-balance real players: no side may have 2+ more humans than the other.
+    const other = side === 'sec' ? 'out' : 'sec';
+    if (this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
+      return { error: `${SIDES[side].label} already has too many players here. Join the ${SIDES[other].label}.` };
+    }
+    const p = this.newPlayer({ human: true, conn, profile, faction, name: profile.name });
+    this.players.set(p.id, p);
+    this.spawn(p, true);
+    this.balanceBots();
+    this.emptySince = 0;
+    return { player: p };
+  }
+
+  removePlayer(id) {
+    const p = this.players.get(id);
+    if (!p) return;
+    this.players.delete(id);
+    if (p.human) this.hooks.saveProfile();
+    this.balanceBots();
+    if (!this.humans().length) this.emptySince = now();
+    this.broadcast({ t: 'left', id });
+  }
+
+  newPlayer({ human, conn = null, profile = null, faction, name }) {
+    return {
+      id: randomUUID().slice(0, 6),
+      human,
+      conn,
+      profile,
+      name,
+      faction,
+      side: FACTIONS[faction].side,
+      x: 0,
+      y: 0,
+      z: 0,
+      yaw: 0,
+      pitch: 0,
+      crouch: false,
+      ads: false,
+      sprint: false,
+      vy: 0,
+      onGround: true,
+      health: 100,
+      armor: 0,
+      helmet: false,
+      status: 'alive',
+      money: MONEY.start,
+      weapons: { primary: null, secondary: 'p9', melee: 'knife' },
+      ammo: {},
+      slot: 'secondary',
+      frag: 0,
+      smoke: 0,
+      flash: 0,
+      medkit: 0,
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      points: 0,
+      headshots: 0,
+      streak: 0,
+      streaksAvail: {},
+      lastFire: 0,
+      firedAt: 0,
+      reloadUntil: 0,
+      healAt: 0,
+      history: [],
+      damagers: new Map(),
+      lastState: now(),
+      spawnAt: 0,
+      blindUntil: 0,
+      bot: human ? null : new BotBrain(this),
+      xp: 0
+    };
+  }
+
+  // Keep each side at MATCH.minPerSide fighters by adding or removing bots.
+  balanceBots() {
+    for (const side of ['sec', 'out']) {
+      const humans = this.sideCount(side, true);
+      const want = Math.max(0, MATCH.minPerSide - humans);
+      const bots = [...this.players.values()].filter((p) => !p.human && p.side === side);
+      for (let i = bots.length; i < want; i++) {
+        const factions = Object.keys(FACTIONS).filter((f) => FACTIONS[f].side === side);
+        const faction = factions[Math.floor(this.rng() * factions.length)];
+        const bot = this.newPlayer({ human: false, faction, name: botName(this.rng, side) });
+        this.players.set(bot.id, bot);
+        this.spawn(bot, true);
+      }
+      for (let i = bots.length - 1; i >= want; i--) this.players.delete(bots[i].id);
+    }
+  }
+
+  giveWeapon(p, id) {
+    const w = WEAPONS[id];
+    p.weapons[w.slot] = id;
+    p.ammo[id] = { mag: w.mag ?? 0, reserve: w.reserve ?? 0 };
+  }
+
+  spawn(p, first = false) {
+    const base = this.map.bases[p.side];
+    // Pick the spawn point furthest from enemies.
+    let best = base.spawns[0];
+    let bestD = -1;
+    for (const s of base.spawns) {
+      let d = Infinity;
+      for (const o of this.players.values()) if (o.side !== p.side && o.status === 'alive') d = Math.min(d, Math.hypot(o.x - s.x, o.z - s.z));
+      d += this.rng() * 6;
+      if (d > bestD) {
+        bestD = d;
+        best = s;
+      }
+    }
+    Object.assign(p, { x: best.x, y: 0, z: best.z, yaw: best.yaw, pitch: 0, vy: 0, onGround: true, crouch: false });
+    p.health = PLAYER.maxHealth;
+    p.armor = FACTIONS[p.faction].perks.startVest ? 100 : 0;
+    p.helmet = false;
+    p.status = 'alive';
+    p.weapons = { primary: null, secondary: 'p9', melee: 'knife' };
+    p.ammo = {};
+    this.giveWeapon(p, 'p9');
+    p.ammo.knife = { mag: 0, reserve: 0 };
+    p.slot = 'secondary';
+    p.frag = p.smoke = p.flash = p.medkit = 0;
+    if (!p.human) {
+      const lo = botLoadout(p.faction, this.rng);
+      this.giveWeapon(p, lo);
+      p.slot = 'primary';
+      p.armor = 100;
+      if (this.rng() < 0.4) p.frag = 1;
+    }
+    if (first) p.money = Math.max(p.money, MONEY.start);
+    p.spawnAt = now();
+    p.protectUntil = p.spawnAt + RESPAWN.protectMs;
+    p.reloadUntil = 0;
+    p.healAt = 0;
+    p.history = [];
+    p.damagers.clear();
+    p.downedAt = p.deadAt = p.spiritUntil = p.medevacAt = 0;
+    p.lastState = now();
+    p.reviver = null;
+    p.bot?.onSpawn(p);
+    if (p.human) {
+      this.send(p, { t: 'spawn', x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+      this.syncMe(p);
+    }
+  }
+
+  protectedNow(p) {
+    return now() < (p.protectUntil || 0);
+  }
+
+  // ---------- networking helpers ----------
+  send(p, msg) {
+    if (p.human && p.conn?.readyState === 1) p.conn.send(JSON.stringify(msg));
+  }
+
+  broadcast(msg, filter = () => true) {
+    const s = JSON.stringify(msg);
+    for (const p of this.players.values()) if (p.human && p.conn?.readyState === 1 && filter(p)) p.conn.send(s);
+  }
+
+  toast(p, text, kind = 'info') {
+    this.send(p, { t: 'toast', text, kind });
+  }
+
+  syncMe(p) {
+    if (!p.human) return;
+    this.send(p, {
+      t: 'me',
+      health: Math.max(0, Math.round(p.health)),
+      armor: Math.round(p.armor),
+      helmet: p.helmet,
+      money: p.money,
+      weapons: p.weapons,
+      ammo: p.ammo,
+      slot: p.slot,
+      frag: p.frag,
+      smoke: p.smoke,
+      flash: p.flash,
+      medkit: p.medkit,
+      status: p.status,
+      gems: p.profile.gems,
+      streak: p.streak,
+      streaksAvail: p.streaksAvail,
+      kills: p.kills,
+      deaths: p.deaths,
+      side: p.side,
+      faction: p.faction,
+      downedAt: p.downedAt,
+      spiritUntil: p.spiritUntil,
+      medevacAt: p.medevacAt,
+      buyUntil: p.spawnAt + MONEY.buyWindowMs,
+      reloadUntil: p.reloadUntil,
+      xp: p.profile.xp
+    });
+  }
+
+  // Everything a newly joined player needs to know about the match.
+  info(p) {
+    return {
+      t: 'matchInfo',
+      state: this.stateId,
+      you: p.id,
+      side: p.side,
+      faction: p.faction,
+      score: this.score,
+      startedAt: this.startedAt,
+      timeLimit: MATCH.timeLimitMs,
+      scoreLimit: MATCH.scoreLimit,
+      sites: this.siteView(),
+      gems: this.gems,
+      discovery: this.discovery,
+      roster: this.roster(),
+      serverTime: now()
+    };
+  }
+
+  roster() {
+    return [...this.players.values()].map((o) => ({ id: o.id, name: o.name, side: o.side, faction: o.faction, bot: !o.human, kills: o.kills, deaths: o.deaths, assists: o.assists, points: o.points }));
+  }
+
+  siteView() {
+    const list = this.sites.map((s) => ({ id: s.id, label: s.label, resource: s.resource, x: s.x, z: s.z, r: s.r, progress: +s.progress.toFixed(3), owner: s.owner, contested: s.contested }));
+    if (this.discovery) list.push({ id: 'D', label: this.discovery.label, resource: this.discovery.resource, x: this.discovery.x, z: this.discovery.z, r: this.discovery.r, progress: +this.discovery.progress.toFixed(3), owner: this.discovery.owner, contested: this.discovery.contested, until: this.discovery.until });
+    return list;
+  }
+
+  // ---------- inputs from human players ----------
+  handle(p, m) {
+    switch (m.t) {
+      case 'st':
+        return this.onState(p, m);
+      case 'fire':
+        return this.onFire(p, m);
+      case 'melee':
+        return this.onMelee(p, m);
+      case 'reload':
+        return this.startReload(p);
+      case 'slot':
+        if (['primary', 'secondary', 'melee'].includes(m.slot) && p.weapons[m.slot]) {
+          p.slot = m.slot;
+          p.reloadUntil = 0;
+          this.syncMe(p);
+        }
+        return;
+      case 'buy':
+        return this.onBuy(p, m.item);
+      case 'throw':
+        return this.onThrow(p, m);
+      case 'medkit':
+        return this.onMedkit(p);
+      case 'revive':
+        return this.onRevive(p, m.target);
+      case 'streak':
+        return this.onStreak(p, m);
+      case 'respawn':
+        return this.onRespawn(p, m.mode);
+      case 'views':
+        return this.hooks.ads.recordViews({ token: p.profile.token, side: p.side, faction: p.faction }, this.stateId, m.slots);
+      case 'chat': {
+        const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        if (!text) return;
+        p.chatTimes = (p.chatTimes || []).filter((x) => x > now() - 30000);
+        if (p.chatTimes.length >= 8) return;
+        p.chatTimes.push(now());
+        const team = !!m.team;
+        return this.broadcast({ t: 'chat', id: p.id, name: p.name, side: p.side, text, team }, (o) => !team || o.side === p.side);
+      }
+      default:
+    }
+  }
+
+  onState(p, m) {
+    const t = now();
+    if (![m.x, m.y, m.z, m.yaw, m.pitch].every(Number.isFinite)) return;
+    const dt = Math.max(0.03, (t - p.lastState) / 1000);
+    p.lastState = t;
+    p.yaw = m.yaw;
+    p.pitch = Math.max(-1.5, Math.min(1.5, m.pitch));
+    p.crouch = !!m.c;
+    p.ads = !!m.a;
+    p.sprint = !!m.r;
+    if (p.status === 'downed' || p.status === 'dead' || p.status === 'medevac') return;
+    const spirit = p.status === 'spirit';
+    const maxSpeed = spirit ? RESPAWN.spiritSpeed : PLAYER.run * (FACTIONS[p.faction].perks.speedMult || 1);
+    const moved = Math.hypot(m.x - p.x, m.z - p.z);
+    const lim = this.map.half - 1;
+    if (moved > maxSpeed * NET.speedTolerance * dt + 1.2 || Math.abs(m.x) > lim || Math.abs(m.z) > lim || m.y > 40 || m.y < -2) {
+      this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
+      return;
+    }
+    if (!spirit && insideAnyBox(this.map.index, m.x, m.y, m.z, p.crouch)) {
+      this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
+      return;
+    }
+    p.x = m.x;
+    p.y = m.y;
+    p.z = m.z;
+  }
+
+  canAct(p) {
+    return p.status === 'alive';
+  }
+
+  ammoOf(p, id) {
+    const a = p.ammo[id];
+    // Finish a reload lazily once its time is up.
+    if (a && p.reloadUntil && now() >= p.reloadUntil && p.reloading === id) {
+      const w = WEAPONS[id];
+      const need = w.mag - a.mag;
+      const take = Math.min(need, a.reserve);
+      a.mag += take;
+      a.reserve -= take;
+      p.reloadUntil = 0;
+      p.reloading = null;
+    }
+    return a;
+  }
+
+  startReload(p) {
+    if (!this.canAct(p)) return;
+    const id = p.weapons[p.slot];
+    const w = WEAPONS[id];
+    const a = this.ammoOf(p, id);
+    if (!w || w.melee || !a || a.mag >= w.mag || a.reserve <= 0 || p.reloadUntil) return;
+    p.reloadUntil = now() + w.reload * 1000;
+    p.reloading = id;
+    this.broadcastNear(p, { t: 'reload', id: p.id, w: id }, 40);
+    this.syncMe(p);
+  }
+
+  // Positions of a soldier at an earlier time (lag compensation).
+  positionAt(o, t) {
+    const h = o.history;
+    if (!h.length || t >= h[h.length - 1].t) return o;
+    for (let i = h.length - 1; i > 0; i--) {
+      const a = h[i - 1];
+      const b = h[i];
+      if (t >= a.t && t <= b.t) {
+        const k = (t - a.t) / (b.t - a.t || 1);
+        return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z + (b.z - a.z) * k, crouch: b.crouch, downed: b.downed };
+      }
+    }
+    return h[0];
+  }
+
+  onFire(p, m) {
+    if (!this.canAct(p)) return;
+    const id = p.weapons[p.slot];
+    const w = WEAPONS[id];
+    if (!w || w.melee || m.w !== id) return;
+    const t = now();
+    const a = this.ammoOf(p, id);
+    if (p.reloadUntil && t < p.reloadUntil) return;
+    if (!a || a.mag <= 0) return;
+    if (t - p.lastFire < (60000 / w.rpm) * 0.85) return;
+    if (!Array.isArray(m.o) || !Array.isArray(m.d) || ![...m.o, ...m.d].every(Number.isFinite)) return;
+    // The shot must start near the shooter's eyes.
+    const eyeY = p.y + (p.crouch ? PLAYER.crouchEye : PLAYER.eye);
+    if (Math.hypot(m.o[0] - p.x, m.o[1] - eyeY, m.o[2] - p.z) > 1.6) return;
+    p.lastFire = t;
+    p.firedAt = t;
+    a.mag--;
+    p.protectUntil = 0; // shooting ends spawn protection
+    const d = normalise(m.d);
+    const rewind = Math.max(t - NET.maxRewindMs, Math.min(t, Number(m.ts) || t));
+    if (w.projectile === 'rocket') this.launchRocket(p, m.o, d, id);
+    else this.hitscan(p, m.o, d, id, rewind);
+    if (a.mag === 0 && a.reserve > 0) this.startReload(p);
+    this.syncMe(p);
+  }
+
+  // Bullets: walls, thin-wall penetration, rewound hitboxes, damage falloff.
+  hitscan(p, o, d, id, rewindT = now()) {
+    const w = WEAPONS[id];
+    const pellets = w.pellets || 1;
+    const targets = [...this.players.values()].filter((x) => x !== p && (x.status === 'alive' || x.status === 'downed'));
+    const ends = [];
+    for (let k = 0; k < pellets; k++) {
+      const dir = pellets > 1 ? spreadDir(d, w.spread, this.rng) : d;
+      let ox = o[0];
+      let oy = o[1];
+      let oz = o[2];
+      let travelled = 0;
+      let mult = 1;
+      let penetrations = 0;
+      let end = null;
+      for (;;) {
+        const remaining = w.range - travelled;
+        if (remaining <= 0) break;
+        const wall = raycast(this.map.index, ox, oy, oz, dir[0], dir[1], dir[2], remaining);
+        // Smoke does not stop bullets, only sight.
+        let best = null;
+        for (const tgt of targets) {
+          const pos = tgt.human ? this.positionAt(tgt, rewindT) : tgt;
+          const h = hitSoldier(ox, oy, oz, dir[0], dir[1], dir[2], { x: pos.x, y: pos.y, z: pos.z, crouch: pos.crouch, downed: tgt.status === 'downed' });
+          if (h && h.t < wall.t && (!best || h.t < best.h.t)) best = { tgt, h };
+        }
+        if (best) {
+          const dist = travelled + best.h.t;
+          const [f0, f1] = w.falloff || [w.range, w.range];
+          const fall = dist <= f0 ? 1 : dist >= f1 ? 0.55 : 1 - ((dist - f0) / (f1 - f0)) * 0.45;
+          let dmg = w.dmg * fall * mult;
+          if (best.h.zone === 'head') dmg *= w.head || 1;
+          if (best.h.zone === 'leg') dmg *= w.legMult || 0.75;
+          end = [ox + dir[0] * best.h.t, oy + dir[1] * best.h.t, oz + dir[2] * best.h.t];
+          this.damage(best.tgt, p, dmg, { zone: best.h.zone, weapon: id, wall: penetrations > 0, from: o });
+          // A bullet stops in the body.
+          break;
+        }
+        if (wall.t >= remaining) {
+          end = [ox + dir[0] * remaining, oy + dir[1] * remaining, oz + dir[2] * remaining];
+          break;
+        }
+        end = [ox + dir[0] * wall.t, oy + dir[1] * wall.t, oz + dir[2] * wall.t];
+        // Thin walls (mud, plank, zinc, crates) can be shot through by powerful rounds.
+        const box = wall.box >= 0 ? this.map.boxes[wall.box] : null;
+        const thick = box ? wall.exitT - wall.t : Infinity;
+        if (box && box.pen && thick < 0.55 && w.pen > 0 && penetrations < 1) {
+          penetrations++;
+          mult *= w.pen * (1 - thick);
+          travelled += wall.exitT + 0.01;
+          ox = o[0] + dir[0] * travelled;
+          oy = o[1] + dir[1] * travelled;
+          oz = o[2] + dir[2] * travelled;
+          // Keep the origin anchored to the real start for distance falloff.
+          continue;
+        }
+        break;
+      }
+      ends.push(end ? end.map((v) => +v.toFixed(2)) : null);
+    }
+    this.broadcastNear(p, { t: 'shot', id: p.id, w: id, o: o.map((v) => +v.toFixed(2)), e: ends }, 400);
+  }
+
+  onMelee(p, m) {
+    if (!this.canAct(p)) return;
+    const t = now();
+    if (t - p.lastFire < 500) return;
+    p.lastFire = t;
+    const w = WEAPONS.knife;
+    const fx = -Math.sin(p.yaw);
+    const fz = -Math.cos(p.yaw);
+    let best = null;
+    for (const o of this.players.values()) {
+      if (o === p || o.side === p.side || (o.status !== 'alive' && o.status !== 'downed')) continue;
+      const dx = o.x - p.x;
+      const dz = o.z - p.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > w.range || Math.abs(o.y - p.y) > 1.2) continue;
+      if ((dx * fx + dz * fz) / (dist || 1) < 0.5) continue;
+      if (!best || dist < best.dist) best = { o, dist, dx, dz };
+    }
+    this.broadcastNear(p, { t: 'swing', id: p.id }, 30);
+    if (!best) return;
+    // Backstab: attacker is behind the victim.
+    const vfx = -Math.sin(best.o.yaw);
+    const vfz = -Math.cos(best.o.yaw);
+    const behind = best.dx * vfx + best.dz * vfz > 0;
+    this.damage(best.o, p, behind ? w.backstab : w.dmg, { zone: 'body', weapon: 'knife', melee: true, from: [p.x, p.y + 1.4, p.z] });
+  }
+
+  // ---------- damage, downs, deaths ----------
+  damage(v, attacker, amount, { zone = 'body', weapon, explosive = false, melee = false, from = null, wall = false } = {}) {
+    if (v.status === 'downed') {
+      if (attacker && attacker.side !== v.side) this.kill(v, attacker, weapon, zone === 'head');
+      return;
+    }
+    if (v.status !== 'alive') return;
+    if (attacker && attacker !== v && attacker.side === v.side) return; // no friendly fire
+    if (this.protectedNow(v) && attacker !== v) return;
+    let hp = amount;
+    const w = WEAPONS[weapon] || {};
+    const pen = w.armorPen ?? 0.6;
+    if (explosive) {
+      if (v.armor > 0) {
+        hp = amount * 0.6;
+        v.armor = Math.max(0, v.armor - amount * 0.3);
+      }
+    } else if (!melee && zone !== 'leg' && v.armor > 0 && (zone !== 'head' || v.helmet)) {
+      hp = amount * pen;
+      v.armor = Math.max(0, v.armor - amount * (1 - pen) * 0.5);
+    }
+    v.health -= hp;
+    if (attacker && attacker !== v) {
+      const rec = v.damagers.get(attacker.id) || { dmg: 0, t: 0 };
+      rec.dmg += hp;
+      rec.t = now();
+      v.damagers.set(attacker.id, rec);
+      this.send(attacker, { t: 'hit', head: zone === 'head', kill: v.health <= 0, wall });
+    }
+    const dir = from || (attacker ? [attacker.x, attacker.y + 1.4, attacker.z] : null);
+    this.send(v, { t: 'hurt', dmg: Math.round(hp), from: dir, zone });
+    v.bot?.onHurt(attacker);
+    if (v.health <= 0) {
+      const instant = !v.human || zone === 'head' || explosive || melee;
+      const teammateAlive = [...this.players.values()].some((o) => o !== v && o.human && o.side === v.side && o.status === 'alive');
+      if (!instant && teammateAlive) this.down(v, attacker, weapon);
+      else this.kill(v, attacker, weapon, zone === 'head');
+    } else this.syncMe(v);
+  }
+
+  down(v, attacker, weapon) {
+    v.status = 'downed';
+    v.health = 0;
+    v.downedAt = now();
+    v.downedBy = attacker?.id || null;
+    v.downedWeapon = weapon;
+    this.broadcast({ t: 'down', id: v.id, by: attacker?.id || null });
+    this.syncMe(v);
+  }
+
+  kill(v, killer, weapon, headshot = false) {
+    if (v.status === 'dead' || v.status === 'spirit' || v.status === 'medevac') return;
+    const t = now();
+    v.status = 'dead';
+    v.health = 0;
+    v.deadAt = t;
+    v.deaths++;
+    v.streak = 0;
+    v.reviver = null;
+    // Lose bought kit on death (money stays).
+    v.weapons.primary = null;
+    v.slot = 'secondary';
+    if (killer && killer !== v && killer.side !== v.side) {
+      killer.kills++;
+      killer.streak++;
+      if (headshot) killer.headshots++;
+      const reward = WEAPONS[weapon]?.kill ?? 300;
+      killer.money = Math.min(MONEY.max, killer.money + reward);
+      const pts = MATCH.killPoints + (headshot ? MATCH.headshotBonus : 0);
+      killer.points += pts;
+      this.score[killer.side] += pts;
+      this.addXP(killer, XP.kill + (headshot ? XP.headshot : 0));
+      // Killstreak rewards.
+      const artilleryAt = FACTIONS[killer.faction].perks.artilleryAt || KILLSTREAKS.artillery.kills;
+      if (killer.streak === KILLSTREAKS.uav.kills) this.grantStreak(killer, 'uav');
+      if (killer.streak === artilleryAt) this.grantStreak(killer, 'artillery');
+      this.syncMe(killer);
+      if (killer.human) killer.profile.kills++;
+    }
+    // Assists.
+    for (const [id, rec] of v.damagers) {
+      if (killer && id === killer.id) continue;
+      const o = this.players.get(id);
+      if (!o || o.side === v.side || rec.dmg < 35 || t - rec.t > 10000) continue;
+      o.assists++;
+      o.money = Math.min(MONEY.max, o.money + MONEY.assist);
+      o.points += 3;
+      this.syncMe(o);
+    }
+    if (v.human) v.profile.deaths++;
+    this.broadcast({ t: 'kill', killer: killer?.id || null, victim: v.id, w: weapon, head: headshot, kn: killer?.name, vn: v.name, ks: killer?.side, vs: v.side });
+    if (!v.human) v.bot.respawnAt = t + RESPAWN.botRespawnMs;
+    this.syncMe(v);
+  }
+
+  grantStreak(p, kind) {
+    p.streaksAvail[kind] = true;
+    this.toast(p, `${KILLSTREAKS[kind].name} ready! Press ${kind === 'uav' ? '5' : '6'} to call it.`, 'streak');
+    if (!p.human) p.bot.useStreak(kind);
+  }
+
+  addXP(p, n) {
+    if (!p.human) return;
+    const before = Math.floor(p.profile.xp / XP.levelEvery);
+    p.profile.xp += n;
+    p.xp += n;
+    const after = Math.floor(p.profile.xp / XP.levelEvery);
+    if (after > before) {
+      p.profile.gems += GEMS.levelUpGems;
+      this.toast(p, `Promoted! +${GEMS.levelUpGems} life gems 💎`, 'gem');
+    }
+  }
+
+  // ---------- respawning ----------
+  onRespawn(p, mode) {
+    if (!['dead', 'spirit'].includes(p.status)) return;
+    if (mode === 'gem') {
+      if (p.profile.gems < RESPAWN.gemCost) return this.toast(p, 'No life gems. Try a Spirit Run or wait for the medevac.', 'bad');
+      p.profile.gems -= RESPAWN.gemCost;
+      this.hooks.saveProfile();
+      this.spawn(p);
+      this.toast(p, 'Life gem used. Back to the front!', 'gem');
+    } else if (mode === 'spirit' && p.status === 'dead') {
+      p.status = 'spirit';
+      p.spiritUntil = now() + RESPAWN.spiritMs;
+      p.y = Math.max(p.y, 0);
+      this.send(p, { t: 'spirit', x: p.x, y: p.y, z: p.z, until: p.spiritUntil });
+      this.syncMe(p);
+    } else if (mode === 'medevac') {
+      p.status = 'medevac';
+      p.medevacAt = now() + RESPAWN.medevacMs;
+      this.syncMe(p);
+    }
+  }
+
+  // ---------- buying ----------
+  inBuyZone(p) {
+    const b = this.map.bases[p.side];
+    return Math.hypot(p.x - b.x, p.z - b.z) < MONEY.buyZoneRadius || now() < p.spawnAt + MONEY.buyWindowMs;
+  }
+
+  onBuy(p, item) {
+    if (!this.canAct(p)) return;
+    if (!this.inBuyZone(p)) return this.toast(p, 'You can only buy at your base or just after deploying.', 'bad');
+    const price = priceFor(item, p.faction);
+    const w = WEAPONS[item];
+    const g = GEAR[item];
+    if (!w && !g) return;
+    if (w && (w.melee || item === 'p9')) return;
+    if (p.money < price) return this.toast(p, 'Not enough money.', 'bad');
+    if (w) {
+      if (p.weapons[w.slot] === item) {
+        // Buying the same gun again refills ammo.
+        p.ammo[item] = { mag: w.mag, reserve: w.reserve };
+      } else this.giveWeapon(p, item);
+      p.slot = w.slot;
+      p.reloadUntil = 0;
+    } else if (item === 'vest' || item === 'helmet') {
+      if (p.armor >= 100 && (p.helmet || item === 'vest')) return this.toast(p, 'You already have that.', 'bad');
+      p.armor = 100;
+      if (item === 'helmet') p.helmet = true;
+    } else if (item === 'medkit') {
+      if (p.medkit >= g.max) return this.toast(p, 'You can carry only one.', 'bad');
+      p.medkit++;
+    } else {
+      if (p[item] >= g.max) return this.toast(p, `You can carry only ${g.max}.`, 'bad');
+      p[item]++;
+    }
+    p.money -= price;
+    this.send(p, { t: 'bought', item });
+    this.syncMe(p);
+  }
+
+  onMedkit(p) {
+    if (!this.canAct(p) || p.medkit <= 0 || p.health >= 100 || p.healAt) return;
+    p.medkit--;
+    p.healAt = now() + GEAR.medkit.useTime * 1000;
+    this.syncMe(p);
+  }
+
+  // ---------- grenades, rockets, explosions ----------
+  onThrow(p, m) {
+    if (!this.canAct(p) || !['frag', 'smoke', 'flash'].includes(m.kind) || p[m.kind] <= 0) return;
+    if (!Array.isArray(m.o) || !Array.isArray(m.v) || ![...m.o, ...m.v].every(Number.isFinite)) return;
+    const speed = Math.hypot(...m.v);
+    const v = speed > 22 ? m.v.map((c) => (c / speed) * 22) : m.v;
+    p[m.kind]--;
+    this.throwGrenade(p, m.kind, m.o, v);
+    this.syncMe(p);
+  }
+
+  throwGrenade(p, kind, o, v) {
+    this.projectiles.push({ id: randomUUID().slice(0, 6), kind, x: o[0], y: o[1], z: o[2], vx: v[0], vy: v[1], vz: v[2], owner: p.id, side: p.side, fuse: GEAR[kind].fuse, rest: false });
+    this.broadcastNear(p, { t: 'throw', id: p.id, kind }, 60);
+  }
+
+  launchRocket(p, o, d, id) {
+    const w = WEAPONS[id];
+    this.projectiles.push({ id: randomUUID().slice(0, 6), kind: 'rocket', x: o[0] + d[0] * 0.8, y: o[1] + d[1] * 0.8, z: o[2] + d[2] * 0.8, vx: d[0] * w.rocketSpeed, vy: d[1] * w.rocketSpeed, vz: d[2] * w.rocketSpeed, owner: p.id, side: p.side, fuse: 6, weapon: id });
+    this.broadcastNear(p, { t: 'shot', id: p.id, w: id, o, e: [null] }, 400);
+  }
+
+  stepProjectiles(dt) {
+    const keep = [];
+    for (const pr of this.projectiles) {
+      pr.fuse -= dt;
+      const owner = this.players.get(pr.owner);
+      if (pr.kind === 'rocket') {
+        pr.vy -= 2.5 * dt;
+        const sp = Math.hypot(pr.vx, pr.vy, pr.vz);
+        const d = [pr.vx / sp, pr.vy / sp, pr.vz / sp];
+        const len = sp * dt;
+        const wall = raycast(this.map.index, pr.x, pr.y, pr.z, d[0], d[1], d[2], len);
+        let hitT = wall.t < len ? wall.t : Infinity;
+        for (const o of this.players.values()) {
+          if (o.id === pr.owner || o.status !== 'alive') continue;
+          const h = hitSoldier(pr.x, pr.y, pr.z, d[0], d[1], d[2], o);
+          if (h && h.t < hitT && h.t <= len) hitT = h.t;
+        }
+        if (hitT !== Infinity || pr.fuse <= 0) {
+          const t = hitT === Infinity ? len : hitT;
+          this.explode(pr.x + d[0] * t, pr.y + d[1] * t, pr.z + d[2] * t, WEAPONS.rpg.blast, WEAPONS.rpg.dmg, owner, 'rpg');
+          continue;
+        }
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+        pr.z += pr.vz * dt;
+        keep.push(pr);
+        continue;
+      }
+      // Grenades: gravity, bounces off walls and the ground.
+      if (!pr.rest) {
+        pr.vy -= PLAYER.gravity * dt;
+        const sp = Math.hypot(pr.vx, pr.vy, pr.vz);
+        if (sp > 0.01) {
+          const d = [pr.vx / sp, pr.vy / sp, pr.vz / sp];
+          const len = sp * dt;
+          const wall = raycast(this.map.index, pr.x, pr.y, pr.z, d[0], d[1], d[2], len + 0.05);
+          if (wall.box !== -1 && wall.t <= len + 0.05) {
+            // Bounce: figure out which face was hit from the box or the ground.
+            pr.x += d[0] * Math.max(0, wall.t - 0.06);
+            pr.y += d[1] * Math.max(0, wall.t - 0.06);
+            pr.z += d[2] * Math.max(0, wall.t - 0.06);
+            if (wall.box === -2) {
+              pr.vy = -pr.vy * 0.35;
+              pr.vx *= 0.6;
+              pr.vz *= 0.6;
+              pr.y = Math.max(pr.y, 0.06);
+            } else {
+              const b = this.map.boxes[wall.box];
+              const hx = pr.x + d[0] * 0.07;
+              const hz = pr.z + d[2] * 0.07;
+              const dxm = Math.min(Math.abs(hx - b.x0), Math.abs(hx - b.x1));
+              const dzm = Math.min(Math.abs(hz - b.z0), Math.abs(hz - b.z1));
+              const dym = Math.abs(pr.y - b.y1);
+              if (dym < 0.15 && pr.vy < 0) pr.vy = -pr.vy * 0.35;
+              else if (dxm < dzm) pr.vx = -pr.vx * 0.45;
+              else pr.vz = -pr.vz * 0.45;
+            }
+            if (Math.hypot(pr.vx, pr.vy, pr.vz) < 1.2 && pr.y < 3) pr.rest = true;
+          } else {
+            pr.x += pr.vx * dt;
+            pr.y += pr.vy * dt;
+            pr.z += pr.vz * dt;
+          }
+        }
+      }
+      if (pr.fuse <= 0) {
+        if (pr.kind === 'frag') this.explode(pr.x, Math.max(0.2, pr.y), pr.z, GEAR.frag.blast, GEAR.frag.dmg, owner, 'frag');
+        else if (pr.kind === 'smoke') {
+          this.smokes.push({ x: pr.x, z: pr.z, r: GEAR.smoke.radius, until: now() + GEAR.smoke.duration * 1000 });
+          this.broadcast({ t: 'smoke', x: pr.x, z: pr.z, r: GEAR.smoke.radius, dur: GEAR.smoke.duration });
+        } else this.flashbang(pr);
+        continue;
+      }
+      keep.push(pr);
+    }
+    this.projectiles = keep;
+  }
+
+  explode(x, y, z, radius, dmg, owner, weapon) {
+    this.broadcast({ t: 'boom', x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), r: radius, w: weapon });
+    for (const o of this.players.values()) {
+      if (o.status !== 'alive' && o.status !== 'downed') continue;
+      const cy = o.y + 0.9;
+      const dist = Math.hypot(o.x - x, cy - y, o.z - z);
+      if (dist > radius) continue;
+      if (owner && o !== owner && o.side === owner.side) continue;
+      const blocked = lineBlocked(this.map.index, x, y + 0.25, z, o.x, cy, o.z);
+      let hp = dmg * Math.pow(1 - dist / radius, 1.2) * (blocked ? 0.2 : 1);
+      if (o === owner) hp *= 0.5;
+      if (hp < 1) continue;
+      this.damage(o, owner, hp, { zone: 'body', weapon, explosive: true, from: [x, y, z] });
+    }
+  }
+
+  flashbang(pr) {
+    this.broadcast({ t: 'flashbang', x: pr.x, y: pr.y, z: pr.z });
+    for (const o of this.players.values()) {
+      if (o.status !== 'alive') continue;
+      const ey = o.y + PLAYER.eye;
+      const dist = Math.hypot(o.x - pr.x, ey - pr.y, o.z - pr.z);
+      if (dist > GEAR.flash.radius || lineBlocked(this.map.index, pr.x, pr.y + 0.1, pr.z, o.x, ey, o.z)) continue;
+      const fx = -Math.sin(o.yaw);
+      const fz = -Math.cos(o.yaw);
+      const facing = ((pr.x - o.x) * fx + (pr.z - o.z) * fz) / (dist || 1);
+      const strength = Math.max(0, (1 - dist / GEAR.flash.radius) * (facing > 0 ? 1 : 0.35));
+      if (strength < 0.05) continue;
+      if (o.human) this.send(o, { t: 'flashed', s: +strength.toFixed(2) });
+      else o.blindUntil = now() + strength * 3500;
+    }
+  }
+
+  // ---------- killstreaks ----------
+  onStreak(p, m) {
+    if (!this.canAct(p) || !p.streaksAvail[m.kind]) return;
+    if (m.kind === 'uav') {
+      p.streaksAvail.uav = false;
+      this.uav[p.side] = now() + KILLSTREAKS.uav.duration * 1000;
+      this.broadcast({ t: 'uav', side: p.side, until: this.uav[p.side], by: p.name });
+    } else if (m.kind === 'artillery') {
+      if (![m.x, m.z].every(Number.isFinite)) return;
+      const lim = this.map.half - 4;
+      const x = Math.max(-lim, Math.min(lim, m.x));
+      const z = Math.max(-lim, Math.min(lim, m.z));
+      p.streaksAvail.artillery = false;
+      this.callArtillery(p, x, z);
+    }
+    this.syncMe(p);
+  }
+
+  callArtillery(p, x, z) {
+    const a = KILLSTREAKS.artillery;
+    const t = now();
+    const shells = [];
+    for (let i = 0; i < a.shells; i++) {
+      const ang = this.rng() * Math.PI * 2;
+      const r = Math.sqrt(this.rng()) * a.spread;
+      shells.push({ x: x + Math.cos(ang) * r, z: z + Math.sin(ang) * r, at: t + (a.delay + i * a.interval) * 1000, warned: false });
+    }
+    this.artillery.push({ owner: p.id, side: p.side, shells });
+    this.broadcast({ t: 'artillery', x, z, by: p.name, side: p.side, delay: a.delay });
+  }
+
+  stepArtillery() {
+    const t = now();
+    for (const strike of this.artillery) {
+      const owner = this.players.get(strike.owner);
+      for (const s of strike.shells) {
+        if (!s.warned && t >= s.at - 1300) {
+          s.warned = true;
+          this.broadcast({ t: 'incoming', x: s.x, z: s.z, in: 1.3 });
+        }
+        if (!s.done && t >= s.at) {
+          s.done = true;
+          this.explode(s.x, 0.3, s.z, KILLSTREAKS.artillery.blast, KILLSTREAKS.artillery.dmg, owner || null, 'artillery');
+        }
+      }
+    }
+    this.artillery = this.artillery.filter((a) => a.shells.some((s) => !s.done));
+  }
+
+  // ---------- reviving teammates ----------
+  onRevive(p, targetId) {
+    const v = this.players.get(targetId);
+    if (!this.canAct(p) || !v || v.status !== 'downed' || v.side !== p.side) return;
+    if (Math.hypot(v.x - p.x, v.z - p.z) > 2.4) return;
+    v.reviver = { id: p.id, since: now() };
+    this.broadcastNear(p, { t: 'reviving', id: p.id, target: v.id }, 40);
+  }
+
+  // ---------- sites ----------
+  stepSites(dt) {
+    const all = this.discovery ? [...this.sites, this.discovery] : this.sites;
+    for (const s of all) {
+      let secPower = 0;
+      let outPower = 0;
+      for (const o of this.players.values()) {
+        if (o.status !== 'alive' || o.y > 3) continue;
+        if (Math.hypot(o.x - s.x, o.z - s.z) > s.r) continue;
+        const mult = FACTIONS[o.faction].perks.captureMult || 1;
+        if (o.side === 'sec') secPower += mult;
+        else outPower += mult;
+      }
+      s.contested = secPower > 0 && outPower > 0;
+      if (s.contested || (!secPower && !outPower)) continue;
+      const dir = secPower ? 1 : -1;
+      const power = Math.min(2.5, secPower || outPower);
+      const before = s.progress;
+      s.progress = Math.max(-1, Math.min(1, s.progress + (dir * power * dt) / MATCH.captureTime));
+      if (s.owner && Math.sign(s.progress) !== (s.owner === 'sec' ? 1 : -1) && s.progress !== 0) {
+        s.owner = null;
+        this.broadcast({ t: 'site', id: s.id, owner: null, label: s.label, neutral: true });
+      }
+      const newOwner = s.progress >= 1 ? 'sec' : s.progress <= -1 ? 'out' : null;
+      if (newOwner && newOwner !== s.owner && before !== s.progress) {
+        s.owner = newOwner;
+        const capturers = [...this.players.values()].filter((o) => o.side === newOwner && o.status === 'alive' && Math.hypot(o.x - s.x, o.z - s.z) <= s.r);
+        for (const c of capturers) {
+          c.money = Math.min(MONEY.max, c.money + MONEY.capture);
+          c.points += 15;
+          this.addXP(c, XP.capture);
+          this.syncMe(c);
+        }
+        this.score[newOwner] += 20;
+        this.broadcast({ t: 'site', id: s.id, owner: newOwner, label: s.label, by: capturers.map((c) => c.name) });
+      }
+    }
+  }
+
+  // Once a second: points and income for every site held.
+  payIncome() {
+    const all = this.discovery ? [...this.sites, this.discovery] : this.sites;
+    for (const s of all) {
+      if (!s.owner) continue;
+      const mult = s === this.discovery ? MATCH.discoveryPointsMult : 1;
+      this.score[s.owner] += MATCH.sitePointsPerSec * mult;
+      for (const o of this.players.values()) {
+        if (o.side !== s.owner) continue;
+        const inc = MONEY.incomePerSec * mult * (FACTIONS[o.faction].perks.incomeMult || 1);
+        o.money = Math.min(MONEY.max, o.money + Math.round(inc));
+      }
+    }
+  }
+
+  stepDiscovery() {
+    const t = now();
+    if (this.discovery && t > this.discovery.until) {
+      this.broadcast({ t: 'discoveryEnd', label: this.discovery.label });
+      this.discovery = null;
+    }
+    if (!this.discovery && t > this.nextDiscoveryAt && this.map.discoverySpots.length) {
+      this.nextDiscoveryAt = t + MATCH.discoveryEveryMs;
+      const spot = this.map.discoverySpots[Math.floor(this.rng() * this.map.discoverySpots.length)];
+      const pool = [...new Set([...this.map.state.resources, ...DISCOVERY_RES])];
+      const res = pool[Math.floor(this.rng() * pool.length)];
+      this.discovery = { id: 'D', resource: res, label: `New ${RESOURCES[res].label.toLowerCase()} deposit`, x: spot.x, z: spot.z, r: 8, progress: 0, owner: null, contested: false, until: t + MATCH.discoveryDurationMs };
+      this.broadcast({ t: 'discovery', ...this.discovery });
+    }
+  }
+
+  // ---------- life gems on advert walls ----------
+  stepGems() {
+    const t = now();
+    this.map.adWalls.forEach((a, i) => {
+      if (this.gems[i] > t) return;
+      for (const p of this.players.values()) {
+        if (!p.human) continue;
+        const spirit = p.status === 'spirit';
+        if (p.status !== 'alive' && !spirit) continue;
+        if (Math.hypot(p.x - a.gem.x, p.z - a.gem.z) > GEMS.pickupRadius || p.y > a.gem.y + 1.5) continue;
+        // Collected: nobody can take this wall's gem for 2 minutes.
+        this.gems[i] = t + GEMS.cooldownMs;
+        this.broadcast({ t: 'gem', i, until: this.gems[i], by: p.name, spirit });
+        this.hooks.ads.recordGem(a.id, spirit);
+        if (spirit) {
+          this.spawn(p);
+          this.toast(p, 'The gem pulled your spirit back to life!', 'gem');
+        } else {
+          p.profile.gems++;
+          p.health = Math.min(PLAYER.maxHealth, p.health + GEMS.heal);
+          this.toast(p, `+1 life gem 💎 (${p.profile.gems})`, 'gem');
+          this.syncMe(p);
+        }
+        this.hooks.saveProfile();
+        break;
+      }
+    });
+  }
+
+  // ---------- main tick ----------
+  tick(dt) {
+    const t = now();
+    if (this.ended) {
+      if (t >= this.endsAt) {
+        this.reset();
+        for (const p of this.humans()) this.send(p, this.info(p));
+      }
+      return;
+    }
+    for (const p of this.players.values()) {
+      // Lag-compensation history (last ~1 s).
+      p.history.push({ t, x: p.x, y: p.y, z: p.z, crouch: p.crouch, downed: p.status === 'downed' });
+      if (p.history.length > NET.tickHz) p.history.shift();
+      if (p.reloadUntil && t >= p.reloadUntil) {
+        this.ammoOf(p, p.reloading);
+        this.syncMe(p);
+      }
+      if (p.healAt && t >= p.healAt) {
+        p.healAt = 0;
+        if (p.status === 'alive') p.health = Math.min(PLAYER.maxHealth, p.health + GEAR.medkit.heal);
+        this.syncMe(p);
+      }
+      if (p.status === 'downed') {
+        const r = p.reviver && this.players.get(p.reviver.id);
+        if (r && r.status === 'alive' && Math.hypot(r.x - p.x, r.z - p.z) <= 2.6) {
+          if (t - p.reviver.since >= RESPAWN.reviveTime * 1000) {
+            p.status = 'alive';
+            p.health = RESPAWN.reviveHealth;
+            p.reviver = null;
+            r.money = Math.min(MONEY.max, r.money + MONEY.revive);
+            r.points += 5;
+            this.addXP(r, XP.revive);
+            this.broadcast({ t: 'revived', id: p.id, by: r.name });
+            this.syncMe(p);
+            this.syncMe(r);
+          }
+        } else if (p.reviver) p.reviver = null;
+        if (p.status === 'downed' && t - p.downedAt > RESPAWN.downedMs) this.kill(p, this.players.get(p.downedBy) || null, p.downedWeapon || 'bleed');
+      }
+      if (p.status === 'spirit' && t > p.spiritUntil) {
+        p.status = 'dead';
+        p.deadAt = t;
+        this.toast(p, 'Your spirit faded. Use a gem or wait for the medevac.', 'bad');
+        this.syncMe(p);
+      }
+      if (p.status === 'medevac' && t >= p.medevacAt) {
+        p.money = Math.max(0, p.money - RESPAWN.medevacFee);
+        this.spawn(p);
+        this.toast(p, `Medevac complete. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
+      }
+      // A human who leaves the death screen alone too long gets the medevac.
+      if (p.human && p.status === 'dead' && t - p.deadAt > 60000) this.onRespawn(p, 'medevac');
+      if (!p.human) p.bot.tick(p, dt);
+    }
+    this.stepProjectiles(dt);
+    this.stepArtillery();
+    this.smokes = this.smokes.filter((s) => s.until > t);
+    this.stepSites(dt);
+    this.stepGems();
+    this.stepDiscovery();
+    this.secTimer = (this.secTimer || 0) + dt;
+    if (this.secTimer >= 1) {
+      this.secTimer -= 1;
+      this.payIncome();
+      for (const p of this.humans()) this.syncMe(p);
+      // The roster rides along so names, factions and the scoreboard stay current.
+      this.broadcast({ t: 'score', score: this.score, sites: this.siteView(), roster: this.roster(), left: Math.max(0, MATCH.timeLimitMs - (t - this.startedAt)) });
+    }
+    if (this.score.sec >= MATCH.scoreLimit || this.score.out >= MATCH.scoreLimit || t - this.startedAt >= MATCH.timeLimitMs) this.endMatch();
+    this.sendSnapshots();
+  }
+
+  endMatch() {
+    const winner = this.score.sec === this.score.out ? null : this.score.sec > this.score.out ? 'sec' : 'out';
+    this.ended = true;
+    this.endsAt = now() + MATCH.endScreenMs;
+    const roster = this.roster().sort((a, b) => b.points - a.points);
+    const mvp = roster.find((r) => !r.bot) || roster[0];
+    for (const p of this.humans()) {
+      p.profile.matches++;
+      if (p.side === winner) {
+        p.profile.wins++;
+        this.addXP(p, XP.win);
+      }
+    }
+    this.hooks.saveProfile();
+    this.broadcast({ t: 'matchEnd', winner, score: this.score, roster, mvp: mvp?.name, next: MATCH.endScreenMs });
+  }
+
+  broadcastNear(p, msg, radius) {
+    this.broadcast(msg, (o) => Math.hypot(o.x - p.x, o.z - p.z) <= radius);
+  }
+
+  // 20 Hz state of every fighter, projectile and smoke.
+  sendSnapshots() {
+    const t = now();
+    const projectiles = this.projectiles.map((p) => [p.kind, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)]);
+    const smokes = this.smokes.map((s) => [+s.x.toFixed(1), +s.z.toFixed(1), s.r]);
+    for (const me of this.humans()) {
+      const uav = this.uav[me.side] > t;
+      const list = [];
+      for (const o of this.players.values()) {
+        // Spirits are invisible to the enemy.
+        if (o !== me && o.status === 'spirit' && o.side !== me.side) continue;
+        const flags =
+          (o.crouch ? 1 : 0) |
+          (o.status === 'downed' ? 2 : 0) |
+          (o.status === 'spirit' ? 4 : 0) |
+          (t - o.firedAt < 1500 ? 8 : 0) |
+          (o.ads ? 16 : 0) |
+          (this.protectedNow(o) ? 32 : 0) |
+          (o.reloadUntil > t ? 64 : 0) |
+          (o.sprint ? 128 : 0) |
+          (o.status === 'dead' || o.status === 'medevac' ? 256 : 0) |
+          (uav && o.side !== me.side ? 512 : 0);
+        list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
+      }
+      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes });
+    }
+  }
+}
+
+export { inWater };

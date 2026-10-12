@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#07090c" />
+    <meta name="description" content="36 States: a tactical online shooter across all 36 states of Nigeria and the FCT." />
+    <title>36 States</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- Cinematic boot -->
+    <section id="boot">
+      <canvas id="boot-canvas"></canvas>
+      <div class="boot-title">
+        <div class="kicker">THE BATTLE FOR NIGERIA</div>
+        <h1>36 STATES</h1>
+        <div class="boot-bar"><i id="boot-fill"></i></div>
+        <div id="boot-tip" class="boot-tip">Loading the war front…</div>
+      </div>
+      <button id="boot-enter" class="btn primary big" hidden>ENTER THE WAR FRONT</button>
+    </section>
+
+    <!-- Sign in -->
+    <section id="auth" class="panel-screen" hidden>
+      <div class="card auth-card">
+        <h2>Report for duty</h2>
+        <div class="tabs" id="auth-tabs">
+          <button data-tab="guest" class="on">Quick play</button>
+          <button data-tab="login">Log in</button>
+          <button data-tab="register">Create account</button>
+        </div>
+        <form id="auth-form" autocomplete="on">
+          <label data-for="guest">Call sign <input id="guest-name" maxlength="18" placeholder="e.g. Tunde" autocomplete="nickname" /></label>
+          <label data-for="account" hidden>Username <input id="acc-user" maxlength="16" autocomplete="username" /></label>
+          <label data-for="account" hidden>Password <input id="acc-pass" type="password" maxlength="64" autocomplete="current-password" /></label>
+          <p class="hint" data-for="guest">Guests keep their rank and life gems on this device. Create an account to keep them everywhere.</p>
+          <div id="auth-error" class="error" hidden></div>
+          <button id="auth-go" class="btn primary big" type="submit">Continue</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- War map lobby -->
+    <section id="lobby" hidden>
+      <header class="lobby-top">
+        <div class="brand">36 STATES</div>
+        <div class="profile" id="profile">
+          <span id="p-name">—</span>
+          <span id="p-rank" class="rank">Recruit</span>
+          <span class="gems" title="Life gems">💎 <b id="p-gems">0</b></span>
+          <span class="kd">K <b id="p-k">0</b> · D <b id="p-d">0</b> · W <b id="p-w">0</b></span>
+        </div>
+        <div class="lobby-actions">
+          <button class="btn ghost" id="btn-settings-lobby">Settings</button>
+          <button class="btn ghost" id="btn-how">How to play</button>
+        </div>
+      </header>
+      <div class="lobby-body">
+        <div class="map-wrap">
+          <svg id="warmap" viewBox="0 0 1000 860" role="img" aria-label="Map of Nigeria's 36 states and the FCT"></svg>
+          <div class="map-legend">
+            <span><i class="dot live"></i> Live battle</span><span><i class="dot quiet"></i> Bots holding</span>
+            <span class="muted">Pick a state to deploy</span>
+          </div>
+        </div>
+        <aside class="state-panel" id="state-panel">
+          <div class="empty" id="state-empty">
+            <h3>Choose your battlefield</h3>
+            <p>Every state is its own war front with its real resources and landmark. Real players fight for oil, gold, tin, cocoa and more — bots hold the line until people arrive.</p>
+          </div>
+          <div id="state-info" hidden>
+            <div class="zone" id="si-zone"></div>
+            <h2 id="si-name"></h2>
+            <div class="muted" id="si-cap"></div>
+            <div class="biome" id="si-biome"></div>
+            <div class="res" id="si-res"></div>
+            <div class="landmark" id="si-landmark"></div>
+            <div class="live" id="si-live"></div>
+            <h4>Choose what you are</h4>
+            <div class="sides" id="si-factions"></div>
+            <button class="btn primary big" id="btn-deploy" disabled>DEPLOY</button>
+            <div id="join-error" class="error" hidden></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- In battle -->
+    <section id="game" hidden>
+      <canvas id="view"></canvas>
+      <div id="hud">
+        <div id="scope" hidden></div>
+        <div id="flash" class="flash"></div>
+        <div id="vignette"></div>
+        <div id="tint"></div>
+        <div id="damage-arcs"></div>
+        <div id="labels"></div>
+        <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
+        <div id="hitmarker"></div>
+
+        <div class="top">
+          <div class="score">
+            <div class="team sec"><span class="lbl">SECURITY</span><b id="sc-sec">0</b></div>
+            <div class="mid"><div id="timer">15:00</div><div class="sites" id="sites"></div></div>
+            <div class="team out"><b id="sc-out">0</b><span class="lbl">OUTLAWS</span></div>
+          </div>
+          <div id="banner" class="banner" hidden></div>
+        </div>
+
+        <canvas id="radar" width="200" height="200"></canvas>
+        <div id="money" class="money">₦0</div>
+        <div id="state-tag" class="state-tag"></div>
+        <div id="killfeed"></div>
+        <div id="toasts"></div>
+        <div id="prompt" class="prompt" hidden></div>
+        <div id="progress" class="progress" hidden><i></i><span></span></div>
+
+        <div class="bottom-left">
+          <div class="vitals">
+            <div class="hp"><span>✚</span><b id="hp">100</b></div>
+            <div class="ap"><span>⛨</span><b id="ap">0</b></div>
+            <div class="gem-count" title="Life gems">💎 <b id="gems">0</b></div>
+          </div>
+          <div class="bars"><i id="hp-bar"></i><i id="stam-bar"></i></div>
+        </div>
+        <div class="bottom-right">
+          <div class="streaks" id="streaks"></div>
+          <div class="nades" id="nades"></div>
+          <div class="ammo"><b id="mag">0</b><span>/</span><i id="reserve">0</i></div>
+          <div class="weapon" id="weapon-name">P9 Pistol</div>
+        </div>
+
+        <div id="chat" class="chat"><div id="chat-log"></div><input id="chat-input" maxlength="140" placeholder="Say something (Enter)…" hidden /></div>
+        <div id="net" class="net"></div>
+
+        <!-- Down / death / spirit / medevac -->
+        <div id="downed" class="overlay-state" hidden>
+          <h2>YOU ARE DOWN</h2>
+          <p>A teammate can revive you. Bleeding out in <b id="downed-t">10</b>s</p>
+        </div>
+        <div id="death" class="death" hidden>
+          <div class="killed" id="death-by">Killed</div>
+          <h2>RETURN TO THE WAR FRONT</h2>
+          <div class="options">
+            <button class="opt" id="opt-gem"><div class="ico">💎</div><b>Life gem</b><span>Redeploy now. Uses 1 gem — you have <em id="opt-gems">0</em>.</span><kbd>1</kbd></button>
+            <button class="opt" id="opt-spirit"><div class="ico">👻</div><b>Spirit run</b><span>40 seconds as an invisible spirit. Touch a glowing gem on any advert wall to come back free.</span><kbd>2</kbd></button>
+            <button class="opt" id="opt-medevac"><div class="ico">🚁</div><b>Medevac</b><span>Wait 25 s for the helicopter. Fee ₦1,000.</span><kbd>3</kbd></button>
+          </div>
+          <div class="muted" id="death-auto">Medevac comes automatically in 60 s.</div>
+        </div>
+        <div id="spirit" class="overlay-state spirit" hidden>
+          <h2>SPIRIT RUN</h2>
+          <p>Reach a glowing 💎 before you fade · <b id="spirit-t">40</b>s</p>
+          <div id="spirit-arrow">➤</div>
+        </div>
+        <div id="medevac" class="overlay-state" hidden>
+          <h2>MEDEVAC INBOUND</h2>
+          <p>Redeploying in <b id="medevac-t">25</b>s</p>
+        </div>
+
+        <!-- Menus -->
+        <div id="buy" class="menu" hidden>
+          <div class="menu-head"><h2>Armoury</h2><span id="buy-money">₦0</span><span class="muted" id="buy-where"></span><button class="x" data-close="buy">✕</button></div>
+          <div class="buy-grid" id="buy-grid"></div>
+        </div>
+        <div id="scoreboard" class="menu scoreboard" hidden>
+          <div class="sb-cols"><div><h3 class="sec">Security Forces <b id="sb-sec">0</b></h3><table id="sb-sec-t"></table></div><div><h3 class="out">Outlaws <b id="sb-out">0</b></h3><table id="sb-out-t"></table></div></div>
+        </div>
+        <div id="pause" class="menu" hidden>
+          <div class="menu-head"><h2>Paused</h2><button class="x" data-close="pause">✕</button></div>
+          <div class="pause-body">
+            <button class="btn primary" id="btn-resume">Resume</button>
+            <label>Mouse sensitivity <input type="range" id="set-sens" min="0.2" max="3" step="0.05" /></label>
+            <label>Field of view <input type="range" id="set-fov" min="65" max="100" step="1" /></label>
+            <label>Volume <input type="range" id="set-vol" min="0" max="1" step="0.05" /></label>
+            <label>Graphics <select id="set-quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            <label class="row"><input type="checkbox" id="set-invert" /> Invert mouse Y</label>
+            <div class="keys">
+              <div><kbd>WASD</kbd> move · <kbd>Shift</kbd> sprint · <kbd>Ctrl</kbd> crouch · <kbd>Z</kbd> quiet walk · <kbd>Space</kbd> jump</div>
+              <div><kbd>Mouse</kbd> fire / aim · <kbd>R</kbd> reload · <kbd>1 2 3</kbd> weapons · <kbd>4</kbd> pick grenade · <kbd>G</kbd> throw</div>
+              <div><kbd>B</kbd> buy · <kbd>E</kbd> revive · <kbd>X</kbd> first aid · <kbd>5</kbd> drone · <kbd>6</kbd> artillery · <kbd>Tab</kbd> scores · <kbd>Y</kbd>/<kbd>U</kbd> chat</div>
+            </div>
+            <button class="btn danger" id="btn-leave">Leave battle</button>
+          </div>
+        </div>
+        <div id="matchend" class="menu" hidden>
+          <h1 id="me-title">VICTORY</h1>
+          <div id="me-score" class="me-score"></div>
+          <div id="me-mvp" class="muted"></div>
+          <div id="me-next" class="muted"></div>
+        </div>
+        <div id="click-to-play" class="click-to-play" hidden>Click to fight</div>
+
+        <!-- Touch controls -->
+        <div id="touch" hidden>
+          <div id="t-look"></div>
+          <div id="t-stick"><i id="t-knob"></i></div>
+          <button class="tb t-fire" data-hold="fire">FIRE</button>
+          <button class="tb t-ads" data-hold="ads">AIM</button>
+          <button class="tb t-jump" data-key="Space">⤒</button>
+          <button class="tb t-crouch" data-key="ControlLeft">⤓</button>
+          <button class="tb t-reload" data-key="KeyR">R</button>
+          <button class="tb t-swap" data-key="WheelDown">⇄</button>
+          <button class="tb t-nade" data-key="KeyG">💣</button>
+          <button class="tb t-use" data-key="KeyE">E</button>
+          <button class="tb t-buy" data-key="KeyB">₦</button>
+          <button class="tb t-menu" data-key="Escape">☰</button>
+          <button class="tb t-score" data-key="Tab">≡</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="modal" class="modal" hidden><div class="card" id="modal-card"></div></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
