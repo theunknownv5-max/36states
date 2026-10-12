@@ -23,7 +23,10 @@ export class Net {
 
   url() {
     const env = import.meta.env || {};
-    if (env.VITE_SERVER_URL) return env.VITE_SERVER_URL;
+    if (env.VITE_SERVER_URL) {
+      const base = env.VITE_SERVER_URL.replace(/\/$/, '');
+      return base.endsWith('/ws') ? base : `${base}/ws`;
+    }
     return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
   }
 
