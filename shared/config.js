@@ -1,5 +1,16 @@
 // Every number that shapes the game lives here: factions, weapons, gear, killstreaks,
-// life gems, respawning, scoring, money and networking. Server and client both read it.
+// life gems, respawning, game modes, stages, scoring, money and networking.
+// Server and client both read it. Player-facing text is in Nigerian Pidgin.
+
+export const GAME = {
+  name: 'Proof of Duty',
+  short: 'POD',
+  tagline: 'Shoot • Survive • Win',
+  version: 'V0.1',
+  developer: 'Tcee',
+  about:
+    'Proof of Duty na tactical shooter wey dey happen for all 36 states of Nigeria plus Abuja. Choose your side, hold the ground, collect life gems, and show say you get the heart for duty. Na one Naija developer, Tcee, build am from scratch.'
+};
 
 export const SIDES = {
   sec: { label: 'Security Forces', short: 'SEC', colour: '#4f9dff' },
@@ -11,7 +22,7 @@ export const FACTIONS = {
   police: {
     side: 'sec',
     label: 'Police',
-    blurb: 'Starts every life with a vest. MP5 is cheaper.',
+    blurb: 'E dey start every life with vest. MP5 cheap for am.',
     uniform: { top: '#1d2433', bottom: '#1d2433', cap: '#0f1420', vest: '#2a2f3a' },
     discount: 'mp5',
     perks: { startVest: true }
@@ -19,7 +30,7 @@ export const FACTIONS = {
   army: {
     side: 'sec',
     label: 'Army',
-    blurb: 'Artillery after 4 kills instead of 5. G3 is cheaper.',
+    blurb: 'Artillery after 4 kills, no be 5. G3 cheap for am.',
     uniform: { top: '#4b5a32', bottom: '#4b5a32', cap: '#3c4a28', vest: '#5a5a3a', camo: true },
     discount: 'g3',
     perks: { artilleryAt: 4 }
@@ -27,7 +38,7 @@ export const FACTIONS = {
   civildefence: {
     side: 'sec',
     label: 'Civil Defence',
-    blurb: 'Guards pipelines and mines: captures sites 40% faster. PKM is cheaper.',
+    blurb: 'Dem dey guard pipeline and mine: dem dey hold ground 40% faster. PKM cheap.',
     uniform: { top: '#6b6a3c', bottom: '#2f3320', cap: '#2f3320', vest: '#4a4a30' },
     discount: 'pkm',
     perks: { captureMult: 1.4 }
@@ -35,7 +46,7 @@ export const FACTIONS = {
   vigilante: {
     side: 'sec',
     label: 'Vigilante Hunters',
-    blurb: 'Knows the bush: quiet footsteps. Dane gun is free.',
+    blurb: 'Dem sabi bush: dem leg no dey make noise. Dane gun na free.',
     uniform: { top: '#7a5230', bottom: '#4e3824', cap: '#a33a2a', vest: null },
     discount: 'danegun',
     perks: { quietSteps: true }
@@ -43,7 +54,7 @@ export const FACTIONS = {
   bandit: {
     side: 'out',
     label: 'Bandits',
-    blurb: 'Fast on foot: +10% speed. AK-47 is cheaper.',
+    blurb: 'Dem leg sharp: +10% speed. AK-47 cheap for dem.',
     uniform: { top: '#5d4a36', bottom: '#3a3128', cap: null, vest: null, wrap: '#2b2b2b' },
     discount: 'ak47',
     perks: { speedMult: 1.1 }
@@ -51,7 +62,7 @@ export const FACTIONS = {
   militant: {
     side: 'out',
     label: 'Creek Militants',
-    blurb: 'Explosives 30% cheaper. Fast in water.',
+    blurb: 'Explosive 30% cheaper. Dem dey move fast for water.',
     uniform: { top: '#161616', bottom: '#202020', cap: null, vest: '#2b2b2b', wrap: '#9b1c1c' },
     discount: 'rpg',
     perks: { explosiveDiscount: 0.3, swimMult: 1.5 }
@@ -59,7 +70,7 @@ export const FACTIONS = {
   smuggler: {
     side: 'out',
     label: 'Smugglers',
-    blurb: '+30% money from resource sites. Hawk .50 is cheaper.',
+    blurb: '+30% more money from resource site. Hawk .50 cheap.',
     uniform: { top: '#2f4858', bottom: '#33302a', cap: '#1d1d1d', vest: null },
     discount: 'hawk',
     perks: { incomeMult: 1.3 }
@@ -148,6 +159,81 @@ export const MATCH = {
   discoveryPointsMult: 2,
   idleCloseMs: 60000
 };
+
+// Game modes. Matches are keyed by mode + state.
+export const MODES = {
+  conquest: {
+    label: 'Hold Ground',
+    blurb: 'Capture and hold A, B and C. Every second wey una hold am dey bring point and money.',
+    sites: true,
+    respawn: true,
+    scoreLimit: 750,
+    timeLimitMs: 15 * 60 * 1000,
+    icon: '⛳'
+  },
+  tdm: {
+    label: 'Gbas Gbos',
+    blurb: 'Team deathmatch. No site, na only kill. First team wey reach 60 kills win.',
+    sites: false,
+    respawn: true,
+    scoreLimit: 60,
+    timeLimitMs: 10 * 60 * 1000,
+    icon: '💥'
+  },
+  bomb: {
+    label: 'Plant & Defuse',
+    blurb: 'Rounds, one life each round. Outlaws go plant bomb for A or B; Security go stop dem or defuse am. First to 5 rounds.',
+    sites: true,
+    bombSites: ['A', 'B'],
+    respawn: false,
+    scoreLimit: 5,
+    timeLimitMs: 40 * 60 * 1000,
+    icon: '💣'
+  },
+  stage: {
+    label: 'Campaign Stages',
+    blurb: 'Solo missions against waves of enemies across Naija. Clear one stage to open the next.',
+    sites: false,
+    respawn: true,
+    solo: true,
+    scoreLimit: 0,
+    timeLimitMs: 30 * 60 * 1000,
+    icon: '🎖'
+  }
+};
+
+export const BOMB = {
+  freezeMs: 8000, // buy time at the start of each round (nobody can shoot)
+  roundMs: 115000,
+  fuseMs: 40000,
+  plantSecs: 3.5,
+  defuseSecs: 7,
+  actionRange: 2.2, // how close you must be to defuse / how far you may drift while acting
+  blast: 22,
+  dmg: 400,
+  postMs: 6000, // pause between rounds
+  winMoney: 3000,
+  lossMoney: 1900,
+  plantMoney: 400
+};
+
+// Campaign: each stage is a state, an enemy faction and waves to survive.
+// diff 0..1 sets bot aim and reactions; lives = deaths allowed before the stage is lost.
+export const STAGES = [
+  { state: 'lagos', enemy: 'smuggler', ally: 'police', waves: 3, diff: 0.15, lives: 4, title: 'Wahala for Marina', story: 'Smugglers don take over the port. Clear dem commot before dem load the containers.' },
+  { state: 'ogun', enemy: 'bandit', ally: 'police', waves: 3, diff: 0.22, lives: 4, title: 'Olumo Rock Lookout', story: 'Bandits dey use Olumo Rock as hideout. Climb, hold, push dem back.' },
+  { state: 'oyo', enemy: 'bandit', ally: 'vigilante', waves: 4, diff: 0.28, lives: 4, title: 'Cashew Farm Raid', story: 'Farmers dey cry. Bandits wan carry the harvest. Hunters, follow us.' },
+  { state: 'delta', enemy: 'militant', ally: 'army', waves: 4, diff: 0.34, lives: 3, title: 'Creek Patrol', story: 'Militants dey bunker crude for the creeks. Water go slow you; dem no slow.' },
+  { state: 'rivers', enemy: 'militant', ally: 'army', waves: 4, diff: 0.4, lives: 3, title: 'Bonny Gas Flare', story: 'Dem wan blow the flow station. Hold am, and mind the fuel drums.' },
+  { state: 'plateau', enemy: 'bandit', ally: 'civildefence', waves: 5, diff: 0.46, lives: 3, title: 'Tin Mine Standoff', story: 'For Jos the cold sharp, the fight sharper. Guard the tin mine.' },
+  { state: 'kaduna', enemy: 'bandit', ally: 'army', waves: 5, diff: 0.52, lives: 3, title: 'Gold Pit Ambush', story: 'Illegal miners and bandits don join hand. Clear the gold pit.' },
+  { state: 'zamfara', enemy: 'bandit', ally: 'army', waves: 5, diff: 0.58, lives: 3, title: 'Dust and Gold', story: 'Na their home ground this. Every bush fit hide gun.' },
+  { state: 'kano', enemy: 'smuggler', ally: 'police', waves: 6, diff: 0.64, lives: 3, title: 'Gate of Kano', story: 'Smugglers dey move goods through the old city gate. Close am for good.' },
+  { state: 'borno', enemy: 'bandit', ally: 'army', waves: 6, diff: 0.72, lives: 2, title: 'Sahel Storm', story: 'Harmattan full everywhere. You no go see far. Trust your ears.' },
+  { state: 'benue', enemy: 'bandit', ally: 'vigilante', waves: 6, diff: 0.8, lives: 2, title: 'Food Basket', story: 'Dem wan scatter the nation food basket. No gree for dem.' },
+  { state: 'fct', enemy: 'militant', ally: 'army', waves: 7, diff: 0.9, lives: 2, title: 'Aso Rock Final Stand', story: 'Last stage. Everybody don gather for Abuja. Show say you get Proof of Duty.' }
+];
+export const WAVE = { base: 3, perWave: 1.5, perStage: 0.25, gapMs: 6000, allies: 2 };
 
 export const MONEY = {
   start: 1000,

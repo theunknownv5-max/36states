@@ -12,6 +12,7 @@ import { generateMap } from '../../shared/map.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
 import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
+import { Ambience } from './world/ambience.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
 import { Soldier } from './characters/soldiers.js';
 import { ViewModel } from './fps/viewmodel.js';
@@ -20,6 +21,7 @@ import { Hud } from './ui/hud.js';
 import { audio } from './core/audio.js';
 import { music } from './core/music.js';
 import { isTouch } from './core/input.js';
+import { ModeClient } from './modes-client.js';
 
 const WEAPON_IDS = Object.keys(WEAPONS); // same order as the server
 const $ = (id) => document.getElementById(id);
@@ -32,7 +34,10 @@ const lerpAngle = (a, b, t) => {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export class Game {
-  constructor({ renderer, net, input, quality, settings, onLeave }) {
+  constructor({ renderer, net, input, quality, settings, onLeave, onNextStage }) {
+    this.onNextStage = onNextStage;
+    this.modes = new ModeClient(this);
+    this.touch = isTouch();
     this.renderer = renderer;
     this.net = net;
     this.input = input;
@@ -58,6 +63,7 @@ export class Game {
     this.side = info.side;
     this.faction = info.faction;
     this.stateId = info.state;
+    this.modeId = info.mode || 'conquest';
     this.map = generateMap(info.state);
     const scene = new THREE.Scene();
     this.scene = scene;
@@ -65,6 +71,7 @@ export class Game {
     this.camera.rotation.order = 'YXZ';
     scene.add(this.camera);
     this.arena = new Arena(this.renderer, scene, this.map, this.quality);
+    this.ambience = new Ambience(scene, this.map, this.arena);
     this.walls = new AdWalls(scene, this.map);
     this.walls.setGems(info.gems);
     this.walls.loadAds(info.state);
@@ -138,6 +145,7 @@ export class Game {
     audio.setBiome(this.map.biome);
     audio.ambience(this.map.biome, this.arena.raining);
     audio.placeLoops(this.arena.loops);
+    this.modes.start(info);
     this.subscribe();
     this.input.enabled = true;
     this.running = true;
@@ -149,11 +157,13 @@ export class Game {
     this.raf = requestAnimationFrame(() => this.frame());
     // Hint for new players.
     this.hud.banner(`${this.map.state.name.toUpperCase()} · ${SIDES[this.side].label.toUpperCase()}`, 3500);
-    setTimeout(() => this.running && this.hud.toast(`${isTouch() ? 'Tap ₦' : 'Press B'} to buy weapons · grab 💎 from advert walls · capture A, B and C`, 'info', 6000), 1500);
+    setTimeout(() => this.running && this.hud.toast(this.introTip(), 'info', 6500), 1500);
   }
 
   stop(silent = false) {
     if (!this.scene) return;
+    this.modes.stop();
+    this.ambience?.dispose();
     this.running = false;
     cancelAnimationFrame(this.raf);
     for (const u of this.unsub) u();
@@ -168,6 +178,22 @@ export class Game {
     this.scene = null;
     $('tint').className = '';
     if (!silent) this.onLeave?.();
+  }
+
+  introTip() {
+    return this.modes.introTip();
+  }
+
+  leave() {
+    this.net.send({ t: 'leave' });
+    this.stop();
+  }
+
+  // Campaign: start (or retry) a stage from the end screen.
+  nextStage(i) {
+    this.restart = true;
+    this.hud.hideMatchEnd();
+    this.onNextStage?.(i);
   }
 
   setupComposer() {
@@ -211,6 +237,7 @@ export class Game {
   // ---------- network ----------
   subscribe() {
     const on = (t, fn) => this.unsub.push(this.net.on(t, fn));
+    this.modes.subscribe(on);
     on('s', (m) => this.onSnapshot(m));
     on('me', (m) => this.onMe(m));
     on('spawn', (m) => this.onSpawn(m));
@@ -228,11 +255,11 @@ export class Game {
     on('down', (m) => {
       if (m.id === this.myId) return;
       const r = this.roster.get(m.id);
-      if (r?.side === this.side) this.hud.toast(`${r.name} is down — get to them and hold E`, 'bad');
+      if (r?.side === this.side) this.hud.toast(`${r.name} don fall — run go there, hold E make you revive am`, 'bad');
     });
     on('revived', (m) => {
-      if (m.id === this.myId) this.hud.toast(`${m.by} revived you!`, 'good');
-      else if (this.roster.get(m.id)?.side === this.side) this.hud.toast(`${m.by} revived ${this.roster.get(m.id).name}`, 'good');
+      if (m.id === this.myId) this.hud.toast(`${m.by} don revive you! Thank am later.`, 'good');
+      else if (this.roster.get(m.id)?.side === this.side) this.hud.toast(`${m.by} don revive ${this.roster.get(m.id).name}`, 'good');
     });
     on('toast', (m) => {
       this.hud.toast(m.text, m.kind);
@@ -258,18 +285,18 @@ export class Game {
     on('uav', (m) => {
       if (m.side === this.side) {
         this.uavUntil = m.until;
-        this.hud.toast(`${m.by}'s recon drone is up: enemies on your radar`, 'streak');
+        this.hud.toast(`${m.by} don fly drone: enemy don show for your radar`, 'streak');
         audio.drone(true);
         setTimeout(() => audio.drone(false), m.until - this.net.serverNow());
-      } else this.hud.toast('Enemy drone overhead! Your position is exposed', 'bad');
+      } else this.hud.toast('Enemy drone dey sky! Dem don see where you dey', 'bad');
     });
     on('artillery', (m) => {
       const a = KILLSTREAKS.artillery;
       this.fx.artillery(m.x, m.z, a.spread, m.delay + a.shells * a.interval + 0.5);
       if (m.side !== this.side) {
-        this.hud.banner('⚠ INCOMING ARTILLERY — MOVE!', 3500);
+        this.hud.banner('⚠ ARTILLERY DEY COME — RUN!', 3500);
         audio.alert();
-      } else this.hud.toast(`${m.by} called an artillery barrage`, 'streak');
+      } else this.hud.toast(`${m.by} don call artillery`, 'streak');
     });
     on('incoming', (m) => {
       this.fx.incoming(m.x, m.z);
@@ -283,10 +310,10 @@ export class Game {
       audio.fire({ x: m.x, y: 0.8, z: m.z }, DRUMS.fireSecs);
     });
     on('site', (m) => {
-      if (m.neutral) this.hud.toast(`${m.label} is neutral again`, 'info');
+      if (m.neutral) this.hud.toast(`${m.label} no get owner again`, 'info');
       else {
         const ours = m.owner === this.side;
-        this.hud.banner(`${ours ? 'WE CAPTURED' : 'ENEMY TOOK'} ${m.id === 'D' ? 'THE DISCOVERY' : m.id} · ${m.label.toUpperCase()}`, 3200);
+        this.hud.banner(`${ours ? 'WE DON HOLD' : 'ENEMY DON TAKE'} ${m.id === 'D' ? 'THE NEW DEPOSIT' : m.id} · ${m.label.toUpperCase()}`, 3200);
         audio.alert();
       }
     });
@@ -303,13 +330,14 @@ export class Game {
         this.leftAt = performance.now();
       }
       this.hud.score(m.score, m.sites);
+      if (m.modeState) this.modes.apply(m.modeState);
       if (this.menus.score) this.hud.scoreboard(this.rosterList, this.myId, this.score);
     });
     on('discovery', (m) => {
-      this.hud.banner(`⛏ ${m.label.toUpperCase()} FOUND — DOUBLE POINTS`, 4500);
+      this.hud.banner(`⛏ ${m.label.toUpperCase()} DON SHOW — DOUBLE POINT`, 4500);
       audio.alert();
     });
-    on('discoveryEnd', (m) => this.hud.toast(`${m.label} has been worked out`, 'info'));
+    on('discoveryEnd', (m) => this.hud.toast(`${m.label} don finish`, 'info'));
     on('bought', (m) => {
       audio.click();
       if (WEAPONS[m.item]) {
@@ -318,7 +346,7 @@ export class Game {
       }
     });
     on('spirit', () => {
-      this.hud.toast('Find a glowing 💎 on any advert wall!', 'gem');
+      this.hud.toast('Find any 💎 wey dey shine for advert wall!', 'gem');
     });
     on('left', (m) => {
       this.soldiers.get(m.id)?.dispose();
@@ -326,7 +354,7 @@ export class Game {
       this.buffers.delete(m.id);
     });
     on('matchEnd', (m) => {
-      this.hud.matchEnd(m, this.side);
+      this.hud.matchEnd(m, this.side, this.myId, this.modes.endActions(m));
       music.sting(m.winner === this.side);
       this.input.unlock();
       this.ended = true;
@@ -336,6 +364,7 @@ export class Game {
       if (m.state !== this.stateId) return;
       this.ended = false;
       this.hud.hideMatchEnd();
+      if (m.modeState) this.modes.apply(m.modeState);
       this.walls.setGems(m.gems);
       this.arena.restoreDrums();
       for (const i of m.drums || []) this.arena.killDrum(i);
@@ -364,7 +393,7 @@ export class Game {
         if (burning !== this.burning) {
           this.burning = burning;
           $('burn').classList.toggle('on', burning);
-          if (burning) this.hud.toast('🔥 You are on fire! Water puts it out.', 'bad', 2500);
+          if (burning) this.hud.toast('🔥 Fire dey catch you! Water go quench am.', 'bad', 2500);
         }
         this.myFlags = flags;
         continue;
@@ -483,7 +512,10 @@ export class Game {
     }
     if (m.killer === this.myId && m.victim !== this.myId) {
       const streak = (this.me?.streak || 0) + 1;
-      if (streak >= 2) this.hud.toast(['', '', 'Double kill', 'Triple kill', 'Rampage', 'Unstoppable'][Math.min(5, streak)] || 'Legendary', 'streak', 1600);
+      const call = ['', '', 'DOUBLE KPAI!', 'TRIPLE KPAI!', 'E DON CASE!', 'NO MERCY!'][Math.min(5, streak)] || 'WAR GENERAL!';
+      if (streak >= 2) this.hud.callout(call);
+      else if (m.head) this.hud.callout('HEADSHOT!');
+      else if (m.w === 'knife') this.hud.callout('MACHETE KPAI!');
     }
     const s = this.soldiers.get(m.victim);
     if (s) this.fx.bloodHit(s.root.position.clone().setY(1.2), null);
@@ -504,6 +536,7 @@ export class Game {
     if (!down) {
       if (code === 'Tab') this.toggleScore(false);
       if (code === 'Mouse0') this.local.trigger = true;
+      if (code === 'KeyE') this.modes.useAction(false);
       return;
     }
     if (code === 'unlock') return;
@@ -517,6 +550,11 @@ export class Game {
     }
     if (this.menus.pause || this.ended) return;
     if (code === 'Tab') return this.toggleScore(true);
+    if (code === 'KeyV') return this.modes.toggleQuick();
+    if (this.modes.quickOpen) {
+      const q = /^Digit([1-6])$/.exec(code);
+      if (q) return this.modes.sendQuick(+q[1] - 1);
+    }
     if (code === 'KeyY' || code === 'KeyU') return this.openChat(code === 'KeyU');
     if (st === 'dead') {
       if (code === 'Digit1') this.respawn('gem');
@@ -559,6 +597,7 @@ export class Game {
         return this.medkit();
       case 'KeyE':
       case 'KeyF':
+        if (this.modes.useAction(true)) return;
         return this.tryRevive();
       case 'Digit5':
         if (this.me.streaksAvail?.uav) this.net.send({ t: 'streak', kind: 'uav' });
@@ -756,7 +795,7 @@ export class Game {
     this.local.lastFire = now;
     a.mag--;
     const o = [this.camera.position.x, this.camera.position.y, this.camera.position.z];
-    let d = dirFromAngles(this.yaw + this.punch.y, this.pitch + this.punch.p);
+    let d = dirFromAngles(this.yaw + this.punch.y + (this.sway?.y || 0), this.pitch + this.punch.p + (this.sway?.p || 0));
     if (!w.pellets) d = spreadDir(d, this.spreadNow(w, this.vel.length()));
     this.net.send({ t: 'fire', w: id, o: o.map((v) => +v.toFixed(3)), d: d.map((v) => +v.toFixed(4)), ts: Math.round(this.net.serverNow() - NET.interpDelayMs) });
     // Recoil: part is view punch that recovers, part climbs for good.
@@ -823,7 +862,7 @@ export class Game {
 
   cycleNade() {
     const have = ['frag', 'smoke', 'flash'].filter((k) => this.me[k] > 0);
-    if (!have.length) return this.hud.toast('No grenades. Buy some with B.', 'bad', 1500);
+    if (!have.length) return this.hud.toast('You no get grenade. Buy for armoury.', 'bad', 1500);
     const i = have.indexOf(this.hud.nadeSel);
     this.hud.nadeSel = have[(i + 1) % have.length];
     this.hud.nades(this.me);
@@ -832,7 +871,7 @@ export class Game {
   throwNade() {
     let kind = this.hud.nadeSel;
     if (!(this.me[kind] > 0)) kind = ['frag', 'smoke', 'flash'].find((k) => this.me[k] > 0);
-    if (!kind) return this.hud.toast('No grenades. Buy some with B.', 'bad', 1500);
+    if (!kind) return this.hud.toast('You no get grenade. Buy for armoury.', 'bad', 1500);
     this.hud.nadeSel = kind;
     const d = dirFromAngles(this.yaw, this.pitch + 0.12);
     const p = this.camera.position;
@@ -846,7 +885,7 @@ export class Game {
   }
 
   medkit() {
-    if (!(this.me.medkit > 0)) return this.hud.toast('No first aid kit. Buy one with B.', 'bad', 1500);
+    if (!(this.me.medkit > 0)) return this.hud.toast('You no get first aid. Buy for armoury.', 'bad', 1500);
     if (this.me.health >= 100) return;
     this.net.send({ t: 'medkit' });
     this.local.heal = performance.now() + GEAR.medkit.useTime * 1000;
@@ -872,7 +911,7 @@ export class Game {
   startArtillery() {
     this.artilleryAim = true;
     this.aimRing.visible = true;
-    this.hud.prompt('Aim at the ground and <kbd>click</kbd> to call the barrage · <kbd>Esc</kbd> cancel');
+    this.hud.prompt('Aim for ground, <kbd>click</kbd> make you call artillery · <kbd>Esc</kbd> cancel');
   }
 
   cancelArtillery() {
@@ -944,6 +983,7 @@ export class Game {
     }
     this.updateSoldiers(dt, sNow);
     this.arena.update(dt, this.camera);
+    this.ambience.update(dt, this.arena.time, this.camera);
     this.walls.update(dt, this.arena.time, sNow, this.camera);
     this.siteMarkers.update(dt, this.arena.time);
     this.fx.update(dt, this.camera);
@@ -986,7 +1026,7 @@ export class Game {
     const inp = this.input;
     const f = FACTIONS[this.faction].perks;
     const mv = st === 'alive' || st === 'spirit' ? inp.move() : { x: 0, y: 0 };
-    if (this.anyMenu() && !this.menus.buy) {
+    if ((this.anyMenu() && !this.menus.buy) || this.modes.frozen()) {
       mv.x = mv.y = 0;
     }
     // Wish direction in world space.
@@ -1074,6 +1114,14 @@ export class Game {
       cam.updateProjectionMatrix();
     }
     this.hud.scope(!!scoped && this.zoom > 2.5);
+    // Sniper scope sway; hold Shift to steady your breath for a few seconds.
+    const scopedIn = !!scoped && this.zoom > 2.5;
+    this.breath ??= 4;
+    const holding = scopedIn && (this.input.down('ShiftLeft') || this.input.down('ShiftRight')) && this.breath > 0;
+    this.breath = holding ? Math.max(0, this.breath - dt) : Math.min(4, this.breath + dt * 0.6);
+    this.swayT = (this.swayT || 0) + dt;
+    const amp = scopedIn ? (holding ? 0.0003 : this.breath <= 0.05 ? 0.007 : 0.0035) * (this.body.crouch ? 0.6 : 1) : 0;
+    this.sway = { y: Math.sin(this.swayT * 0.9) * amp + Math.sin(this.swayT * 2.3) * amp * 0.3, p: Math.sin(this.swayT * 1.3 + 1) * amp * 0.8 };
     this.vm.visible = st === 'alive' && !(scoped && this.zoom > 2.5);
     if (st === 'dead' || st === 'medevac') {
       // Death cam: orbit your body; medevac rises into the sky.
@@ -1091,7 +1139,7 @@ export class Game {
     const bob = moving ? Math.sin(this.bobT * 2) * (this.sprinting ? 0.045 : 0.022) * (this.adsOn ? 0.3 : 1) : 0;
     const sh = this.fx.shake;
     cam.position.set(b.x + (Math.random() - 0.5) * sh * 0.08, b.y + this.eye + bob + (Math.random() - 0.5) * sh * 0.08, b.z);
-    cam.rotation.set(this.pitch + this.punch.p + (Math.random() - 0.5) * sh * 0.02, this.yaw + this.punch.y, (st === 'downed' ? 0.25 : 0) + (moving ? Math.sin(this.bobT) * 0.004 : 0));
+    cam.rotation.set(this.pitch + this.punch.p + (this.sway?.p || 0) + (Math.random() - 0.5) * sh * 0.02, this.yaw + this.punch.y + (this.sway?.y || 0), (st === 'downed' ? 0.25 : 0) + (moving ? Math.sin(this.bobT) * 0.004 : 0));
   }
 
   aimArtillery() {
@@ -1170,6 +1218,7 @@ export class Game {
     const st = this.status;
     this.hud.timers(st, m, sNow);
     this.hud.score(this.score, null, this.msLeft - (now - this.leftAt));
+    this.modes.update(dt, sNow);
     this.hud.stamina(this.stamina / PLAYER.stamina);
     // Crosshair grows with spread.
     const w = WEAPONS[this.weapon()];
@@ -1180,9 +1229,10 @@ export class Game {
     let prompt = null;
     if (st === 'alive' && !this.artilleryAim) {
       const mate = this.downedMate();
-      if (mate) prompt = `<kbd>E</kbd> Revive ${this.roster.get(mate.id)?.name || 'teammate'}`;
-      else if (this.inBuyZone() && sNow < (m.buyUntil || 0)) prompt = `<kbd>${isTouch() ? '₦' : 'B'}</kbd> Buy · ${Math.ceil((m.buyUntil - sNow) / 1000)}s`;
+      if (mate) prompt = `<kbd>E</kbd> Revive ${this.roster.get(mate.id)?.name || 'your person'}`;
+      else if (this.inBuyZone() && sNow < (m.buyUntil || 0)) prompt = `<kbd>${isTouch() ? '₦' : 'B'}</kbd> Buy weapon · ${Math.ceil((m.buyUntil - sNow) / 1000)}s`;
     }
+    if (!prompt && st === 'alive') prompt = this.modes.prompt();
     if (!this.artilleryAim) this.hud.prompt(prompt);
     if (isTouch()) this.syncTouch(st, m);
     // "Click to fight" whenever the mouse is free during play (desktop only).
@@ -1192,8 +1242,9 @@ export class Game {
       $('click-to-play').hidden = ctp;
     }
     // Progress bars: revive, medkit.
-    if (this.reviving && now < this.reviving.until && this.downedMate()?.id === this.reviving.id) this.hud.progress(1 - (this.reviving.until - now) / (RESPAWN.reviveTime * 1000), 'Reviving…');
-    else if (this.local.heal > now) this.hud.progress(1 - (this.local.heal - now) / (GEAR.medkit.useTime * 1000), 'First aid…');
+    if (this.reviving && now < this.reviving.until && this.downedMate()?.id === this.reviving.id) this.hud.progress(1 - (this.reviving.until - now) / (RESPAWN.reviveTime * 1000), 'Dey revive am…');
+    else if (this.local.heal > now) this.hud.progress(1 - (this.local.heal - now) / (GEAR.medkit.useTime * 1000), 'Dey use first aid…');
+    else if (this.modes.progress(sNow)) this.hud.progress(...this.modes.progress(sNow));
     else this.hud.progress(null);
     if (this.reviving && now > this.reviving.until) this.reviving = null;
     // Heartbeat when hurt.
@@ -1234,7 +1285,7 @@ export class Game {
   syncTouch(st, m) {
     const show = !this.ended && !this.menus.buy && !this.menus.pause && !this.menus.score && (st === 'alive' || st === 'spirit' || st === 'downed');
     const combat = st === 'alive';
-    const use = combat && !!this.downedMate();
+    const use = combat && (!!this.downedMate() || !!this.modes.availableAction());
     const med = combat && m.medkit > 0 && m.health < 100;
     const key = `${show}${combat}${use}${med}`;
     if (key === this.touchKey) return;
@@ -1269,6 +1320,7 @@ export class Game {
       const col = s.owner === 'sec' ? '#7fb6ff' : s.owner === 'out' ? '#ff8a80' : s.id === 'D' ? '#ffc13b' : '#fff';
       items.push({ x: s.x, y: 4, z: s.z, cls: 'site', html: `<span style="color:${col}">${s.id === 'D' ? '◆' : s.id}</span><small>${Math.round(d)} m</small>`, clamp: true, opacity: d < 12 ? 0.3 : 0.9 });
     }
+    this.modes.labels(items);
     if (this.status === 'spirit') {
       this.map.adWalls.forEach((a, i) => {
         if (this.walls.walls[i].until > sNow) return;

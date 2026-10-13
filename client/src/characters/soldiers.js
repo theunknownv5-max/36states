@@ -342,14 +342,20 @@ export class Soldier {
     // Lying down: downed fighters on their back, dead ones fall.
     const lie = Math.max(this.downT, this.deadT);
     if (lie > 0) {
-      r.rotation.x = -lie * (Math.PI / 2 - 0.08);
+      // Everybody falls differently: forward, backward or twisting to one side.
+      const fall = this.fallDir ?? (this.fallDir = ([...this.id].reduce((n, c) => n + c.charCodeAt(0), 0) % 3) - 1);
+      r.rotation.x = (fall === 1 && !downed ? 1 : -1) * lie * (Math.PI / 2 - 0.08);
+      r.rotation.z = fall === 0 && !downed ? lie * 0.5 : 0;
       r.position.y += lie * 0.15;
       this.hips.position.y = hipY * (1 - lie) + 0.18 * lie;
       if (downed) {
         // Reaching arm, slight writhe.
         R.g.rotation.set(2.6 + Math.sin(t * 2) * 0.15, 0, -0.2);
       }
-    } else r.rotation.x = 0;
+    } else {
+      r.rotation.x = 0;
+      r.rotation.z = 0;
+    }
     // On fire.
     this.flames.visible = !!(s.flags & 1024);
     if (this.flames.visible)

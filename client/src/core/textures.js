@@ -777,11 +777,11 @@ export function signboardTexture(title, sub) {
 
 // "Your brand here" house adverts shown on walls nobody has bought yet.
 const HOUSE = [
-  { bg: ['#0b1220', '#13294b'], title: 'YOUR BRAND HERE', sub: 'Advertise on every wall in 36 States', accent: '#36d1ff' },
-  { bg: ['#102a12', '#1f5a24'], title: 'ONE NIGERIA', sub: 'Play fair. Fight hard. Respect the ref.', accent: '#ffffff' },
-  { bg: ['#2a0e0e', '#5a1818'], title: 'COLLECT THE 💎', sub: 'Every advert carries a life gem', accent: '#ffd23f' },
-  { bg: ['#1d1630', '#3d2a6b'], title: 'BOOK THIS WALL', sub: 'Reach players in this state live', accent: '#ff7ad9' },
-  { bg: ['#2b2008', '#6b4c0c'], title: '36 STATES', sub: 'Season One · The Battle for Nigeria', accent: '#ffcf4a' }
+  { bg: ['#0b1220', '#13294b'], title: 'YOUR BRAND HERE', sub: 'Advertise for every wall for Proof of Duty', accent: '#36d1ff' },
+  { bg: ['#102a12', '#1f5a24'], title: 'ONE NIGERIA', sub: 'Play fair. Fight hard. No cheat.', accent: '#ffffff' },
+  { bg: ['#2a0e0e', '#5a1818'], title: 'COLLECT THE 💎', sub: 'Every advert get life gem', accent: '#ffd23f' },
+  { bg: ['#1d1630', '#3d2a6b'], title: 'BOOK THIS WALL', sub: 'Reach players for this state live', accent: '#ff7ad9' },
+  { bg: ['#1a0a02', '#5a2006'], title: 'PROOF OF DUTY', sub: 'Shoot • Survive • Win', accent: '#ff8a2a' }
 ];
 export function houseAdTexture(i) {
   const key = `house-${i % HOUSE.length}`;
@@ -814,7 +814,7 @@ export function houseAdTexture(i) {
   ctx.fillText(h.sub, 512, 320, 960);
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   ctx.font = '600 30px "Rajdhani", sans-serif';
-  ctx.fillText('Advertise on this wall · talk to the 36 States team', 512, 420);
+  ctx.fillText('Advertise for this wall · talk to the POD team', 512, 420);
   const t = toTexture(c, { repeat: false });
   cache.set(key, t);
   return t;

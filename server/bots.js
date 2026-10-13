@@ -149,6 +149,8 @@ export class BotBrain {
   chooseGoal(p) {
     const m = this.match;
     const t = now();
+    // The game mode may have its own plan (bomb sites, waves, deathmatch roaming).
+    if ((m.mode.priority?.(p) || !(this.lastSeen && t - this.lastSeen.t < 4500)) && m.mode.botGoal(this, p)) return;
     if (this.lastSeen && !this.target && t - this.lastSeen.t < 4500) {
       this.setGoal(p, this.lastSeen.x, this.lastSeen.z, 'hunt');
       return;
@@ -194,6 +196,12 @@ export class BotBrain {
       return;
     }
     if (p.status !== 'alive') return;
+    if (m.mode.frozen()) return;
+    // Planting or defusing: stay down and keep still.
+    if (m.mode.action && m.mode.action.pid === p.id) {
+      p.crouch = true;
+      return;
+    }
     this.thinkTimer -= dt;
     if (this.thinkTimer <= 0) {
       this.thinkTimer = 0.2;

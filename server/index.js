@@ -1,4 +1,4 @@
-// 36 States game server: static hosting, accounts, the state lobby, live matches,
+// Proof of Duty game server: static hosting, accounts, the state lobby, live matches,
 // the ad feed, and the advertiser/admin API.
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { STATES, STATE_BY_ID } from '../shared/states.js';
-import { FACTIONS, GEMS, NET, rankFor, MATCH } from '../shared/config.js';
+import { FACTIONS, GEMS, NET, rankFor, MATCH, MODES, STAGES, GAME } from '../shared/config.js';
 import { generateMap } from '../shared/map.js';
 import { Match } from './match.js';
 import { AdManager } from './ads.js';
@@ -28,15 +28,19 @@ await ads.load();
 await store.load();
 const saveProfile = () => store.markDirty();
 
-const matches = new Map(); // stateId -> Match
-function matchFor(stateId) {
-  if (!matches.has(stateId)) matches.set(stateId, new Match(stateId, { ads, saveProfile }));
-  return matches.get(stateId);
+const matches = new Map(); // "mode:state" (or "stage:<player>") -> Match
+function matchFor(stateId, mode = 'conquest', key = `${mode}:${stateId}`, opts = {}) {
+  if (!matches.has(key)) {
+    const m = new Match(stateId, { ads, saveProfile }, mode, opts);
+    m.key = key;
+    matches.set(key, m);
+  }
+  return matches.get(key);
 }
 
 // ---------- accounts ----------
 function newProfile(token, name) {
-  return { token, name, gems: GEMS.startingGems, xp: 0, kills: 0, deaths: 0, wins: 0, matches: 0, created: Date.now() };
+  return { token, name, gems: GEMS.startingGems, xp: 0, kills: 0, deaths: 0, wins: 0, matches: 0, stage: 0, stageStars: {}, created: Date.now() };
 }
 
 function authenticate(msg) {
@@ -44,10 +48,10 @@ function authenticate(msg) {
   if (msg.mode === 'register' || msg.mode === 'login') {
     const u = String(msg.username || '').trim();
     const key = u.toLowerCase();
-    if (!/^[a-zA-Z0-9_]{3,16}$/.test(u)) return { error: 'Username: 3-16 letters, numbers or _' };
-    if (typeof msg.password !== 'string' || msg.password.length < 6 || msg.password.length > 64) return { error: 'Password must be at least 6 characters' };
+    if (!/^[a-zA-Z0-9_]{3,16}$/.test(u)) return { error: 'Username: 3-16 letters, numbers or _ only' };
+    if (typeof msg.password !== 'string' || msg.password.length < 6 || msg.password.length > 64) return { error: 'Password suppose reach at least 6 characters' };
     if (msg.mode === 'register') {
-      if (accounts[key]) return { error: 'That username is taken' };
+      if (accounts[key]) return { error: 'Person don already take that username' };
       const salt = randomBytes(16).toString('hex');
       const token = randomUUID();
       accounts[key] = { username: u, salt, hash: scryptSync(msg.password, salt, 32).toString('hex'), token, created: Date.now() };
@@ -56,13 +60,13 @@ function authenticate(msg) {
       return { token, name: u, account: true };
     }
     const acc = accounts[key];
-    if (!acc) return { error: 'No account with that username' };
-    if (!timingSafeEqual(scryptSync(msg.password, acc.salt, 32), Buffer.from(acc.hash, 'hex'))) return { error: 'Wrong password' };
+    if (!acc) return { error: 'No account get that username' };
+    if (!timingSafeEqual(scryptSync(msg.password, acc.salt, 32), Buffer.from(acc.hash, 'hex'))) return { error: 'Password no correct' };
     return { token: acc.token, name: acc.username, account: true };
   }
   // Guest: keep the device token, unless it belongs to an account.
   let token = typeof msg.token === 'string' && /^[a-f0-9-]{16,40}$/.test(msg.token) ? msg.token : randomUUID();
-  if (Object.values(accounts).some((a) => a.token === token)) return { error: 'Please log in to this account.' };
+  if (Object.values(accounts).some((a) => a.token === token)) return { error: 'Abeg log in to this account.' };
   const name = String(msg.name || '').replace(/[^\w .'-]/g, '').trim().slice(0, 18) || `Soldier${Math.floor(Math.random() * 9000 + 1000)}`;
   if (!store.data.profiles[token]) store.data.profiles[token] = newProfile(token, name);
   store.data.profiles[token].name = name;
@@ -70,15 +74,37 @@ function authenticate(msg) {
 }
 
 function profilePublic(p) {
-  return { name: p.name, gems: p.gems, xp: p.xp, rank: rankFor(p.xp), kills: p.kills, deaths: p.deaths, wins: p.wins, matches: p.matches };
+  return { name: p.name, gems: p.gems, xp: p.xp, rank: rankFor(p.xp), kills: p.kills, deaths: p.deaths, wins: p.wins, matches: p.matches, stage: p.stage || 0, stageStars: p.stageStars || {} };
 }
 
+// Live players per state, with a breakdown per mode (campaign stages are private).
 function lobby() {
   return STATES.map((s) => {
-    const m = matches.get(s.id);
-    const humans = m ? m.humans().length : 0;
-    return { id: s.id, humans, bots: m ? m.players.size - humans : 0, sec: m ? m.score.sec : 0, out: m ? m.score.out : 0, live: !!m && humans > 0 };
+    const modes = {};
+    let humans = 0;
+    let bots = 0;
+    let score = null;
+    for (const id of Object.keys(MODES)) {
+      if (MODES[id].solo) continue;
+      const m = matches.get(`${id}:${s.id}`);
+      if (!m) continue;
+      const h = m.humans().length;
+      modes[id] = h;
+      humans += h;
+      bots += m.players.size - h;
+      if (h && (!score || id === 'conquest')) score = m.score;
+    }
+    return { id: s.id, humans, bots, sec: score?.sec || 0, out: score?.out || 0, live: humans > 0, modes };
   });
+}
+
+// Top soldiers by experience (names and totals only).
+function leaderboard() {
+  return Object.values(store.data.profiles)
+    .filter((p) => p.xp > 0 || p.kills > 0)
+    .sort((a, b) => b.xp - a.xp || b.kills - a.kills)
+    .slice(0, 30)
+    .map((p) => ({ name: p.name, xp: p.xp, rank: rankFor(p.xp).name, kills: p.kills, deaths: p.deaths, wins: p.wins, stage: p.stage || 0 }));
 }
 
 // ---------- HTTP ----------
@@ -124,8 +150,9 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const path = url.pathname;
   try {
-    if (path === '/health') return json(res, 200, { ok: true, matches: matches.size, players: [...matches.values()].reduce((n, m) => n + m.humans().length, 0) });
+    if (path === '/health') return json(res, 200, { ok: true, game: GAME.name, version: GAME.version, matches: matches.size, players: [...matches.values()].reduce((n, m) => n + m.humans().length, 0) });
     if (path === '/api/lobby') return json(res, 200, { states: lobby() });
+    if (path === '/api/leaderboard') return json(res, 200, { top: leaderboard() });
     if (path === '/api/ads') {
       const state = url.searchParams.get('state');
       if (!STATE_BY_ID[state]) return json(res, 400, { error: 'unknown state' });
@@ -149,7 +176,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (route === 'ads' && req.method === 'POST') return json(res, 200, { ad: await ads.create(await readBody(req)) });
       if (route === 'report.csv') {
-        res.writeHead(200, { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="36-states-ad-report.csv"' });
+        res.writeHead(200, { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="pod-ad-report.csv"' });
         return res.end(ads.csv());
       }
       const m = /^ads\/([a-z0-9-]+)$/.exec(route);
@@ -208,12 +235,27 @@ wss.on('connection', (ws) => {
     if (!conn.profile) return;
     if (msg.t === 'lobby') return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile) });
     if (msg.t === 'join') {
-      if (!STATE_BY_ID[msg.state] || !FACTIONS[msg.faction]) return send({ t: 'joinError', error: 'Pick a state and a side.' });
+      const mode = MODES[msg.mode] ? msg.mode : 'conquest';
+      let state = msg.state;
+      let faction = msg.faction;
+      let key;
+      let opts = {};
+      if (mode === 'stage') {
+        const i = Math.max(0, Math.min(STAGES.length - 1, msg.stage | 0));
+        if (i > (conn.profile.stage || 0)) return send({ t: 'joinError', error: 'You never open this stage. Clear the one before am first.' });
+        state = STAGES[i].state;
+        faction = STAGES[i].ally;
+        key = `stage:${conn.profile.token}`;
+        opts = { stage: i };
+      }
+      if (!STATE_BY_ID[state] || !FACTIONS[faction]) return send({ t: 'joinError', error: 'Pick state and side first.' });
       if (conn.match) conn.match.removePlayer(conn.player.id);
       // One live session per profile.
       for (const m of matches.values()) for (const p of m.humans()) if (p.profile === conn.profile) m.removePlayer(p.id);
-      const match = matchFor(msg.state);
-      const r = match.addHuman(ws, msg.faction, conn.profile);
+      // A fresh campaign match every time you start a stage.
+      if (key) matches.delete(key);
+      const match = matchFor(state, mode, key || `${mode}:${state}`, opts);
+      const r = match.addHuman(ws, faction, conn.profile);
       if (r.error) return send({ t: 'joinError', error: r.error });
       conn.match = match;
       conn.player = r.player;
@@ -274,6 +316,6 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 server.listen(PORT, () => {
-  console.log(`36 States server on http://localhost:${PORT}  (game /ws, advertiser dashboard /admin)`);
+  console.log(`${GAME.name} ${GAME.version} server on http://localhost:${PORT}  (game /ws, advertiser dashboard /admin)`);
   if (ADMIN_KEY === 'change-me') console.log('Set ADMIN_KEY before going live.');
 });

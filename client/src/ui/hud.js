@@ -8,7 +8,7 @@ import { STATE_BY_ID } from '../../../shared/states.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => '₦' + Math.round(n).toLocaleString();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Bled out', drum: 'Fuel drum', fire: 'Burned' })[w] || WEAPONS[w]?.name || w || '';
+const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Blood finish', drum: 'Fuel drum', fire: 'Fire burn am', bomb: 'Bomb' })[w] || WEAPONS[w]?.name || w || '';
 
 export class Hud {
   constructor() {
@@ -295,7 +295,11 @@ export class Hud {
     if (status === 'dead') {
       $('opt-gems').textContent = m.gems;
       $('opt-gem').disabled = m.gems < RESPAWN.gemCost;
-      $('death-by').innerHTML = info.killer ? `Killed by <b>${esc(info.killer)}</b> · ${esc(WNAME(info.weapon))}${info.head ? ' (headshot)' : ''}` : 'You were killed';
+      $('death-by').innerHTML = info.killer ? `<b>${esc(info.killer)}</b> don kill you · ${esc(WNAME(info.weapon))}${info.head ? ' (headshot)' : ''}` : 'Dem don kill you';
+      // Modes without respawn (Plant & Defuse) wait for the next round instead.
+      $('death-options').hidden = !!this.noRespawn;
+      $('death-wait').hidden = !this.noRespawn;
+      $('death').querySelector('h2').textContent = this.noRespawn ? 'YOU DON DIE THIS ROUND' : 'GO BACK TO THE WAR FRONT';
     }
   }
 
@@ -303,13 +307,13 @@ export class Hud {
     if (status === 'downed') $('downed-t').textContent = Math.max(0, Math.ceil((m.downedAt + RESPAWN.downedMs - serverNow) / 1000));
     if (status === 'spirit') $('spirit-t').textContent = Math.max(0, Math.ceil((m.spiritUntil - serverNow) / 1000));
     if (status === 'medevac') $('medevac-t').textContent = Math.max(0, Math.ceil((m.medevacAt - serverNow) / 1000));
-    if (status === 'dead' && this.deadSince) $('death-auto').textContent = `Medevac comes automatically in ${Math.max(0, Math.ceil(60 - (performance.now() - this.deadSince) / 1000))} s.`;
+    if (status === 'dead' && this.deadSince) $('death-auto').textContent = this.noRespawn ? '' : `Medevac go come by itself in ${Math.max(0, Math.ceil(60 - (performance.now() - this.deadSince) / 1000))} s.`;
   }
 
   // ---------- buy menu ----------
   renderBuy(m, inZone, onBuy) {
     $('buy-money').textContent = fmt(m.money);
-    $('buy-where').textContent = inZone ? 'In buy zone' : 'Go back to base (or buy right after deploying)';
+    $('buy-where').textContent = inZone ? 'You fit buy here' : 'Go back to your base (or buy as you just land)';
     const grid = $('buy-grid');
     grid.innerHTML = '';
     const groups = [
@@ -357,19 +361,68 @@ export class Hud {
     }
   }
 
-  matchEnd(m, mySide) {
+  // End of match: result, your stats, and (for campaign stages) what next.
+  matchEnd(m, mySide, myId, actions = []) {
     $('matchend').hidden = false;
-    $('me-title').textContent = !m.winner ? 'DRAW' : m.winner === mySide ? 'VICTORY' : 'DEFEAT';
-    $('me-title').style.color = !m.winner ? '#fff' : m.winner === mySide ? 'var(--good)' : 'var(--bad)';
-    $('me-score').innerHTML = `<span style="color:var(--sec)">${m.score.sec}</span> — <span style="color:var(--out)">${m.score.out}</span>`;
+    const stage = m.mode === 'stage';
+    const won = m.winner === mySide;
+    $('me-title').textContent = stage ? (won ? 'STAGE CLEAR!' : 'STAGE FAIL') : !m.winner ? 'DRAW' : won ? 'VICTORY' : 'DEFEAT';
+    $('me-title').style.color = !m.winner && !stage ? '#fff' : won ? 'var(--good)' : 'var(--bad)';
+    $('me-sub').textContent = stage ? m.modeState?.title || '' : won ? 'Una show say una get Proof of Duty!' : m.winner ? 'Dem beat una this time. Next time na una.' : 'Nobody win. E go hot next time.';
+    $('me-score').innerHTML = stage ? '' : `<span style="color:var(--sec)">${m.score.sec}</span> — <span style="color:var(--out)">${m.score.out}</span>`;
+    const me = m.roster.find((r) => r.id === myId);
+    $('me-stats').innerHTML = me
+      ? [
+          ['Kills', me.kills],
+          ['Deaths', me.deaths],
+          ['Assists', me.assists],
+          ['Headshots', me.hs || 0],
+          ['Accuracy', `${me.acc || 0}%`],
+          ['Points', me.points]
+        ]
+          .map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`)
+          .join('')
+      : '';
     $('me-mvp').textContent = m.mvp ? `MVP: ${m.mvp}` : '';
+    const box = $('me-actions');
+    box.innerHTML = '';
+    for (const a of actions) {
+      const b = document.createElement('button');
+      b.className = `btn ${a.primary ? 'primary' : ''}`;
+      b.textContent = a.label;
+      b.onclick = a.run;
+      box.appendChild(b);
+    }
+    this.endNoAuto = stage;
     const until = performance.now() + m.next;
     clearInterval(this.endT);
     this.endT = setInterval(() => {
       const s = Math.max(0, Math.ceil((until - performance.now()) / 1000));
-      $('me-next').textContent = `Next battle in ${s}s`;
+      $('me-next').textContent = this.endNoAuto ? '' : `Next battle go start in ${s}s`;
       if (s <= 0) clearInterval(this.endT);
     }, 250);
+  }
+
+  // Big centre callout: headshots, multi-kills, round results.
+  callout(text) {
+    const c = $('callout');
+    c.textContent = text;
+    c.classList.remove('show');
+    void c.offsetWidth;
+    c.classList.add('show');
+  }
+
+  modebar(html) {
+    const b = $('modebar');
+    if (!html) {
+      b.hidden = true;
+      return;
+    }
+    b.hidden = false;
+    if (b._html !== html) {
+      b.innerHTML = html;
+      b._html = html;
+    }
   }
 
   hideMatchEnd() {

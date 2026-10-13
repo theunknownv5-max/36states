@@ -40,6 +40,7 @@ export class AudioEngine {
     this.loops = new Map();
     this.listener = { x: 0, y: 0, z: 0 };
     this.hrtf = true;
+    this.gunsOn = true; // Settings: gun sounds on/off
   }
 
   // Browsers need a user gesture before audio can start.
@@ -261,7 +262,7 @@ export class AudioEngine {
 
   // ---------- weapons ----------
   gunshot(kind, pos, local = false) {
-    if (!this.ready()) return;
+    if (!this.ready() || !this.gunsOn) return;
     if (kind === 'rpg') return this.rocketLaunch(pos, local);
     const p = GUNS[kind] || GUNS.rifle;
     const o = this.out(local ? null : pos, { ref: 10, rolloff: 0.9, reverb: 0.45 });
@@ -281,6 +282,7 @@ export class AudioEngine {
   }
 
   rocketLaunch(pos, local) {
+    if (!this.gunsOn) return;
     const o = this.out(local ? null : pos, { ref: 10, reverb: 0.5 });
     if (this.sample('rpg', o.input, o.when, 1.4)) return;
     this.tone(o.input, o.when, { f: 120, f2: 40, dur: 0.25, gain: 1.2 });
@@ -352,6 +354,50 @@ export class AudioEngine {
     if (!far) this.noiseHit(o.input, w, { dur: 0.25, gain: 1.0 * size, type: 'highpass', f: 1500, attack: 0.001 });
     // Falling debris crackle.
     for (let i = 0; i < 10 * size; i++) this.noiseHit(o.input, w + 0.25 + Math.random() * 1.6, { dur: 0.03, gain: 0.08 + Math.random() * 0.1, f: 1500 + Math.random() * 3000, q: 2 });
+  }
+
+  // A helicopter or jet passing over the battlefield (position updated every frame).
+  flyover(heli, dur) {
+    if (!this.ready()) return;
+    this.stopLoop('flyover', 0.1);
+    const ctx = this.ctx;
+    const pan = ctx.createPanner();
+    pan.panningModel = this.hrtf ? 'HRTF' : 'equalpower';
+    pan.distanceModel = 'inverse';
+    pan.refDistance = heli ? 30 : 60;
+    pan.rolloffFactor = 1;
+    pan.maxDistance = 3000;
+    pan.connect(this.amb);
+    this.flyPan = pan;
+    this.loop('flyover', () => {
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(heli ? 1.4 : 1.8, ctx.currentTime + 2);
+      gain.connect(pan);
+      const stop = heli
+        ? this.noiseLoop(gain, { buffer: this.brown, f: 320, gain: 1, lfo: 11, lfoDepth: 0.9 })
+        : [...this.noiseLoop(gain, { buffer: this.brown, f: 700, gain: 1.1 }), ...this.noiseLoop(gain, { type: 'bandpass', f: 2600, q: 2, gain: 0.25 })];
+      return { gain, stop };
+    });
+    clearTimeout(this.flyTimer);
+    this.flyTimer = setTimeout(() => this.stopLoop('flyover', 1.5), Math.max(1, dur - 1.5) * 1000);
+  }
+
+  moveFlyover(p) {
+    const pan = this.flyPan;
+    if (!pan || !this.ctx) return;
+    if (pan.positionX) {
+      pan.positionX.value = p.x;
+      pan.positionY.value = p.y;
+      pan.positionZ.value = p.z;
+    } else pan.setPosition(p.x, p.y, p.z);
+  }
+
+  // Bomb timer beep.
+  beep(pos, f = 1000) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 6, rolloff: 1, reverb: 0.1 });
+    this.tone(o.input, o.when, { f, dur: 0.08, gain: 0.35, type: 'square', attack: 0.002 });
   }
 
   // Burning fuel: a roar with crackles, for a few seconds.

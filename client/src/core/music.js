@@ -1,9 +1,10 @@
-// Background music, composed live with Web Audio (no recordings, nothing to license).
-// - Menu theme: slow and cinematic: warm pads, talking drum, shekere and a kalimba line.
-// - Battle theme: driving drums and a bass ostinato. Its intensity follows the fight:
-//   gunfire, damage and kills push it up, quiet moments let it fall back.
+// Background music.
+// - In battle: the Proof of Duty theme (client/public/audio/pod-theme.*), looped
+//   seamlessly with Web Audio so there is no gap at the loop point.
+// - Menus: a slow cinematic theme composed live (talking drum, shekere, kalimba, pads).
 // - Stingers for victory and defeat.
 import { audio } from './audio.js';
+import { api } from './server.js';
 
 const A4 = 440;
 const hz = (semi) => A4 * Math.pow(2, semi / 12); // semitones from A4
@@ -52,6 +53,9 @@ const THEMES = {
 export class Music {
   constructor() {
     this.volume = 0.45;
+    this.enabled = true;
+    this.trackBuf = null;
+    this.trackSrc = null;
     this.theme = null;
     this.intensity = 0.2;
     this.target = 0.2;
@@ -82,7 +86,68 @@ export class Music {
 
   setVolume(v) {
     this.volume = v;
-    if (this.bus) this.bus.gain.setTargetAtTime(v, audio.ctx.currentTime, 0.1);
+    if (this.bus) this.bus.gain.setTargetAtTime(this.enabled ? v : 0, audio.ctx.currentTime, 0.1);
+  }
+
+  // Music on/off from Settings.
+  setEnabled(on) {
+    this.enabled = on;
+    if (!this.bus) return;
+    this.bus.gain.setTargetAtTime(on ? this.volume : 0, audio.ctx.currentTime, 0.15);
+    if (on && this.theme) {
+      const name = this.theme;
+      this.theme = null;
+      this.play(name);
+    } else if (!on) {
+      clearInterval(this.timer);
+      this.stopTrack();
+    }
+  }
+
+  // Fetch and decode the battle theme once (ogg/opus, or m4a where opus is not supported).
+  async loadTrack() {
+    if (this.trackBuf || this.loading) return this.loading;
+    if (!audio.ctx) return;
+    const probe = document.createElement('audio');
+    const ext = probe.canPlayType('audio/ogg; codecs="opus"') ? 'ogg' : 'm4a';
+    this.loading = fetch(api(`/audio/pod-theme.${ext}`))
+      .then((r) => r.arrayBuffer())
+      .then((b) => audio.ctx.decodeAudioData(b))
+      .then((buf) => {
+        this.trackBuf = buf;
+        if (this.theme === 'battle' && this.enabled) this.startTrack();
+      })
+      .catch(() => {
+        this.loading = null;
+      });
+    return this.loading;
+  }
+
+  startTrack() {
+    if (!this.trackBuf || this.trackSrc) return;
+    const ctx = audio.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.trackBuf;
+    src.loop = true;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.9, ctx.currentTime + 1.5);
+    src.connect(g).connect(this.bus);
+    src.start();
+    this.trackSrc = src;
+    this.trackGain = g;
+  }
+
+  stopTrack(fade = 0.8) {
+    if (!this.trackSrc) return;
+    const ctx = audio.ctx;
+    const src = this.trackSrc;
+    const g = this.trackGain;
+    this.trackSrc = null;
+    g.gain.cancelScheduledValues(ctx.currentTime);
+    g.gain.setValueAtTime(g.gain.value, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + fade);
+    src.stop(ctx.currentTime + fade + 0.05);
   }
 
   play(name) {
@@ -90,6 +155,17 @@ export class Music {
     const ctx = audio.ctx;
     const switching = !!this.theme;
     this.theme = name;
+    clearInterval(this.timer);
+    if (name === 'battle') {
+      // Battle: the POD theme on a loop.
+      this.stopTrack(0.3);
+      if (!this.enabled) return;
+      if (this.trackBuf) this.startTrack();
+      else this.loadTrack();
+      return;
+    }
+    this.stopTrack();
+    if (!this.enabled) return;
     this.step = 0;
     this.bar = 0;
     this.nextTime = ctx.currentTime + (switching ? 0.6 : 0.1);
@@ -125,7 +201,11 @@ export class Music {
     const ctx = audio.ctx;
     if (!ctx || !this.theme || ctx.state !== 'running') return;
     const th = THEMES[this.theme];
+    if (!th) return;
     const sixteenth = 60 / th.bpm / 4;
+    // If the browser paused our timer (tab in background), skip ahead instead of
+    // firing a burst of late notes.
+    if (this.nextTime < ctx.currentTime - 0.2) this.nextTime = ctx.currentTime + 0.05;
     // Relax intensity slowly; rise quickly.
     this.target = Math.max(0.12, this.target - 0.004);
     this.intensity += (this.target - this.intensity) * (this.target > this.intensity ? 0.25 : 0.03);
@@ -328,7 +408,7 @@ export class Music {
 
   // ---------- stingers ----------
   sting(win) {
-    if (!this.ensure()) return;
+    if (!this.ensure() || !this.enabled) return;
     const t = audio.ctx.currentTime + 0.05;
     const notes = win ? [0, 4, 7, 12, 16] : [12, 10, 7, 3, 0];
     notes.forEach((n, i) => this.pluck(hz(-12 + n), t + i * 0.14, 0.12));

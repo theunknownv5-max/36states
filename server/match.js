@@ -7,14 +7,18 @@ import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise } 
 import { RESOURCES } from '../shared/states.js';
 import { mulberry32 } from '../shared/rng.js';
 import { BotBrain, botName, botLoadout } from './bots.js';
+import { createMode } from './modes.js';
 
 export const WEAPON_IDS = Object.keys(WEAPONS);
 const now = () => Date.now();
 const DISCOVERY_RES = ['gold', 'lithium', 'crude', 'gemstones', 'tin', 'gas', 'tantalite', 'bitumen'];
 
 export class Match {
-  constructor(stateId, hooks) {
+  constructor(stateId, hooks, modeId = 'conquest', opts = {}) {
     this.stateId = stateId;
+    this.modeId = modeId;
+    this.opts = opts;
+    this.mode = createMode(modeId, this, opts);
     this.hooks = hooks; // { profileOf(token), saveProfile(), ads }
     this.map = generateMap(stateId);
     this.players = new Map();
@@ -36,6 +40,7 @@ export class Match {
     this.sites = this.map.sites.map((s) => ({ ...s, progress: 0, owner: null, contested: false }));
     this.discovery = null;
     this.nextDiscoveryAt = now() + MATCH.discoveryEveryMs;
+    if (this.mode.id !== 'bomb') this.mode.reset();
     this.projectiles = [];
     this.smokes = [];
     this.artillery = [];
@@ -53,12 +58,14 @@ export class Match {
     this.drumQueue = [];
     for (const p of this.players.values()) {
       p.money = MONEY.start;
-      p.kills = p.deaths = p.assists = p.points = 0;
+      p.kills = p.deaths = p.assists = p.points = p.headshots = p.shots = p.hits = 0;
       p.streak = 0;
       p.streaksAvail = {};
       this.spawn(p, true);
     }
     this.balanceBots();
+    // Modes with rounds (bomb) start their first round once everyone is in.
+    if (this.mode.id === 'bomb') this.mode.reset();
   }
 
   // ---------- players ----------
@@ -72,17 +79,24 @@ export class Match {
 
   addHuman(conn, faction, profile) {
     if (!FACTIONS[faction]) faction = 'police';
-    if (this.humans().length >= MATCH.maxHumans) return { error: 'This state is full. Pick another state.' };
+    if (this.humans().length >= MATCH.maxHumans) return { error: 'This state don full. Pick another state.' };
     const side = FACTIONS[faction].side;
     // Auto-balance real players: no side may have 2+ more humans than the other.
     const other = side === 'sec' ? 'out' : 'sec';
-    if (this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
-      return { error: `${SIDES[side].label} already has too many players here. Join the ${SIDES[other].label}.` };
+    if (!this.mode.def.solo && this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
+      return { error: `${SIDES[side].label} don get too many people here. Join ${SIDES[other].label}.` };
     }
     const p = this.newPlayer({ human: true, conn, profile, faction, name: profile.name });
     this.players.set(p.id, p);
     this.spawn(p, true);
     this.balanceBots();
+    // Joining a round in progress: wait for the next one.
+    if (this.mode.id === 'bomb' && this.mode.phase !== 'freeze') {
+      p.status = 'dead';
+      p.deadAt = now();
+      this.toast(p, 'Round don start already. You go enter next round.', 'info');
+      this.syncMe(p);
+    }
     this.emptySince = 0;
     return { player: p };
   }
@@ -133,6 +147,8 @@ export class Match {
       assists: 0,
       points: 0,
       headshots: 0,
+      shots: 0,
+      hits: 0,
       streak: 0,
       streaksAvail: {},
       lastFire: 0,
@@ -152,8 +168,8 @@ export class Match {
   // Keep each side at MATCH.minPerSide fighters by adding or removing bots.
   balanceBots() {
     for (const side of ['sec', 'out']) {
-      const humans = this.sideCount(side, true);
-      const want = Math.max(0, MATCH.minPerSide - humans);
+      const want = this.mode.wantBots(side);
+      if (want < 0) continue; // the mode manages this side's bots itself (campaign waves)
       const bots = [...this.players.values()].filter((p) => !p.human && p.side === side);
       for (let i = bots.length; i < want; i++) {
         const factions = Object.keys(FACTIONS).filter((f) => FACTIONS[f].side === side);
@@ -161,6 +177,11 @@ export class Match {
         const bot = this.newPlayer({ human: false, faction, name: botName(this.rng, side) });
         this.players.set(bot.id, bot);
         this.spawn(bot, true);
+        // Bots joining a bomb round in progress wait for the next round.
+        if (this.mode.id === 'bomb' && this.mode.phase && this.mode.phase !== 'freeze') {
+          bot.status = 'dead';
+          bot.bot.respawnAt = Infinity;
+        }
       }
       for (let i = bots.length - 1; i >= want; i--) this.players.delete(bots[i].id);
     }
@@ -172,7 +193,8 @@ export class Match {
     p.ammo[id] = { mag: w.mag ?? 0, reserve: w.reserve ?? 0 };
   }
 
-  spawn(p, first = false) {
+  spawn(p, first = false, keepKit = false) {
+    const kit = keepKit ? { weapons: { ...p.weapons }, ammo: JSON.parse(JSON.stringify(p.ammo)), armor: p.armor, helmet: p.helmet, frag: p.frag, smoke: p.smoke, flash: p.flash, medkit: p.medkit, slot: p.slot } : null;
     const base = this.map.bases[p.side];
     // Pick the spawn point furthest from enemies.
     let best = base.spawns[0];
@@ -204,6 +226,7 @@ export class Match {
       p.armor = 100;
       if (this.rng() < 0.4) p.frag = 1;
     }
+    if (kit) Object.assign(p, kit);
     if (first) p.money = Math.max(p.money, MONEY.start);
     p.spawnAt = now();
     p.protectUntil = p.spawnAt + RESPAWN.protectMs;
@@ -283,8 +306,10 @@ export class Match {
       faction: p.faction,
       score: this.score,
       startedAt: this.startedAt,
-      timeLimit: MATCH.timeLimitMs,
-      scoreLimit: MATCH.scoreLimit,
+      timeLimit: this.mode.def.timeLimitMs,
+      scoreLimit: this.mode.def.scoreLimit,
+      mode: this.modeId,
+      modeState: this.mode.state(),
       sites: this.siteView(),
       gems: this.gems,
       drums: this.drumsDead,
@@ -295,10 +320,12 @@ export class Match {
   }
 
   roster() {
-    return [...this.players.values()].map((o) => ({ id: o.id, name: o.name, side: o.side, faction: o.faction, bot: !o.human, kills: o.kills, deaths: o.deaths, assists: o.assists, points: o.points }));
+    return [...this.players.values()].map((o) => ({ id: o.id, name: o.name, side: o.side, faction: o.faction, bot: !o.human, kills: o.kills, deaths: o.deaths, assists: o.assists, points: o.points, hs: o.headshots, acc: o.shots ? Math.round((o.hits / o.shots) * 100) : 0 }));
   }
 
   siteView() {
+    if (this.mode.id === 'bomb') return this.mode.sitesForBomb().map((s) => ({ id: s.id, label: s.label, resource: s.resource, x: s.x, z: s.z, r: s.r, progress: 0, owner: null, contested: false, bomb: true }));
+    if (!this.mode.usesSites()) return [];
     const list = this.sites.map((s) => ({ id: s.id, label: s.label, resource: s.resource, x: s.x, z: s.z, r: s.r, progress: +s.progress.toFixed(3), owner: s.owner, contested: s.contested }));
     if (this.discovery) list.push({ id: 'D', label: this.discovery.label, resource: this.discovery.resource, x: this.discovery.x, z: this.discovery.z, r: this.discovery.r, progress: +this.discovery.progress.toFixed(3), owner: this.discovery.owner, contested: this.discovery.contested, until: this.discovery.until });
     return list;
@@ -306,6 +333,7 @@ export class Match {
 
   // ---------- inputs from human players ----------
   handle(p, m) {
+    if (this.mode.handle(p, m)) return;
     switch (m.t) {
       case 'st':
         return this.onState(p, m);
@@ -360,6 +388,11 @@ export class Match {
     p.ads = !!m.a;
     p.sprint = !!m.r;
     if (p.status === 'downed' || p.status === 'dead' || p.status === 'medevac') return;
+    // Buy time at the start of a bomb round: nobody moves off the spawn.
+    if (this.mode.frozen() && Math.hypot(m.x - p.x, m.z - p.z) > 0.05) {
+      this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
+      return;
+    }
     const spirit = p.status === 'spirit';
     const maxSpeed = spirit ? RESPAWN.spiritSpeed : PLAYER.run * (FACTIONS[p.faction].perks.speedMult || 1);
     const moved = Math.hypot(m.x - p.x, m.z - p.z);
@@ -378,7 +411,7 @@ export class Match {
   }
 
   canAct(p) {
-    return p.status === 'alive';
+    return p.status === 'alive' && !this.mode.frozen();
   }
 
   ammoOf(p, id) {
@@ -439,6 +472,7 @@ export class Match {
     if (Math.hypot(m.o[0] - p.x, m.o[1] - eyeY, m.o[2] - p.z) > 1.6) return;
     p.lastFire = t;
     p.firedAt = t;
+    p.shots++;
     a.mag--;
     p.protectUntil = 0; // shooting ends spawn protection
     const d = normalise(m.d);
@@ -567,6 +601,7 @@ export class Match {
       rec.dmg += hp;
       rec.t = now();
       v.damagers.set(attacker.id, rec);
+      if (!explosive && !melee && weapon !== 'fire') attacker.hits++;
       this.send(attacker, { t: 'hit', head: zone === 'head', kill: v.health <= 0, wall });
     }
     const dir = from || (attacker ? [attacker.x, attacker.y + 1.4, attacker.z] : null);
@@ -608,9 +643,8 @@ export class Match {
       if (headshot) killer.headshots++;
       const reward = WEAPONS[weapon]?.kill ?? 300;
       killer.money = Math.min(MONEY.max, killer.money + reward);
-      const pts = MATCH.killPoints + (headshot ? MATCH.headshotBonus : 0);
-      killer.points += pts;
-      this.score[killer.side] += pts;
+      killer.points += MATCH.killPoints + (headshot ? MATCH.headshotBonus : 0);
+      this.score[killer.side] += this.mode.killPoints(killer, headshot);
       this.addXP(killer, XP.kill + (headshot ? XP.headshot : 0));
       // Killstreak rewards.
       const artilleryAt = FACTIONS[killer.faction].perks.artilleryAt || KILLSTREAKS.artillery.kills;
@@ -631,13 +665,14 @@ export class Match {
     }
     if (v.human) v.profile.deaths++;
     this.broadcast({ t: 'kill', killer: killer?.id || null, victim: v.id, w: weapon, head: headshot, kn: killer?.name, vn: v.name, ks: killer?.side, vs: v.side });
-    if (!v.human) v.bot.respawnAt = t + RESPAWN.botRespawnMs;
+    if (!v.human) v.bot.respawnAt = t + this.mode.botRespawnMs(v);
+    this.mode.onKill(v, killer, weapon, headshot);
     this.syncMe(v);
   }
 
   grantStreak(p, kind) {
     p.streaksAvail[kind] = true;
-    this.toast(p, `${KILLSTREAKS[kind].name} ready! Press ${kind === 'uav' ? '5' : '6'} to call it.`, 'streak');
+    this.toast(p, `${KILLSTREAKS[kind].name} don ready! Press ${kind === 'uav' ? '5' : '6'} to call am.`, 'streak');
     if (!p.human) p.bot.useStreak(kind);
   }
 
@@ -649,19 +684,20 @@ export class Match {
     const after = Math.floor(p.profile.xp / XP.levelEvery);
     if (after > before) {
       p.profile.gems += GEMS.levelUpGems;
-      this.toast(p, `Promoted! +${GEMS.levelUpGems} life gems 💎`, 'gem');
+      this.toast(p, `Promotion don land! +${GEMS.levelUpGems} life gems 💎`, 'gem');
     }
   }
 
   // ---------- respawning ----------
   onRespawn(p, mode) {
     if (!['dead', 'spirit'].includes(p.status)) return;
+    if (!this.mode.canRespawn(p)) return this.toast(p, 'No respawn for this mode. You go enter next round.', 'info');
     if (mode === 'gem') {
-      if (p.profile.gems < RESPAWN.gemCost) return this.toast(p, 'No life gems. Try a Spirit Run or wait for the medevac.', 'bad');
+      if (p.profile.gems < RESPAWN.gemCost) return this.toast(p, 'You no get life gem. Try Spirit Run or wait for medevac.', 'bad');
       p.profile.gems -= RESPAWN.gemCost;
       this.hooks.saveProfile();
       this.spawn(p);
-      this.toast(p, 'Life gem used. Back to the front!', 'gem');
+      this.toast(p, 'Life gem don work. Back to the front!', 'gem');
     } else if (mode === 'spirit' && p.status === 'dead') {
       p.status = 'spirit';
       p.spiritUntil = now() + RESPAWN.spiritMs;
@@ -682,14 +718,14 @@ export class Match {
   }
 
   onBuy(p, item) {
-    if (!this.canAct(p)) return;
-    if (!this.inBuyZone(p)) return this.toast(p, 'You can only buy at your base or just after deploying.', 'bad');
+    if (p.status !== 'alive') return;
+    if (!this.inBuyZone(p)) return this.toast(p, 'You fit buy only for your base or as you just land.', 'bad');
     const price = priceFor(item, p.faction);
     const w = WEAPONS[item];
     const g = GEAR[item];
     if (!w && !g) return;
     if (w && (w.melee || item === 'p9')) return;
-    if (p.money < price) return this.toast(p, 'Not enough money.', 'bad');
+    if (p.money < price) return this.toast(p, 'Your money no reach.', 'bad');
     if (w) {
       if (p.weapons[w.slot] === item) {
         // Buying the same gun again refills ammo.
@@ -698,14 +734,14 @@ export class Match {
       p.slot = w.slot;
       p.reloadUntil = 0;
     } else if (item === 'vest' || item === 'helmet') {
-      if (p.armor >= 100 && (p.helmet || item === 'vest')) return this.toast(p, 'You already have that.', 'bad');
+      if (p.armor >= 100 && (p.helmet || item === 'vest')) return this.toast(p, 'You don get am already.', 'bad');
       p.armor = 100;
       if (item === 'helmet') p.helmet = true;
     } else if (item === 'medkit') {
-      if (p.medkit >= g.max) return this.toast(p, 'You can carry only one.', 'bad');
+      if (p.medkit >= g.max) return this.toast(p, 'Na only one you fit carry.', 'bad');
       p.medkit++;
     } else {
-      if (p[item] >= g.max) return this.toast(p, `You can carry only ${g.max}.`, 'bad');
+      if (p[item] >= g.max) return this.toast(p, `Na only ${g.max} you fit carry.`, 'bad');
       p[item]++;
     }
     p.money -= price;
@@ -1064,7 +1100,7 @@ export class Match {
         this.hooks.ads.recordGem(a.id, spirit);
         if (spirit) {
           this.spawn(p);
-          this.toast(p, 'The gem pulled your spirit back to life!', 'gem');
+          this.toast(p, 'The gem don pull your spirit come back!', 'gem');
         } else {
           p.profile.gems++;
           p.health = Math.min(PLAYER.maxHealth, p.health + GEMS.heal);
@@ -1081,6 +1117,7 @@ export class Match {
   tick(dt) {
     const t = now();
     if (this.ended) {
+      if (this.mode.def.solo) return; // campaign: the player chooses next stage / retry
       if (t >= this.endsAt) {
         this.reset();
         for (const p of this.humans()) this.send(p, this.info(p));
@@ -1120,39 +1157,42 @@ export class Match {
       if (p.status === 'spirit' && t > p.spiritUntil) {
         p.status = 'dead';
         p.deadAt = t;
-        this.toast(p, 'Your spirit faded. Use a gem or wait for the medevac.', 'bad');
+        this.toast(p, 'Your spirit don fade. Use gem or wait for medevac.', 'bad');
         this.syncMe(p);
       }
       if (p.status === 'medevac' && t >= p.medevacAt) {
         p.money = Math.max(0, p.money - RESPAWN.medevacFee);
         this.spawn(p);
-        this.toast(p, `Medevac complete. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
+        this.toast(p, `Medevac don land you. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
       }
       // A human who leaves the death screen alone too long gets the medevac.
-      if (p.human && p.status === 'dead' && t - p.deadAt > 60000) this.onRespawn(p, 'medevac');
+      if (p.human && p.status === 'dead' && t - p.deadAt > 60000 && this.mode.canRespawn(p)) this.onRespawn(p, 'medevac');
       if (!p.human) p.bot.tick(p, dt);
     }
     this.stepProjectiles(dt);
     this.stepArtillery();
     this.smokes = this.smokes.filter((s) => s.until > t);
     this.stepDrums(dt);
-    this.stepSites(dt);
+    if (this.mode.usesSites()) this.stepSites(dt);
     this.stepGems();
-    this.stepDiscovery();
+    if (this.mode.usesSites()) this.stepDiscovery();
+    this.mode.tick(dt);
+    if (this.ended) return;
     this.secTimer = (this.secTimer || 0) + dt;
     if (this.secTimer >= 1) {
       this.secTimer -= 1;
-      this.payIncome();
+      if (this.mode.usesSites()) this.payIncome();
       for (const p of this.humans()) this.syncMe(p);
       // The roster rides along so names, factions and the scoreboard stay current.
-      this.broadcast({ t: 'score', score: this.score, sites: this.siteView(), roster: this.roster(), left: Math.max(0, MATCH.timeLimitMs - (t - this.startedAt)) });
+      this.broadcast({ t: 'score', score: this.score, sites: this.siteView(), roster: this.roster(), left: Math.max(0, this.mode.def.timeLimitMs - (t - this.startedAt)), modeState: this.mode.state() });
     }
-    if (this.score.sec >= MATCH.scoreLimit || this.score.out >= MATCH.scoreLimit || t - this.startedAt >= MATCH.timeLimitMs) this.endMatch();
+    if (this.mode.checkEnd()) this.endMatch();
     this.sendSnapshots();
   }
 
   endMatch() {
-    const winner = this.score.sec === this.score.out ? null : this.score.sec > this.score.out ? 'sec' : 'out';
+    if (this.ended) return;
+    const winner = this.mode.winner();
     this.ended = true;
     this.endsAt = now() + MATCH.endScreenMs;
     const roster = this.roster().sort((a, b) => b.points - a.points);
@@ -1165,7 +1205,7 @@ export class Match {
       }
     }
     this.hooks.saveProfile();
-    this.broadcast({ t: 'matchEnd', winner, score: this.score, roster, mvp: mvp?.name, next: MATCH.endScreenMs });
+    this.broadcast({ t: 'matchEnd', winner, score: this.score, roster, mvp: mvp?.name, next: MATCH.endScreenMs, mode: this.modeId, modeState: this.mode.state() });
   }
 
   broadcastNear(p, msg, radius) {

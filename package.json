@@ -1,8 +1,8 @@
 {
-  "name": "thirty-six-states",
-  "version": "0.2.0",
+  "name": "proof-of-duty",
+  "version": "0.1.0",
   "private": true,
-  "description": "36 States - a tactical multiplayer FPS set across all 36 states of Nigeria (Three.js)",
+  "description": "Proof of Duty (POD) - tactical multiplayer FPS across all 36 states of Nigeria. Developed by Tcee.",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n client,server -c yellow,green \"npm:dev:client\" \"npm:dev:server\"",
@@ -27,5 +27,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "author": "Tcee"
 }

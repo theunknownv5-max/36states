@@ -1,9 +1,9 @@
 {
-  "appId": "ng.thirtysixstates.game",
-  "appName": "36 States",
+  "appId": "ng.tcee.proofofduty",
+  "appName": "Proof of Duty",
   "webDir": "dist",
   "android": {
-    "backgroundColor": "#05070a",
+    "backgroundColor": "#050404",
     "allowMixedContent": false
   },
   "server": {

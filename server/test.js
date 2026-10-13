@@ -11,7 +11,7 @@ Date.now = () => fakeNow;
 
 const { Match } = await import('./match.js');
 const { AdManager } = await import('./ads.js');
-const { GEMS, RESPAWN, PLAYER, MATCH, priceFor, WEAPONS, DRUMS } = await import('../shared/config.js');
+const { GEMS, RESPAWN, PLAYER, MATCH, priceFor, WEAPONS, DRUMS, BOMB, STAGES, MODES } = await import('../shared/config.js');
 const { generateMap } = await import('../shared/map.js');
 const { STATES } = await import('../shared/states.js');
 
@@ -260,10 +260,111 @@ run(m2, 0.2);
 check(ad.stats.gems >= 1, 'gem pickups credited to the advert on that wall');
 check(!JSON.stringify(ad.stats).includes(A.profile.token), 'no player identity stored in advertiser stats');
 
+section('Gbas Gbos (team deathmatch)');
+{
+  const mm = new Match('kogi', hooks, 'tdm');
+  check(mm.siteView().length === 0, 'no capture sites in deathmatch');
+  run(mm, 60);
+  const kills = [...mm.players.values()].reduce((n, p) => n + p.kills, 0);
+  check(kills > 0 && mm.score.sec + mm.score.out === kills, `team score counts kills (${mm.score.sec}-${mm.score.out}, ${kills} kills)`);
+  mm.score.sec = MODES.tdm.scoreLimit;
+  run(mm, 0.1);
+  check(mm.ended, 'match ends when a team reaches the kill limit');
+}
+
+section('Plant & Defuse (bomb rounds)');
+{
+  const mm = new Match('kano', hooks, 'bomb');
+  const ws = fakeWs();
+  const H = mm.addHuman(ws, 'bandit', profile('Planter')).player;
+  check(mm.mode.phase === 'freeze', 'round starts in buy time');
+  check(!!mm.mode.carrier, 'an outlaw carries the bomb');
+  const t0 = fakeNow;
+  mm.handle(H, { t: 'fire', w: 'p9', o: [H.x, PLAYER.eye, H.z], d: [1, 0, 0], ts: fakeNow });
+  check(H.shots === 0, 'nobody can shoot during buy time');
+  run(mm, BOMB.freezeMs / 1000 + 0.2);
+  check(mm.mode.phase === 'live', 'round goes live after buy time');
+  // Give the human the bomb and put them on site A.
+  mm.mode.carrier = H.id;
+  const A = mm.sites.find((s) => s.id === 'A');
+  for (const p of mm.players.values()) if (p !== H) Object.assign(p, { x: p.side === 'sec' ? -95 : 95, z: 0 });
+  // Keep the bots still for the test.
+  for (const p of mm.players.values()) if (!p.human) p.bot.tick = () => {};
+  Object.assign(H, { x: A.x, y: 0, z: A.z });
+  mm.handle(H, { t: 'act', kind: 'plant' });
+  check(mm.mode.action?.kind === 'plant', 'planting starts inside the site');
+  run(mm, BOMB.plantSecs + 0.2);
+  check(!!mm.mode.planted && ws.log.some((m) => m.t === 'planted'), 'bomb planted after holding');
+  // A security bot defuses.
+  const S = [...mm.players.values()].find((p) => p.side === 'sec');
+  Object.assign(S, { x: mm.mode.planted.x + 1, z: mm.mode.planted.z });
+  mm.mode.startAction(S, 'defuse');
+  run(mm, BOMB.defuseSecs + 0.2);
+  check(mm.score.sec === 1 && ws.log.some((m) => m.t === 'defused'), 'defusing wins the round for Security');
+  run(mm, BOMB.postMs / 1000 + 0.2);
+  check(mm.mode.round === 2 && mm.mode.phase === 'freeze', 'next round starts');
+  // Explosion path.
+  run(mm, BOMB.freezeMs / 1000 + 0.2);
+  mm.mode.carrier = H.id;
+  if (H.status !== 'alive') mm.spawn(H);
+  Object.assign(H, { x: A.x, y: 0, z: A.z, protectUntil: 0 });
+  mm.handle(H, { t: 'act', kind: 'plant' });
+  run(mm, BOMB.plantSecs + 0.2);
+  Object.assign(H, { x: A.x + 60, z: A.z });
+  run(mm, BOMB.fuseMs / 1000 + 0.5);
+  check(mm.score.out === 1 && ws.log.some((m) => m.t === 'roundEnd' && m.winner === 'out'), 'unstopped bomb explodes and Outlaws win the round');
+  // No respawn mid-round.
+  mm.kill(H, null, 'p9');
+  mm.handle(H, { t: 'respawn', mode: 'gem' });
+  check(H.status === 'dead', 'no respawn in Plant & Defuse until the next round');
+  void t0;
+}
+
+section('Bomb bots play the objective');
+{
+  const mm = new Match('lagos', hooks, 'bomb');
+  run(mm, 140);
+  const ended = mm.mode.history.length;
+  check(ended >= 1, `bots finish rounds on their own (${ended} rounds: ${mm.mode.history.join(', ')})`);
+}
+
+section('Campaign stage');
+{
+  const st = STAGES[0];
+  const mm = new Match(st.state, hooks, 'stage', { stage: 0 });
+  const ws = fakeWs();
+  const prof = profile('Solo');
+  const H = mm.addHuman(ws, st.ally, prof).player;
+  const allies = [...mm.players.values()].filter((p) => !p.human && p.side === 'sec').length;
+  check(allies === 2, 'player gets two allies');
+  run(mm, 5);
+  check(mm.mode.wave === 1 && mm.mode.enemyIds.size >= 3, `wave 1 arrives (${mm.mode.enemyIds.size} enemies)`);
+  // Wipe each wave.
+  for (let w = 0; w < st.waves; w++) {
+    for (const id of mm.mode.enemyIds) {
+      const e = mm.players.get(id);
+      if (e && e.status !== 'dead') mm.kill(e, H, 'ak47');
+    }
+    run(mm, 8);
+  }
+  check(mm.ended && mm.mode.result?.won, 'clearing every wave clears the stage');
+  check(prof.stage === 1 && prof.stageStars[0] >= 1, `progress saved (next stage unlocked, ${prof.stageStars[0]} stars)`);
+  // Losing: run out of lives.
+  const mm2 = new Match(st.state, hooks, 'stage', { stage: 0 });
+  const H2 = mm2.addHuman(fakeWs(), st.ally, profile('Unlucky')).player;
+  for (let i = 0; i < st.lives; i++) {
+    if (H2.status !== 'alive') mm2.spawn(H2);
+    mm2.kill(H2, null, 'p9');
+  }
+  check(mm2.ended && !mm2.mode.result.won, 'stage is lost when lives run out');
+}
+
 section('Every state loads');
 for (const s of STATES) {
-  const mm = new Match(s.id, hooks);
-  run(mm, 1);
+  for (const mode of ['conquest', 'tdm', 'bomb']) {
+    const mm = new Match(s.id, hooks, mode);
+    run(mm, 1);
+  }
 }
 check(true, 'all 37 battlefields ran a tick with bots');
 

@@ -1,6 +1,8 @@
-# 36 States
+# Proof of Duty (POD) · V0.1
 
-**The battle for Nigeria.** A tactical online first-person shooter played across all 36 states of Nigeria and the FCT. You choose a state and choose what you are (Police, Army, Civil Defence or Vigilante Hunters against Bandits, Creek Militants or Smugglers). Then you fight real players for that state's real natural resources.
+**Shoot • Survive • Win.** Developed by **Tcee** 🇳🇬, built from scratch by one Nigerian developer.
+
+A tactical online first-person shooter played across all 36 states of Nigeria and the FCT. The game text is in Nigerian Pidgin English. You choose a state and choose what you are (Police, Army, Civil Defence or Vigilante Hunters against Bandits, Creek Militants or Smugglers). Then you fight real players for that state's real natural resources.
 
 It runs in the browser (desktop and mobile) and uses Three.js for 3D. The server is authoritative and written in Node, with WebSockets for live play.
 
@@ -29,9 +31,20 @@ ADMIN_KEY=your-secret npm start    # serves the game, the WebSocket and /admin o
 | `DATA_DIR` | `./data` | Where accounts, profiles and adverts are saved (JSON files) |
 | `VITE_SERVER_URL` | same host | Set at build time if the game server lives on another domain (e.g. `wss://api.example.com/ws`) |
 
-To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. All 34 checks pass.
+To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. All 62 checks pass, including Team Deathmatch, Plant & Defuse rounds and Campaign Stages.
 
 ---
+
+## Game modes
+
+| Mode | What you do |
+| --- | --- |
+| **Hold Ground** | The original mode: capture and hold the state's three resource sites. First side to 750 points wins. |
+| **Gbas Gbos** | Team deathmatch. First to 60 kills, or the side with the most kills after 10 minutes, wins. |
+| **Plant & Defuse** | Rounds with one life each. Outlaws carry a bomb to site A or B and plant it (hold E, 3.5 s). Security stops them or defuses it (hold E, 7 s). First to 5 rounds wins. There's an 8 s buy time at the start of each round, round money, a dropped bomb anyone on that side can pick up, and bots that plant and defuse. |
+| **Campaign Stages** | A solo story of 12 stages across Nigeria, from *Wahala for Marina* (Lagos) to *Aso Rock Final Stand* (FCT). You and 2 bot allies clear waves of enemies with limited lives. You earn up to 3 stars per stage, and the first clear of each stage pays 1 gem. Each clear unlocks the next stage. |
+
+Press **V** (or the chat button on phones) for Pidgin quick chat.
 
 ## How a battle works
 
@@ -157,13 +170,11 @@ Any key you provide replaces the synthesised version. Only use recordings you ha
 
 ## Music
 
-The soundtrack is also composed live in code, with talking drum, shekere, congas, kalimba, pads and bass:
+- **Battle theme:** the official POD track (`client/public/audio/pod-theme.ogg`, with an `.m4a` copy for iPhones). It starts when a battle starts and loops without a gap.
+- **Menu theme:** composed live in code, with talking drum, shekere, congas, kalimba, pads and bass.
+- **Victory and defeat** stingers at the end of each match.
 
-- **Menu theme:** slow and cinematic.
-- **Battle theme:** gets more intense as the fighting around you heats up, and calms down in quiet moments.
-- **Victory and defeat** stingers at the end of each round.
-
-Players set music and sound-effect volume separately in Settings.
+In **Settings** (in the lobby and in the in-game menu) players can turn background music on or off, turn gun sounds on or off, and set music and sound-effect volume separately.
 
 ## Android app (APK)
 
@@ -171,11 +182,11 @@ Every push to `main` builds an Android APK with GitHub Actions (`.github/workflo
 
 1. Push the code to GitHub.
 2. Open the repo → **Actions** and wait for "Android APK" to finish (about 5–8 minutes).
-3. Open **Releases**, download `36-states.apk` on your phone and install it (allow "Install unknown apps" when asked).
+3. Open **Releases**, download `proof-of-duty.apk` on your phone and install it (allow "Install unknown apps" when asked).
 
 The app connects to `https://three6states.onrender.com`. To point it at another server, add a repository variable `GAME_SERVER` under **Settings → Secrets and variables → Actions → Variables**.
 
-The app opens full screen in landscape, with its own icon and splash screen (from `android-res/`). This is a debug-signed build for testing and sharing. Publishing on the Play Store needs a release signing key; ask and the workflow can be extended.
+The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, with its own icon and splash screen (from `android-res/`). This is a debug-signed build for testing and sharing. Publishing on the Play Store needs a release signing key; ask and the workflow can be extended.
 
 ## Controls
 
@@ -191,7 +202,9 @@ The app opens full screen in landscape, with its own icon and splash screen (fro
 | 1 / 2 / 3, wheel, Q | Primary / pistol / machete; Q switches to the last weapon |
 | 4 then G | Pick a grenade, then throw it |
 | B | Buy (at your base or just after deploying) |
-| E | Revive a downed teammate |
+| E | Revive a downed teammate; plant or defuse the bomb (hold) |
+| V, then 1–6 | Quick chat |
+| Shift (while scoped) | Hold your breath to steady the sniper scope |
 | X | First aid kit |
 | 5 / 6 | Recon drone / artillery (aim, then click) |
 | Tab | Scoreboard |
@@ -208,7 +221,7 @@ On phones and tablets the game switches to touch controls:
 
 In the browser, the game goes full screen in landscape when you deploy. Players set touch look speed in Settings.
 
-You can link straight into a battle with `/?state=lagos&as=police`.
+You can link straight into a battle with `/?state=lagos&as=police&mode=bomb` (`mode` is `conquest`, `tdm` or `bomb`), or into a campaign stage with `/?stage=0`.
 
 ---
 
@@ -219,7 +232,8 @@ client/            browser game (Vite)
   index.html
   src/main.js      boot → sign in → war map → battle
   src/game.js      the battle: local fighter, remote fighters, every server event
-  src/world/       arena (terrain, buildings, sky, water), props (trees, landmarks, machinery), markers (ad walls, gems, sites)
+  src/modes-client.js  mode HUD: bomb, rounds, waves, quick chat
+  src/world/       arena (terrain, buildings, sky, water), ambience (clouds, smoke columns, birds, flyovers), props (trees, landmarks, machinery), markers (ad walls, gems, sites)
   src/characters/  jointed soldiers in faction uniforms
   src/fps/         first-person viewmodel, procedural guns, effects
   src/core/        audio, music, input, network, server address, textures, quality presets
@@ -227,6 +241,7 @@ client/            browser game (Vite)
 server/
   index.js         HTTP, WebSocket, accounts, lobby, admin API
   match.js         authoritative battle simulation (20 Hz)
+  modes.js         game mode rules (Hold Ground, Gbas Gbos, Plant & Defuse, Campaign)
   bots.js          bot AI (A* pathing, aiming, strafing, grenades, killstreaks)
   ads.js           advert rotation and privacy-safe analytics
   admin.html       advertiser dashboard
@@ -251,3 +266,9 @@ One server process runs every state's battle. For very large player counts, the 
 - **Graphics.** Everything (textures, weapons, soldiers) is generated in code, so the game loads instantly and needs no asset downloads. The renderer uses PBR lighting, shadows, bloom, colour grading, sun glare and blended terrain, with an Ultra setting for gaming PCs. The resolution adapts automatically to keep the frame rate smooth. For a true AAA look, swap in photo-scanned textures and rigged 3D models (`.glb`); the code is structured so those can replace the generated ones.
 - **Testing.** Gameplay, networking and the server were tested headlessly. Rendering was checked with a software renderer, so test it on your target phones before launch.
 - **Anti-cheat.** The server checks speed, teleporting, walls, fire rate and shot origin. A public launch should add rate-limits per IP and server-side logging.
+
+---
+
+## About
+
+**Proof of Duty** V0.1. © Tcee. Designed and developed solely by Tcee, a Nigerian developer.
