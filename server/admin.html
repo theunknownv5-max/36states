@@ -73,11 +73,25 @@
       #login { max-width: 400px; margin: 14vh auto; }
       .msg { color: var(--muted); font-size: 14px; margin-top: 8px; min-height: 1em; }
       .note { color: var(--muted); font-size: 13px; }
+      .status { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+      .status span { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); font-size: 14px; }
+      .status .good { color: var(--green); border-color: rgba(79, 209, 139, 0.4); }
+      .status .warn { color: var(--gold); border-color: rgba(232, 178, 58, 0.4); }
+      .status .bad { color: var(--red); border-color: rgba(255, 90, 79, 0.4); }
+      .review { display: grid; grid-template-columns: minmax(260px, 420px) 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+      .review img { width: 100%; border-radius: 8px; background: #000; display: block; }
+      .review h3 { margin: 0 0 6px; font: 700 18px 'Rajdhani'; }
+      .review .kv { display: grid; grid-template-columns: 120px 1fr; gap: 3px 10px; font-size: 14px; }
+      .review .kv span:nth-child(odd) { color: var(--muted); }
+      @media (max-width: 800px) { .review { grid-template-columns: 1fr; } }
+      .review-l { background: rgba(79, 157, 255, 0.14); color: var(--blue); }
+      .unpaid { background: rgba(232, 178, 58, 0.14); color: var(--gold); }
+      .pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
     </style>
   </head>
   <body>
     <div id="login" class="card">
-      <div class="logo">36 <span>STATES</span></div>
+      <div class="logo">PROOF OF <span>DUTY</span></div>
       <p class="note">Advertiser command centre</p>
       <label for="key">Admin key</label>
       <input id="key" type="password" placeholder="ADMIN_KEY from the server" />
@@ -87,7 +101,7 @@
 
     <div id="app" hidden>
       <header>
-        <div class="logo">36 <span>STATES</span><small>Advertiser command</small></div>
+        <div class="logo">PROOF OF <span>DUTY</span><small>Advertiser command</small></div>
         <div class="row"><button class="ghost" id="csvBtn">Export report (CSV)</button><button class="ghost" id="logoutBtn">Sign out</button></div>
       </header>
       <main>
@@ -101,10 +115,36 @@
             <div class="kpi"><small>Booked revenue</small><b id="kRev">₦0</b></div>
             <div class="kpi"><small>Players in battle</small><b id="kPlayers">0</b></div>
           </div>
+          <div class="status" id="status"></div>
+        </section>
+
+        <section class="card" id="reviewCard">
+          <h2>Paid adverts waiting for your review <span id="reviewCount"></span></h2>
+          <p class="note">Advertisers have paid for these. Approve to put them live. Reject sends a full Paystack refund and shows your reason to the advertiser.</p>
+          <div id="reviews"></div>
         </section>
 
         <section class="card">
-          <h2>New campaign</h2>
+          <h2>Prices (naira)</h2>
+          <div class="pgrid">
+            <div><label>Sky billboard / day</label><input id="pSky" type="number" min="1" /></div>
+            <div><label>LED screen / day</label><input id="pLed" type="number" min="1" /></div>
+            <div><label>Wall banner / day</label><input id="pWall" type="number" min="1" /></div>
+            <div><label>Premium states ×</label><input id="pPrem" type="number" step="0.05" min="1" /></div>
+            <div><label>Major states ×</label><input id="pMajor" type="number" step="0.05" min="1" /></div>
+            <div><label>Exclusive ×</label><input id="pExcl" type="number" step="0.5" min="1" /></div>
+            <div><label>Advertisers per billboard</label><input id="pShares" type="number" min="1" max="12" /></div>
+            <div><label>Rotate every (seconds)</label><input id="pRot" type="number" min="5" max="120" /></div>
+            <div><label>7+ days discount %</label><input id="pD7" type="number" min="0" max="90" /></div>
+            <div><label>30+ days discount %</label><input id="pD30" type="number" min="0" max="90" /></div>
+          </div>
+          <p class="note" id="tierNote"></p>
+          <div class="row" style="margin-top: 10px"><button id="priceBtn">Save prices</button><span class="msg" id="priceMsg"></span></div>
+        </section>
+
+        <section class="card">
+          <h2>New house / direct campaign</h2>
+          <p class="note">For deals you arrange yourself. Paid bookings from the portal (/advertise) appear above automatically.</p>
           <div class="grid">
             <div><label>Advertiser</label><input id="fAdv" placeholder="e.g. Naija Malt" /></div>
             <div><label>Campaign</label><input id="fTitle" placeholder="e.g. Sallah promo" /></div>
@@ -113,7 +153,7 @@
             <div><label>Start date</label><input id="fStart" type="date" /></div>
             <div><label>End date</label><input id="fEnd" type="date" /></div>
           </div>
-          <label>Wall artwork (PNG / JPG / WEBP, landscape about 2:1, under 2 MB)</label>
+          <label>Artwork (PNG / JPG / WEBP, 2:1 for walls or 16:9 for sky and LED boards, under 6 MB)</label>
           <input id="fImage" type="file" accept="image/png,image/jpeg,image/webp" />
           <div class="preview" id="preview">No artwork yet</div>
           <label>Target states</label>
@@ -121,15 +161,21 @@
           <div class="zones" id="zones"></div>
           <div class="row" style="margin-top: 14px"><button id="createBtn">Launch campaign</button></div>
           <div class="msg" id="createMsg"></div>
-          <p class="note">Every advert wall carries a life gem. Players walk up to your wall to collect it, and dead players run to it as spirits to come back, so walls get close, repeated attention. Views count only when your wall is on a player's screen within 45 m, once per player per minute. Advertisers see totals by state, side, faction and hour, never who the individual players are.</p>
+          <p class="note">House adverts fill billboards nobody has booked, and share rotation with paid ones. Every advert wall carries a life gem. Players walk up to your wall to collect it, and dead players run to it as spirits to come back, so walls get close, repeated attention. Views count only when your wall is on a player's screen within 45 m, once per player per minute. Advertisers see totals by state, side, faction and hour, never who the individual players are.</p>
         </section>
 
         <section class="card">
           <h2>Campaigns</h2>
           <table>
-            <thead><tr><th>Art</th><th>Advertiser</th><th>Targets</th><th>Views</th><th>Unique players</th><th>Gem pickups</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Art</th><th>Advertiser</th><th>Where</th><th>Views</th><th>Unique players</th><th>Gem pickups</th><th>Paid</th><th>Status</th><th></th></tr></thead>
             <tbody id="rows"></tbody>
           </table>
+        </section>
+
+        <section class="card">
+          <h2>Advertiser accounts <span id="advCount"></span></h2>
+          <div class="row"><input id="rEmail" placeholder="advertiser email" style="max-width: 260px" /><input id="rPass" placeholder="new password (8+)" style="max-width: 220px" /><button class="ghost" id="resetBtn">Reset password</button><span class="msg" id="resetMsg"></span></div>
+          <table style="margin-top: 10px"><thead><tr><th>Business</th><th>Email</th><th>Phone</th><th>Since</th></tr></thead><tbody id="advRows"></tbody></table>
         </section>
 
         <section class="card" id="detail" hidden>
@@ -160,7 +206,7 @@
       const ZONES = { NC: 'North Central', NE: 'North East', NW: 'North West', SE: 'South East', SS: 'South South', SW: 'South West' };
       const ZONE_OF = { abia: 'SE', adamawa: 'NE', akwaibom: 'SS', anambra: 'SE', bauchi: 'NE', bayelsa: 'SS', benue: 'NC', borno: 'NE', crossriver: 'SS', delta: 'SS', ebonyi: 'SE', edo: 'SS', ekiti: 'SW', enugu: 'SE', gombe: 'NE', imo: 'SE', jigawa: 'NW', kaduna: 'NW', kano: 'NW', katsina: 'NW', kebbi: 'NW', kogi: 'NC', kwara: 'NC', lagos: 'SW', nasarawa: 'NC', niger: 'NC', ogun: 'SW', ondo: 'SW', osun: 'SW', oyo: 'SW', plateau: 'NC', rivers: 'SS', sokoto: 'NW', taraba: 'NE', yobe: 'NE', zamfara: 'NW', fct: 'NC' };
       const FACTION = { police: 'Police', army: 'Army', civildefence: 'Civil Defence', vigilante: 'Vigilante Hunters', bandit: 'Bandits', militant: 'Creek Militants', smuggler: 'Smugglers' };
-      let key = sessionStorage.getItem('36adminKey') || '';
+      let key = sessionStorage.getItem('podAdminKey') || sessionStorage.getItem('36adminKey') || '';
       let data = null;
       let chosen = new Set();
       let imageData = null;
@@ -180,7 +226,7 @@
       async function login() {
         try {
           data = await api('overview');
-          sessionStorage.setItem('36adminKey', key);
+          sessionStorage.setItem('podAdminKey', key);
           $('login').hidden = true;
           $('app').hidden = false;
           renderZones();
@@ -205,34 +251,94 @@
         );
       }
 
-      function isLive(a) {
-        const now = Date.now();
-        return !a.paused && (!a.start || now >= Date.parse(a.start)) && (!a.end || now <= Date.parse(a.end) + 86400000);
+      const isLive = (a) => a.liveStatus === 'live';
+      const STATUS = { live: 'LIVE', review: 'NEEDS REVIEW', unpaid: 'NOT PAID', scheduled: 'SCHEDULED', ended: 'ENDED', rejected: 'REJECTED', paused: 'PAUSED', off: 'SCHEDULED/ENDED' };
+      const STATUS_CLS = { live: 'live', review: 'review-l', unpaid: 'unpaid', scheduled: 'review-l' };
+      const fmtDate = (ms) => (ms ? new Date(ms).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+      const revenue = (a) => (a.kind === 'paid' ? (a.paidAt && a.status !== 'rejected' ? a.priceNaira : 0) : a.priceNaira || 0);
+
+      function renderStatus() {
+        const pay = { live: ['good', 'Paystack LIVE: real payments on'], test: ['warn', 'Paystack TEST mode: no real money'], off: ['bad', 'Paystack OFF: set PAYSTACK_SECRET_KEY'] }[data.payments];
+        const st = data.storage === 'supabase' ? ['good', 'Storage: Supabase (data is kept)'] : ['bad', 'Storage: local files (lost on restart). Set SUPABASE_URL + SUPABASE_SERVICE_KEY'];
+        $('status').innerHTML = `<span class="${pay[0]}">${pay[1]}</span><span class="${st[0]}">${st[1]}</span><span>Portal: <a href="/advertise" target="_blank" style="color:var(--gold)">${location.host}/advertise</a></span>`;
+      }
+
+      function renderReviews() {
+        const phone = Object.fromEntries((data.advertisers || []).map((a) => [a.id, a.phone]));
+        const list = data.ads.filter((a) => a.kind === 'paid' && (a.status === 'review' || (a.status === 'unpaid' && a.reference)));
+        const waiting = list.filter((a) => a.status === 'review').length;
+        $('reviewCount').textContent = waiting ? `(${waiting})` : '';
+        $('reviews').innerHTML = list.length
+          ? list
+              .sort((a, b) => (a.status === 'review' ? -1 : 1) - (b.status === 'review' ? -1 : 1) || a.created - b.created)
+              .map(
+                (a) => `<div class="review"><img src="${esc(a.preview)}" alt="">
+                <div><h3>${esc(a.advertiser)} <span class="pill ${STATUS_CLS[a.liveStatus] || 'off'}">${STATUS[a.liveStatus] || a.liveStatus}</span></h3>
+                <div class="kv"><span>Billboard</span><span><b>${esc(a.boardCode)}</b> · ${esc(data.types[a.boardType]?.name || '')}${a.exclusive ? ' · EXCLUSIVE' : ''}<br><span class="note">${esc(a.boardLabel || '')}</span></span>
+                <span>Dates</span><span>${esc(a.startDay)} · ${a.days} day${a.days > 1 ? 's' : ''}</span>
+                <span>Amount</span><span><b>${naira(a.priceNaira)}</b>${a.paidAt ? ` · paid ${fmtDate(a.paidAt)}${a.channel ? ' by ' + esc(a.channel) : ''}` : ' · payment started, not confirmed'}</span>
+                <span>Reference</span><span style="font-family:'JetBrains Mono'">${esc(a.reference || '')}</span>
+                <span>Contact</span><span>${esc(a.email || '')} · ${esc(phone[a.advertiserId] || '')}</span>
+                <span>Artwork</span><span>${a.size ? `${a.size.w}×${a.size.h}` : ''}${a.link ? ` · <a href="${esc(a.link)}" target="_blank" rel="noopener" style="color:var(--gold)">${esc(a.link)}</a>` : ''}${a.title ? ` · “${esc(a.title)}”` : ''}</span></div>
+                <div class="row" style="margin-top:10px">${a.status === 'review' ? `<button data-approve="${a.id}">Approve & go live</button><button class="danger" data-reject="${a.id}">Reject & refund</button>` : `<button class="ghost" data-verify="${a.id}">Check payment with Paystack</button>`}</div></div></div>`
+              )
+              .join('')
+          : '<p class="note">Nothing waiting. New paid bookings appear here.</p>';
+      }
+
+      function renderPricing() {
+        if (document.activeElement && document.activeElement.closest('.pgrid')) return; // don't overwrite while typing
+        const p = data.pricing;
+        const tier = (n) => p.tiers.find((t) => t.name === n) || { mult: 1, states: [] };
+        $('pSky').value = p.daily.sky;
+        $('pLed').value = p.daily.led;
+        $('pWall').value = p.daily.wall;
+        $('pPrem').value = tier('Premium state').mult;
+        $('pMajor').value = tier('Major state').mult;
+        $('pExcl').value = p.exclusiveMult;
+        $('pShares').value = p.shares;
+        $('pRot').value = p.rotateSecs;
+        $('pD7').value = p.discounts.find((d) => d.days === 7)?.off ?? 0;
+        $('pD30').value = p.discounts.find((d) => d.days === 30)?.off ?? 0;
+        $('tierNote').textContent = p.tiers.map((t) => `${t.name}: ${t.states.map(stateName).join(', ')}`).join(' · ') + '. Every other state is standard (×1).';
+      }
+
+      function renderAdvertisers() {
+        const list = data.advertisers || [];
+        $('advCount').textContent = `(${list.length})`;
+        $('advRows').innerHTML = list
+          .sort((a, b) => b.created - a.created)
+          .map((a) => `<tr><td><b>${esc(a.business)}</b></td><td>${esc(a.email)}</td><td>${esc(a.phone)}</td><td class="note">${fmtDate(a.created)}</td></tr>`)
+          .join('') || '<tr><td colspan="4" class="note">No advertiser accounts yet.</td></tr>';
       }
 
       function render() {
-        const ads = data.ads;
-        $('kLive').textContent = ads.filter(isLive).length;
+        renderStatus();
+        renderReviews();
+        renderPricing();
+        renderAdvertisers();
+        const ads = data.ads.filter((a) => a.kind !== 'paid' || (a.status !== 'unpaid' && a.status !== 'review'));
+        $('kLive').textContent = data.ads.filter(isLive).length;
         $('kViews').textContent = num(ads.reduce((s, a) => s + (a.stats?.views || 0), 0));
         $('kUniq').textContent = num(ads.reduce((s, a) => s + (a.stats?.uniques || 0), 0));
         $('kGems').textContent = num(ads.reduce((s, a) => s + (a.stats?.gems || 0) + (a.stats?.spiritGems || 0), 0));
-        $('kRev').textContent = naira(ads.reduce((s, a) => s + (a.priceNaira || 0), 0));
+        $('kRev').textContent = naira(data.ads.reduce((s, a) => s + revenue(a), 0));
         $('kPlayers').textContent = num(data.lobby.reduce((s, l) => s + l.humans, 0));
         $('rows').innerHTML = ads
           .slice()
           .reverse()
           .map((a) => {
             const s = a.stats || {};
-            const targets = a.states.includes('all') ? 'All states' : a.states.length > 3 ? `${a.states.length} states` : a.states.map(stateName).join(', ');
+            const targets = a.kind === 'paid' ? `${a.boardCode} · ${stateName(a.states[0])}${a.exclusive ? ' · exclusive' : ''}` : a.states.includes('all') ? 'All states' : a.states.length > 3 ? `${a.states.length} states` : a.states.map(stateName).join(', ');
             return `<tr data-id="${a.id}" class="${selected === a.id ? 'sel' : ''}">
-              <td><img src="/ads/${a.file}" alt=""></td>
+              <td><img src="${esc(a.preview)}" alt=""></td>
               <td><b>${esc(a.advertiser)}</b><br><span class="note">${esc(a.title || '')}</span></td>
               <td>${esc(targets)}</td>
               <td class="num">${num(s.views)}</td>
               <td class="num">${num(s.uniques)}</td>
               <td class="num">${num((s.gems || 0) + (s.spiritGems || 0))}</td>
               <td class="num">${naira(a.priceNaira)}</td>
-              <td><span class="pill ${isLive(a) ? 'live' : 'off'}">${isLive(a) ? 'LIVE' : a.paused ? 'PAUSED' : 'SCHEDULED/ENDED'}</span></td>
+              <td><span class="pill ${STATUS_CLS[a.liveStatus] || 'off'}">${STATUS[a.liveStatus] || a.liveStatus}</span>${a.kind === 'paid' && a.endMs ? `<br><span class="note">until ${fmtDate(a.endMs)}</span>` : ''}</td>
               <td><div class="row"><button class="ghost" data-view="${a.id}">Report</button><button class="ghost" data-pause="${a.id}">${a.paused ? 'Resume' : 'Pause'}</button><button class="danger" data-del="${a.id}">Delete</button></div></td>
             </tr>`;
           })
@@ -276,7 +382,7 @@
       $('fImage').addEventListener('change', (e) => {
         const f = e.target.files[0];
         if (!f) return;
-        if (f.size > 2 * 1024 * 1024) return ($('createMsg').textContent = 'Artwork must be under 2 MB.');
+        if (f.size > 6 * 1024 * 1024) return ($('createMsg').textContent = 'Artwork must be under 6 MB.');
         const r = new FileReader();
         r.onload = () => {
           imageData = r.result;
@@ -342,11 +448,60 @@
         render();
       });
 
+      $('reviews').addEventListener('click', async (e) => {
+        const t = e.target.closest('button');
+        if (!t) return;
+        t.disabled = true;
+        try {
+          if (t.dataset.approve) await api(`bookings/${t.dataset.approve}/approve`, { method: 'POST', body: '{}' });
+          if (t.dataset.verify) await api(`bookings/${t.dataset.verify}/verify`, { method: 'POST', body: '{}' });
+          if (t.dataset.reject) {
+            const reason = prompt('Why are you rejecting it? The advertiser will see this. They get a full refund.');
+            if (reason === null) return;
+            await api(`bookings/${t.dataset.reject}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+          }
+          data = await api('overview');
+          render();
+        } catch (ex) {
+          alert(ex.message);
+        } finally {
+          t.disabled = false;
+        }
+      });
+
+      $('priceBtn').onclick = async () => {
+        const p = structuredClone(data.pricing);
+        const v = (id) => Number($(id).value);
+        p.daily = { sky: v('pSky'), led: v('pLed'), wall: v('pWall') };
+        for (const t of p.tiers) t.mult = t.name === 'Premium state' ? v('pPrem') : t.name === 'Major state' ? v('pMajor') : t.mult;
+        p.exclusiveMult = v('pExcl');
+        p.shares = v('pShares');
+        p.rotateSecs = v('pRot');
+        p.discounts = [{ days: 30, off: v('pD30') }, { days: 7, off: v('pD7') }];
+        try {
+          const r = await api('pricing', { method: 'PUT', body: JSON.stringify(p) });
+          data.pricing = r.pricing;
+          $('priceMsg').textContent = 'Saved. New bookings use these prices.';
+        } catch (ex) {
+          $('priceMsg').textContent = ex.message;
+        }
+      };
+
+      $('resetBtn').onclick = async () => {
+        try {
+          const r = await api('reset-password', { method: 'POST', body: JSON.stringify({ email: $('rEmail').value, password: $('rPass').value }) });
+          $('resetMsg').textContent = `Password reset for ${r.account.business}. Send it to them privately.`;
+          $('rPass').value = '';
+        } catch (ex) {
+          $('resetMsg').textContent = ex.message;
+        }
+      };
+
       $('csvBtn').onclick = async () => {
         const res = await fetch('/api/admin/report.csv', { headers: { 'x-admin-key': key } });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(await res.blob());
-        link.download = '36-states-ad-report.csv';
+        link.download = 'pod-ad-report.csv';
         link.click();
       };
       $('loginBtn').onclick = () => {
@@ -355,7 +510,7 @@
       };
       $('key').addEventListener('keydown', (e) => e.key === 'Enter' && $('loginBtn').click());
       $('logoutBtn').onclick = () => {
-        sessionStorage.removeItem('36adminKey');
+        sessionStorage.removeItem('podAdminKey');
         location.reload();
       };
       if (key) login();

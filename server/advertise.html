@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Advertise on Proof of Duty</title>
+    <meta name="description" content="Put your brand on HD billboards inside Proof of Duty, the Nigerian tactical shooter. Pick a state and billboard, upload your artwork and pay in naira with Paystack." />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #070605;
+        --panel: #12100e;
+        --panel2: #1a1714;
+        --line: rgba(255, 255, 255, 0.09);
+        --ink: #f3eee8;
+        --muted: #a59a8e;
+        --pod: #ff7a1a;
+        --pod2: #ffb347;
+        --good: #4fe08a;
+        --bad: #ff5a4f;
+        --blue: #4f9dff;
+        --gem: #3fe0ff;
+        --title: 'Black Ops One', Impact, sans-serif;
+        --body: 'Rajdhani', system-ui, sans-serif;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html { -webkit-text-size-adjust: 100%; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 500 16px/1.45 var(--body); min-height: 100vh; }
+      a { color: var(--pod2); }
+      header.top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: rgba(7, 6, 5, 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+      header.top img { width: 40px; height: 40px; object-fit: contain; }
+      header.top .brand { font: 400 20px var(--title); letter-spacing: 0.02em; line-height: 1; }
+      header.top .brand small { display: block; font: 700 11px var(--body); letter-spacing: 0.22em; color: var(--pod2); text-transform: uppercase; margin-top: 3px; }
+      header.top .sp { flex: 1; }
+      main { max-width: 1180px; margin: 0 auto; padding: 0 16px 60px; }
+      .btn { appearance: none; border: 0; border-radius: 10px; padding: 12px 18px; font: 700 16px var(--body); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; background: linear-gradient(180deg, var(--pod2), var(--pod)); color: #1a0c02; box-shadow: 0 6px 22px rgba(255, 122, 26, 0.25); }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+      .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+      .btn.small { padding: 8px 12px; font-size: 14px; }
+      .btn.danger { background: transparent; color: var(--bad); border: 1px solid rgba(255, 90, 79, 0.4); box-shadow: none; }
+
+      /* hero */
+      .hero { position: relative; margin: 18px 0 8px; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(120% 120% at 85% 10%, rgba(255, 122, 26, 0.35), transparent 55%), linear-gradient(160deg, #1d120a, #0b0907 60%); padding: 28px 22px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: center; }
+      .hero h1 { margin: 0 0 10px; font: 400 clamp(30px, 5vw, 50px)/1.02 var(--title); }
+      .hero h1 em { font-style: normal; color: var(--pod); }
+      .hero p { margin: 0 0 16px; color: #e3d6c8; font-size: 18px; max-width: 46ch; }
+      .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+      .stat { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; min-width: 110px; }
+      .stat b { display: block; font: 700 22px var(--mono); color: var(--pod2); }
+      .stat small { color: var(--muted); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+      .mock { position: relative; aspect-ratio: 16 / 11; border-radius: 14px; overflow: hidden; background: linear-gradient(180deg, #8fb6d8 0%, #d9c7a8 62%, #6f5a43 62%, #4a3b2b 100%); box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.35); }
+      .mock .tower { position: absolute; bottom: 38%; width: 30%; background: linear-gradient(90deg, #5b6066, #7a8087); }
+      .mock .board { position: absolute; left: 50%; top: 9%; width: 70%; aspect-ratio: 16 / 9; transform: translateX(-50%); border: 6px solid #24272b; border-radius: 3px; background: #111 center / cover no-repeat; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+      .mock .board.r21 { aspect-ratio: 2 / 1; top: 30%; width: 58%; }
+      .mock .legs { position: absolute; left: 50%; transform: translateX(-50%); top: 9%; width: 4%; height: 60%; background: #3b4046; z-index: -1; }
+      .mock .ground-fig { position: absolute; bottom: 12%; width: 4%; height: 14%; background: #20201e; border-radius: 40% 40% 10% 10%; }
+      .mock .tag { position: absolute; left: 10px; bottom: 10px; font: 700 12px var(--body); letter-spacing: 0.16em; text-transform: uppercase; background: rgba(0, 0, 0, 0.6); padding: 4px 8px; border-radius: 6px; }
+
+      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 16px 0 24px; }
+      .steps div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 15px; color: #dcd2c7; }
+      .steps b { display: block; color: var(--pod2); font: 400 22px var(--title); }
+
+      section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin: 16px 0; }
+      .card h2 { margin: 0 0 4px; font: 400 24px var(--title); display: flex; align-items: center; gap: 10px; }
+      .card h2 .n { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--pod); color: #1a0c02; font: 700 17px var(--body); }
+      .card > p.sub { margin: 0 0 14px; color: var(--muted); }
+      .muted { color: var(--muted); }
+
+      .search { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: #0d0b09; color: var(--ink); font: 600 16px var(--body); margin-bottom: 12px; }
+      .states { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-height: 340px; overflow: auto; padding-right: 4px; }
+      .st { text-align: left; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 10px; padding: 9px 11px; cursor: pointer; font: 700 16px var(--body); }
+      .st small { display: block; font: 600 12px var(--body); color: var(--muted); }
+      .st.premium small { color: var(--pod2); }
+      .st.on { border-color: var(--pod); background: rgba(255, 122, 26, 0.12); }
+      .st .live { color: var(--good); }
+
+      .pick { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 16px; }
+      .mapbox { background: #0d0b09; border: 1px solid var(--line); border-radius: 12px; padding: 8px; position: sticky; top: 72px; align-self: start; }
+      .mapbox svg { width: 100%; height: auto; display: block; }
+      .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); padding: 6px 4px 2px; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+      .boards { display: grid; gap: 8px; }
+      .tabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+      .tabs button { border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: 700 14px var(--body); cursor: pointer; }
+      .tabs button.on { background: var(--pod); color: #1a0c02; border-color: var(--pod); }
+      .bd { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; }
+      .bd.on { border-color: var(--pod); box-shadow: 0 0 0 1px var(--pod) inset; }
+      .bd .code { font: 700 14px var(--mono); color: var(--pod2); }
+      .bd .type { font-weight: 700; }
+      .bd .lab { grid-column: 1 / -1; color: var(--muted); font-size: 14px; }
+      .bd .price { font: 700 15px var(--mono); text-align: right; }
+      .bd .meta { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+      .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); font: 700 12px var(--body); letter-spacing: 0.06em; text-transform: uppercase; }
+      .chip.full { background: rgba(255, 90, 79, 0.15); color: var(--bad); }
+      .chip.free { background: rgba(79, 224, 138, 0.12); color: var(--good); }
+
+      .art { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .drop { display: block; border: 2px dashed rgba(255, 179, 71, 0.4); border-radius: 14px; padding: 18px; text-align: center; cursor: pointer; background: rgba(255, 122, 26, 0.04); }
+      .drop.over { background: rgba(255, 122, 26, 0.12); }
+      .drop b { display: block; font-size: 18px; }
+      .checks { list-style: none; padding: 0; margin: 10px 0 0; font-size: 15px; }
+      .checks li { padding: 3px 0; }
+      .checks .ok::before { content: '✓ '; color: var(--good); font-weight: 700; }
+      .checks .no::before { content: '✗ '; color: var(--bad); font-weight: 700; }
+      label.f { display: block; font: 700 12px var(--body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 12px 0 5px; }
+      input.f, select.f { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: #0d0b09; color: var(--ink); font: 600 16px var(--body); }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+      .presets button { border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: 700 14px var(--body); cursor: pointer; }
+      .presets button.on { border-color: var(--pod); color: var(--pod2); }
+      .switch { display: flex; align-items: center; gap: 10px; margin-top: 14px; cursor: pointer; }
+      .switch input { width: 20px; height: 20px; accent-color: var(--pod); }
+
+      .summary { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; background: linear-gradient(120deg, rgba(255, 122, 26, 0.16), rgba(255, 122, 26, 0.03)); border: 1px solid rgba(255, 122, 26, 0.35); border-radius: 14px; padding: 16px; }
+      .summary .total { font: 700 34px var(--mono); color: var(--pod2); line-height: 1; }
+      .summary .lines { color: #e3d6c8; font-size: 15px; }
+      .err { color: var(--bad); font-weight: 700; margin-top: 8px; }
+      .okmsg { color: var(--good); font-weight: 700; }
+
+      .auth { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .auth .box { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+      .auth h3 { margin: 0 0 4px; font: 700 18px var(--body); }
+
+      .camps { display: grid; gap: 12px; }
+      .camp { display: grid; grid-template-columns: 220px 1fr; gap: 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+      .camp img { width: 100%; border-radius: 8px; background: #000; display: block; }
+      .camp h3 { margin: 0; font: 700 18px var(--body); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .camp .kv { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: var(--muted); margin: 4px 0 8px; }
+      .camp .kv b { color: var(--ink); }
+      .st-live { background: rgba(79, 224, 138, 0.15); color: var(--good); }
+      .st-review, .st-scheduled { background: rgba(79, 157, 255, 0.15); color: var(--blue); }
+      .st-unpaid { background: rgba(255, 179, 71, 0.15); color: var(--pod2); }
+      .st-rejected { background: rgba(255, 90, 79, 0.15); color: var(--bad); }
+      .nums { display: flex; gap: 10px; flex-wrap: wrap; }
+      .nums div { background: rgba(0, 0, 0, 0.3); border-radius: 8px; padding: 6px 10px; }
+      .nums b { font: 700 18px var(--mono); display: block; }
+      .nums small { color: var(--muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+      .spark { display: flex; align-items: flex-end; gap: 2px; height: 40px; margin-top: 8px; }
+      .spark i { flex: 1; background: var(--pod); border-radius: 2px 2px 0 0; min-height: 2px; opacity: 0.85; }
+      .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+      .banner { border-radius: 14px; padding: 14px 16px; margin: 16px 0; font-size: 17px; }
+      .banner.good { background: rgba(79, 224, 138, 0.1); border: 1px solid rgba(79, 224, 138, 0.35); }
+      .banner.warn { background: rgba(255, 179, 71, 0.1); border: 1px solid rgba(255, 179, 71, 0.35); }
+      .rules { columns: 2; font-size: 15px; color: #d8cdc1; margin: 8px 0 0; padding-left: 18px; }
+      footer { text-align: center; color: var(--muted); font-size: 14px; padding: 30px 16px; border-top: 1px solid var(--line); }
+      .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #201a14; border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; z-index: 50; font-weight: 700; max-width: 92vw; }
+      @media (max-width: 520px) {
+        header.top { gap: 8px; padding: 8px 12px; }
+        header.top img { width: 32px; height: 32px; }
+        header.top .brand { font-size: 15px; }
+        header.top .brand small { display: none; }
+        header.top .btn.small { padding: 7px 9px; font-size: 12px; letter-spacing: 0.03em; }
+      }
+      @media (max-width: 860px) {
+        .hero, .pick, .art, .auth, .camp { grid-template-columns: 1fr; }
+        .mapbox { position: static; }
+        .steps { grid-template-columns: 1fr 1fr; }
+        .rules { columns: 1; }
+        .summary { grid-template-columns: 1fr; }
+        .summary .btn { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <img src="/img/pod-logo.webp" alt="" onerror="this.style.display='none'" />
+      <div class="brand">PROOF OF DUTY<small>Advertise · Ad Portal</small></div>
+      <div class="sp"></div>
+      <button class="btn ghost small" id="nav-camps" hidden>My campaigns</button>
+      <button class="btn ghost small" id="nav-login">Log in</button>
+      <button class="btn ghost small" id="nav-logout" hidden>Log out</button>
+    </header>
+
+    <main>
+      <div id="return-banner" hidden></div>
+      <div id="pay-off" class="banner warn" hidden>Payments are switching on soon. You can look around and plan your campaign now.</div>
+
+      <div class="hero">
+        <div>
+          <h1>Put your brand <em>inside the battle.</em></h1>
+          <p>Proof of Duty is a Nigerian tactical shooter played across all 36 states and the FCT. Your artwork goes on HD billboards that soldiers see while they fight. You pay in naira, and you see every view.</p>
+          <a class="btn" href="#book">Book a billboard</a>
+          <div class="stats">
+            <div class="stat"><b id="s-boards">–</b><small>Billboards</small></div>
+            <div class="stat"><b>37</b><small>Battlefields</small></div>
+            <div class="stat"><b id="s-live">–</b><small>Soldiers online</small></div>
+            <div class="stat"><b id="s-from">–</b><small>From / day</small></div>
+          </div>
+        </div>
+        <div class="mock" id="hero-mock">
+          <div class="tower" style="left: 4%; height: 40%"></div>
+          <div class="tower" style="right: 2%; height: 52%; width: 22%"></div>
+          <div class="legs"></div>
+          <div class="board" id="hero-board" style="background-image: linear-gradient(135deg, #ff7a1a, #3a1a06)"></div>
+          <div class="ground-fig" style="left: 30%"></div>
+          <div class="ground-fig" style="left: 62%; height: 12%"></div>
+          <span class="tag">Sky Billboard · in-game</span>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div><b>1</b>Pick a state and a billboard.</div>
+        <div><b>2</b>Upload HD artwork and choose your dates.</div>
+        <div><b>3</b>Pay in naira with Paystack (card, transfer or USSD).</div>
+        <div><b>4</b>We check your artwork and it goes live. Track your views here.</div>
+      </div>
+
+      <section class="card" id="book">
+        <h2><span class="n">1</span>Choose a state</h2>
+        <p class="sub">Premium states (Lagos, FCT, Rivers) see the most players and cost more.</p>
+        <input class="search" id="state-q" placeholder="Search states…" autocomplete="off" />
+        <div class="states" id="states"></div>
+      </section>
+
+      <section class="card" id="step-board" hidden>
+        <h2><span class="n">2</span>Choose a billboard in <span id="b-state"></span></h2>
+        <p class="sub">Each billboard rotates up to <span id="b-shares">4</span> advertisers, every <span id="b-rot">12</span> seconds. Book it <b>exclusive</b> to have it all to yourself.</p>
+        <div class="pick">
+          <div class="mapbox">
+            <svg id="map" viewBox="-165 -172 330 340" aria-label="Map of the battlefield"></svg>
+            <div class="legend">
+              <span><i style="background: #ff7a1a"></i>Sky billboard</span>
+              <span><i style="background: #3fe0ff"></i>LED screen</span>
+              <span><i style="background: #ffd23f"></i>Wall banner</span>
+              <span><i style="background: #4f9dff"></i>Security base</span>
+              <span><i style="background: #ff5a4f"></i>Outlaw base</span>
+            </div>
+          </div>
+          <div>
+            <div class="tabs" id="type-tabs"></div>
+            <div class="boards" id="boards"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="step-art" hidden>
+        <h2><span class="n">3</span>Artwork and dates</h2>
+        <p class="sub" id="art-spec"></p>
+        <div class="art">
+          <div>
+            <label class="drop" id="drop">
+              <input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden />
+              <b>Tap to upload your artwork</b>
+              <span class="muted">PNG, JPEG or WEBP, up to 6 MB</span>
+            </label>
+            <ul class="checks" id="checks"></ul>
+            <button class="btn ghost small" id="crop" hidden>Crop to fit</button>
+            <label class="f" for="title">Campaign name (for you)</label>
+            <input class="f" id="title" maxlength="120" placeholder="e.g. December sale" />
+            <label class="f" for="link">Your website or WhatsApp link (optional)</label>
+            <input class="f" id="link" maxlength="300" placeholder="https://" inputmode="url" />
+          </div>
+          <div>
+            <div class="mock" id="preview">
+              <div class="tower" style="left: 3%; height: 34%"></div>
+              <div class="legs"></div>
+              <div class="board" id="preview-board"></div>
+              <div class="ground-fig" style="left: 28%"></div>
+              <div class="ground-fig" style="left: 66%; height: 12%"></div>
+              <span class="tag" id="preview-tag">Preview</span>
+            </div>
+            <div class="row">
+              <div>
+                <label class="f" for="start">Start date</label>
+                <input class="f" type="date" id="start" />
+              </div>
+              <div>
+                <label class="f" for="days">Days</label>
+                <input class="f" type="number" id="days" min="1" max="90" value="7" inputmode="numeric" />
+              </div>
+            </div>
+            <div class="presets" id="presets">
+              <button data-d="1">1 day</button><button data-d="7">7 days · 10% off</button><button data-d="14">14 days</button><button data-d="30">30 days · 20% off</button>
+            </div>
+            <label class="switch"><input type="checkbox" id="exclusive" /> <span><b>Exclusive</b>: only my advert on this billboard (no rotation)</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="step-pay" hidden>
+        <h2><span class="n">4</span>Pay and submit</h2>
+        <div class="summary">
+          <div>
+            <div class="lines" id="sum-lines"></div>
+            <div class="err" id="sum-err" hidden></div>
+          </div>
+          <div style="text-align: right">
+            <div class="total" id="sum-total">₦0</div>
+            <small class="muted">One payment. Nothing recurring.</small>
+          </div>
+        </div>
+        <div id="need-login" hidden>
+          <p class="muted" style="margin: 14px 0 8px">Create an advertiser account (or log in) so you can track your campaign and get receipts by email from Paystack.</p>
+          <div class="auth" id="auth-forms"></div>
+        </div>
+        <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+          <button class="btn" id="pay" disabled>Pay with Paystack</button>
+          <span class="muted" id="pay-note">Your advert goes live after we check the artwork (usually within 24 hours). If we can't accept it, you get a full refund.</span>
+        </div>
+        <details style="margin-top: 14px">
+          <summary class="muted" style="cursor: pointer">Artwork rules</summary>
+          <ul class="rules">
+            <li>Nothing illegal in Nigeria, no fake or misleading claims.</li>
+            <li>No nudity, hate, tribal or religious insults.</li>
+            <li>No betting, tobacco, alcohol or adult products.</li>
+            <li>No political campaign adverts.</li>
+            <li>You must own the rights to everything in the artwork.</li>
+            <li>Keep text big: it is seen from a distance in a game.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="card" id="campaigns" hidden>
+        <h2>My campaigns</h2>
+        <p class="sub" id="acct-line"></p>
+        <div class="camps" id="camps"></div>
+      </section>
+
+      <section class="card" id="login-card" hidden>
+        <h2>Advertiser account</h2>
+        <div class="auth" id="auth-forms-2"></div>
+      </section>
+    </main>
+
+    <footer>
+      Proof of Duty · <span id="ver">V0.1</span> · Developed by <b>Tcee</b> 🇳🇬 · Payments by Paystack<br />
+      Questions about a campaign? Reply to your Paystack receipt email and the POD team will get back to you.
+    </footer>
+
+    <script type="module">
+      import { BOARD_TYPES, quote, ratioOk, naira, MAX_IMAGE_PX, MAX_IMAGE_BYTES } from '/shared/billboards.js';
+
+      const $ = (s) => document.querySelector(s);
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const S = { cfg: null, state: null, boards: [], map: null, board: null, typeFilter: 'all', image: null, token: null, account: null };
+      try {
+        S.token = localStorage.getItem('pod.adv.token');
+      } catch {}
+
+      function toast(msg, ms = 3500) {
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), ms);
+      }
+
+      async function api(path, opts = {}) {
+        const headers = { 'content-type': 'application/json' };
+        if (S.token) headers.authorization = `Bearer ${S.token}`;
+        const r = await fetch(path, { ...opts, headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 401 && S.token && path !== '/api/adv/login') signOut(true);
+        if (!r.ok || j.error) throw Object.assign(new Error(j.error || `Error ${r.status}`), { data: j });
+        return j;
+      }
+
+      // ---------- start ----------
+      S.cfg = await api('/api/adv/config');
+      const P = S.cfg.pricing;
+      $('#ver').textContent = S.cfg.game.version;
+      $('#s-boards').textContent = S.cfg.states.reduce((n, s) => n + s.boards, 0);
+      $('#s-live').textContent = S.cfg.states.reduce((n, s) => n + s.players, 0);
+      $('#s-from').textContent = naira(Math.min(...Object.values(P.daily)));
+      $('#b-shares').textContent = P.shares;
+      $('#b-rot').textContent = P.rotateSecs;
+      $('#pay-off').hidden = S.cfg.payments !== 'off';
+      $('#start').min = S.cfg.today;
+      $('#start').value = S.cfg.today;
+      $('#days').min = P.minDays;
+      $('#days').max = P.maxDays;
+
+      // ---------- states ----------
+      function drawStates() {
+        const q = $('#state-q').value.trim().toLowerCase();
+        $('#states').innerHTML = S.cfg.states
+          .filter((s) => !q || s.name.toLowerCase().includes(q))
+          .sort((a, b) => (b.tier !== 'Standard state') - (a.tier !== 'Standard state') || a.name.localeCompare(b.name))
+          .map((s) => `<button class="st ${s.tier === 'Premium state' ? 'premium' : ''} ${S.state === s.id ? 'on' : ''}" data-id="${s.id}">${esc(s.name)}<small>${esc(s.tier)} · ${s.boards} boards${s.players ? ` · <span class="live">${s.players} online</span>` : ''}</small></button>`)
+          .join('');
+      }
+      $('#state-q').addEventListener('input', drawStates);
+      $('#states').addEventListener('click', (e) => {
+        const b = e.target.closest('.st');
+        if (b) pickState(b.dataset.id);
+      });
+      drawStates();
+
+      async function pickState(id, keepBoard) {
+        S.state = id;
+        drawStates();
+        const r = await api(`/api/adv/boards?state=${id}`);
+        S.boards = r.boards;
+        S.map = r.map;
+        $('#b-state').textContent = S.cfg.states.find((s) => s.id === id).name;
+        $('#step-board').hidden = false;
+        if (!keepBoard) S.board = null;
+        drawTabs();
+        drawBoards();
+        drawMap();
+        if (!keepBoard) $('#step-board').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        updateSteps();
+      }
+
+      function drawTabs() {
+        const types = [['all', 'All'], ...Object.entries(BOARD_TYPES).map(([k, v]) => [k, v.name])];
+        $('#type-tabs').innerHTML = types.map(([k, n]) => `<button data-t="${k}" class="${S.typeFilter === k ? 'on' : ''}">${esc(n)}</button>`).join('');
+      }
+      $('#type-tabs').addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        S.typeFilter = b.dataset.t;
+        drawTabs();
+        drawBoards();
+      });
+
+      const fromPrice = (b) => quote(P, { type: b.type, stateId: S.state, days: 1, exclusive: false }).perDay;
+      function drawBoards() {
+        const list = S.boards.filter((b) => S.typeFilter === 'all' || b.type === S.typeFilter);
+        $('#boards').innerHTML = list
+          .map((b) => {
+            const t = BOARD_TYPES[b.type];
+            const full = b.usedToday >= b.shares;
+            return `<button class="bd ${S.board?.id === b.id ? 'on' : ''}" data-id="${b.id}">
+              <span class="code">${esc(b.code)}</span><span class="type">${esc(t.name)} <span class="muted">· ${t.ratio.join(':')}</span></span>
+              <span class="price">${naira(fromPrice(b))}<span class="muted">/day</span></span>
+              <span class="lab">${esc(b.label)}</span>
+              <span class="meta"><span class="chip ${full ? 'full' : 'free'}">${full ? 'Full today' : `${b.shares - b.usedToday} of ${b.shares} slots free today`}</span>${b.estViews ? `<span>≈ ${b.estViews.toLocaleString()} views/day</span>` : '<span>New billboard</span>'}</span>
+            </button>`;
+          })
+          .join('');
+      }
+      $('#boards').addEventListener('click', (e) => {
+        const b = e.target.closest('.bd');
+        if (b) pickBoard(b.dataset.id);
+      });
+
+      function drawMap() {
+        const m = S.map;
+        const h = m.half;
+        const col = { sky: '#ff7a1a', led: '#3fe0ff', wall: '#ffd23f' };
+        let svg = `<rect x="${-h}" y="${-h}" width="${h * 2}" height="${h * 2}" fill="#2a241c" stroke="#5a4c3a" stroke-width="1.5" rx="3"/>`;
+        for (const [x0, z0, x1, z1] of m.water) svg += `<rect x="${x0}" y="${Math.max(-h, z0)}" width="${x1 - x0}" height="${Math.min(h, z1) - Math.max(-h, z0)}" fill="#1f4d6b"/>`;
+        for (const [x0, z0, x1, z1] of m.buildings) svg += `<rect x="${x0}" y="${z0}" width="${x1 - x0}" height="${z1 - z0}" fill="#4a4136"/>`;
+        svg += `<rect x="${m.bases.sec.x - 12}" y="-24" width="24" height="48" fill="rgba(79,157,255,.25)" stroke="#4f9dff"/>`;
+        svg += `<rect x="${m.bases.out.x - 12}" y="-24" width="24" height="48" fill="rgba(255,90,79,.25)" stroke="#ff5a4f"/>`;
+        for (const s of m.sites) svg += `<circle cx="${s.x}" cy="${s.z}" r="11" fill="rgba(255,255,255,.06)" stroke="#bbb" stroke-dasharray="3 3"/><text x="${s.x}" y="${s.z + 4}" fill="#ddd" font-size="11" text-anchor="middle" font-weight="700">${s.id}</text>`;
+        for (const b of S.boards) {
+          const on = S.board?.id === b.id;
+          const r = b.type === 'sky' ? 7 : b.type === 'led' ? 5 : 3.6;
+          svg += `<g data-id="${b.id}" style="cursor:pointer"><circle cx="${b.x}" cy="${b.z}" r="${r + (on ? 4 : 0)}" fill="${col[b.type]}" stroke="${on ? '#fff' : '#000'}" stroke-width="${on ? 2.5 : 1}"/>${b.type !== 'wall' || on ? `<text x="${b.x}" y="${b.z - r - 4}" fill="#fff" font-size="9" text-anchor="middle" font-weight="700">${esc(b.code.split('-')[1])}</text>` : ''}</g>`;
+        }
+        $('#map').innerHTML = svg;
+      }
+      $('#map').addEventListener('click', (e) => {
+        const g = e.target.closest('g[data-id]');
+        if (g) pickBoard(g.dataset.id);
+      });
+
+      function pickBoard(id) {
+        S.board = S.boards.find((b) => b.id === id);
+        drawBoards();
+        drawMap();
+        const t = BOARD_TYPES[S.board.type];
+        $('#art-spec').innerHTML = `<b>${esc(S.board.code)} · ${esc(t.name)}.</b> ${esc(t.blurb)} Upload a <b>${t.ratio.join(':')}</b> image, at least <b>${t.minW}×${t.minH}</b> pixels (HD).`;
+        $('#preview-board').classList.toggle('r21', S.board.type === 'wall');
+        $('#preview-tag').textContent = `${t.name} · ${S.board.code}`;
+        $('#step-art').hidden = false;
+        $('#step-pay').hidden = false;
+        if (S.image) checkImage();
+        updateQuote();
+        $('#step-art').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // ---------- artwork ----------
+      const drop = $('#drop');
+      ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => (e.preventDefault(), drop.classList.add('over'))));
+      ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => (e.preventDefault(), drop.classList.remove('over'))));
+      drop.addEventListener('drop', (e) => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
+      $('#file').addEventListener('change', (e) => e.target.files[0] && loadFile(e.target.files[0]));
+
+      function loadFile(file) {
+        if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return toast('Use a PNG, JPEG or WEBP image');
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            S.image = { dataUrl: reader.result, w: img.naturalWidth, h: img.naturalHeight, bytes: file.size, type: file.type, el: img };
+            checkImage();
+            updateQuote();
+          };
+          img.onerror = () => toast('Could not read that image');
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function imageProblems() {
+        if (!S.image || !S.board) return ['Upload your artwork'];
+        const t = BOARD_TYPES[S.board.type];
+        const out = [];
+        if (!ratioOk(S.board.type, S.image.w, S.image.h)) out.push('shape');
+        if (S.image.w < t.minW || S.image.h < t.minH) out.push('small');
+        if (S.image.w > MAX_IMAGE_PX || S.image.h > MAX_IMAGE_PX) out.push('large');
+        if (S.image.bytes > MAX_IMAGE_BYTES) out.push('bytes');
+        return out;
+      }
+
+      function checkImage() {
+        const t = BOARD_TYPES[S.board.type];
+        const i = S.image;
+        const p = imageProblems();
+        $('#checks').innerHTML = [
+          [!p.includes('shape'), `Shape ${t.ratio.join(':')} (yours: ${i.w}×${i.h})`],
+          [!p.includes('small'), `HD: at least ${t.minW}×${t.minH}`],
+          [!p.includes('large'), `At most ${MAX_IMAGE_PX} px on each side`],
+          [!p.includes('bytes'), `File size under ${MAX_IMAGE_BYTES / 1048576} MB (yours: ${(i.bytes / 1048576).toFixed(1)} MB)`]
+        ]
+          .map(([ok, text]) => `<li class="${ok ? 'ok' : 'no'}">${esc(text)}</li>`)
+          .join('');
+        const cropped = cropSize();
+        $('#crop').hidden = !(p.includes('shape') || p.includes('large')) || cropped.w < t.minW || cropped.h < t.minH;
+        $('#preview-board').style.backgroundImage = `url("${i.dataUrl}")`;
+        $('#hero-board').style.backgroundImage = `url("${i.dataUrl}")`;
+      }
+
+      function cropSize() {
+        const [rw, rh] = BOARD_TYPES[S.board.type].ratio;
+        let w = S.image.w;
+        let h = Math.round((w * rh) / rw);
+        if (h > S.image.h) {
+          h = S.image.h;
+          w = Math.round((h * rw) / rh);
+        }
+        const k = Math.min(1, MAX_IMAGE_PX / Math.max(w, h));
+        return { w: Math.round(w * k), h: Math.round(h * k), sw: w, sh: h };
+      }
+
+      // Centre-crop at full resolution (only scaled down if above the maximum).
+      $('#crop').addEventListener('click', () => {
+        const c = cropSize();
+        const cv = document.createElement('canvas');
+        cv.width = c.w;
+        cv.height = c.h;
+        const ctx = cv.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(S.image.el, (S.image.w - c.sw) / 2, (S.image.h - c.sh) / 2, c.sw, c.sh, 0, 0, c.w, c.h);
+        const type = S.image.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const dataUrl = cv.toDataURL(type, 0.95);
+        const img = new Image();
+        img.onload = () => {
+          S.image = { dataUrl, w: c.w, h: c.h, bytes: Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75), type, el: img };
+          checkImage();
+          updateQuote();
+          toast('Cropped to fit. Check the preview.');
+        };
+        img.src = dataUrl;
+      });
+
+      // ---------- dates and price ----------
+      $('#presets').addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        $('#days').value = b.dataset.d;
+        updateQuote();
+      });
+      for (const id of ['#days', '#start', '#exclusive']) $(id).addEventListener('input', updateQuote);
+
+      let qTimer;
+      function updateQuote() {
+        if (!S.board) return;
+        const days = Number($('#days').value);
+        for (const b of document.querySelectorAll('#presets button')) b.classList.toggle('on', Number(b.dataset.d) === days);
+        const req = { boardId: S.board.id, days, exclusive: $('#exclusive').checked, startDay: $('#start').value };
+        let q;
+        try {
+          q = quote(P, { type: S.board.type, stateId: S.state, days, exclusive: req.exclusive });
+        } catch (e) {
+          return showSummary(null, e.message);
+        }
+        showSummary(q, null, true);
+        clearTimeout(qTimer);
+        qTimer = setTimeout(async () => {
+          try {
+            const r = await api('/api/adv/quote', { method: 'POST', body: req });
+            showSummary(r.quote, r.availability.ok ? null : r.availability.reason);
+          } catch (e) {
+            showSummary(q, e.message);
+          }
+        }, 250);
+      }
+
+      function showSummary(q, err, pending) {
+        S.quote = q;
+        S.blocked = err;
+        if (q) {
+          const end = new Date(Date.parse(`${$('#start').value}T00:00:00+01:00`) + q.days * 86400000 - 1);
+          $('#sum-lines').innerHTML = `<b>${esc(S.board.code)}</b> · ${esc(BOARD_TYPES[S.board.type].name)} · ${esc(q.tier)}<br>${naira(q.perDay)} × ${q.days} day${q.days > 1 ? 's' : ''}${q.exclusive ? ' · exclusive' : ` · shared (rotates with up to ${P.shares - 1} others)`}${q.discountPct ? ` · <b>${q.discountPct}% off</b>` : ''}<br><span class="muted">Runs ${esc($('#start').value)} to ${end.toISOString().slice(0, 10)}, from the day we approve it if that is later.</span>`;
+          $('#sum-total').textContent = naira(q.total);
+        }
+        $('#sum-err').hidden = !err;
+        $('#sum-err').textContent = err || '';
+        updateSteps(pending);
+      }
+
+      function updateSteps() {
+        const problems = imageProblems();
+        const ready = S.board && S.quote && !S.blocked && !problems.length && S.cfg.payments !== 'off';
+        $('#need-login').hidden = !!S.token;
+        $('#pay').disabled = !ready || !S.token;
+        $('#pay').textContent = S.quote ? `Pay ${naira(S.quote.total)} with Paystack` : 'Pay with Paystack';
+        if (!S.token) $('#pay-note').textContent = 'Create an account or log in above first.';
+        else if (problems.length) $('#pay-note').textContent = problems[0] === 'Upload your artwork' ? 'Upload your artwork first.' : 'Fix the artwork checks above first.';
+        else $('#pay-note').textContent = 'Your advert goes live after we check the artwork (usually within 24 hours). If we can’t accept it, you get a full refund.';
+      }
+
+      $('#pay').addEventListener('click', async () => {
+        const btn = $('#pay');
+        btn.disabled = true;
+        btn.textContent = 'Opening Paystack…';
+        try {
+          const r = await api('/api/adv/bookings', {
+            method: 'POST',
+            body: { boardId: S.board.id, days: Number($('#days').value), exclusive: $('#exclusive').checked, startDay: $('#start').value, imageDataUrl: S.image.dataUrl, link: $('#link').value.trim(), title: $('#title').value.trim() }
+          });
+          location.href = r.authorization_url;
+        } catch (e) {
+          toast(e.message, 6000);
+          updateSteps();
+        }
+      });
+
+      // ---------- account ----------
+      function authForms(target) {
+        target.innerHTML = `
+          <form class="box" data-mode="register"><h3>New advertiser</h3>
+            <label class="f">Business or brand name</label><input class="f" name="business" required maxlength="80" autocomplete="organization">
+            <label class="f">Email (Paystack sends receipts here)</label><input class="f" name="email" type="email" required autocomplete="email">
+            <label class="f">Phone / WhatsApp</label><input class="f" name="phone" type="tel" required autocomplete="tel">
+            <label class="f">Password (8+ characters)</label><input class="f" name="password" type="password" minlength="8" required autocomplete="new-password">
+            <div style="margin-top:12px"><button class="btn small">Create account</button></div><div class="err" hidden></div></form>
+          <form class="box" data-mode="login"><h3>Already have an account?</h3>
+            <label class="f">Email</label><input class="f" name="email" type="email" required autocomplete="email">
+            <label class="f">Password</label><input class="f" name="password" type="password" required autocomplete="current-password">
+            <div style="margin-top:12px"><button class="btn small">Log in</button></div><div class="err" hidden></div>
+            <p class="muted" style="font-size:14px">Forgot your password? Reply to any Paystack receipt from us and we will reset it.</p></form>`;
+      }
+      authForms($('#auth-forms'));
+      authForms($('#auth-forms-2'));
+      document.addEventListener('submit', async (e) => {
+        const f = e.target.closest('form[data-mode]');
+        if (!f) return;
+        e.preventDefault();
+        const body = Object.fromEntries(new FormData(f));
+        const err = f.querySelector('.err');
+        err.hidden = true;
+        try {
+          const r = await api(`/api/adv/${f.dataset.mode}`, { method: 'POST', body });
+          signIn(r.token, r.account);
+          toast(`Welcome, ${r.account.business}`);
+          $('#login-card').hidden = true;
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.hidden = false;
+        }
+      });
+
+      function signIn(token, account) {
+        S.token = token;
+        S.account = account;
+        try {
+          localStorage.setItem('pod.adv.token', token);
+        } catch {}
+        navState();
+        updateSteps();
+        loadCampaigns();
+      }
+      function signOut(silent) {
+        S.token = null;
+        S.account = null;
+        try {
+          localStorage.removeItem('pod.adv.token');
+        } catch {}
+        $('#campaigns').hidden = true;
+        navState();
+        updateSteps();
+        if (!silent) toast('Logged out');
+      }
+      function navState() {
+        $('#nav-login').hidden = !!S.token;
+        $('#nav-logout').hidden = !S.token;
+        $('#nav-camps').hidden = !S.token;
+      }
+      $('#nav-login').addEventListener('click', () => {
+        $('#login-card').hidden = false;
+        $('#login-card').scrollIntoView({ behavior: 'smooth' });
+      });
+      $('#nav-logout').addEventListener('click', async () => {
+        await api('/api/adv/logout', { method: 'POST' }).catch(() => {});
+        signOut();
+      });
+      $('#nav-camps').addEventListener('click', () => $('#campaigns').scrollIntoView({ behavior: 'smooth' }));
+
+      // ---------- campaigns ----------
+      const STATUS = { unpaid: 'Not paid', review: 'Paid · checking artwork', scheduled: 'Approved · starts soon', live: 'Live', paused: 'Paused', ended: 'Ended', rejected: 'Rejected · refunded' };
+      async function loadCampaigns() {
+        if (!S.token) return;
+        let r;
+        try {
+          r = await api('/api/adv/me');
+        } catch {
+          return;
+        }
+        S.account = r.account;
+        $('#acct-line').textContent = `${r.account.business} · ${r.account.email}`;
+        $('#campaigns').hidden = false;
+        const fmt = (ms) => (ms ? new Date(ms).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+        $('#camps').innerHTML = r.bookings.length
+          ? r.bookings
+              .map((b) => {
+                const days = Object.entries(b.stats.byDay || {}).sort().slice(-14);
+                const max = Math.max(1, ...days.map((d) => d[1]));
+                const when = b.startMs ? `${fmt(b.startMs)} – ${fmt(b.endMs)}` : `from ${b.startDay}, ${b.days} day${b.days > 1 ? 's' : ''}`;
+                return `<div class="camp">
+                  <img src="${esc(b.image)}" alt="" loading="lazy">
+                  <div>
+                    <h3>${esc(b.title || b.boardCode)} <span class="chip st-${b.status}">${esc(STATUS[b.status] || b.status)}</span></h3>
+                    <div class="kv"><span><b>${esc(b.boardCode)}</b> ${esc(BOARD_TYPES[b.boardType]?.name || '')}${b.exclusive ? ' · exclusive' : ''}</span><span>${esc(when)}</span><span>Paid <b>${naira(b.priceNaira)}</b></span></div>
+                    ${b.status === 'rejected' ? `<div class="err">Reason: ${esc(b.rejectReason || 'not given')}. Refund: ${esc(b.refund?.status || 'requested')}.</div>` : ''}
+                    <div class="nums"><div><b>${b.stats.views.toLocaleString()}</b><small>Views</small></div><div><b>${b.stats.uniques.toLocaleString()}</b><small>Unique players</small></div><div><b>${(b.stats.bySide?.sec || 0).toLocaleString()}</b><small>Security</small></div><div><b>${(b.stats.bySide?.out || 0).toLocaleString()}</b><small>Outlaws</small></div></div>
+                    ${days.length ? `<div class="spark" title="Views per day">${days.map(([d, v]) => `<i style="height:${Math.round((v / max) * 100)}%" title="${d}: ${v}"></i>`).join('')}</div>` : ''}
+                    <div class="acts">
+                      ${b.status === 'unpaid' ? `<button class="btn small" data-act="pay" data-id="${b.id}">Pay now</button><button class="btn danger small" data-act="cancel" data-id="${b.id}">Cancel</button>` : ''}
+                      ${['live', 'ended', 'scheduled'].includes(b.status) ? `<button class="btn ghost small" data-act="renew" data-id="${b.id}" data-days="${b.days}">Renew ${b.days} days</button>` : ''}
+                    </div>
+                  </div></div>`;
+              })
+              .join('')
+          : '<p class="muted">No campaigns yet. Book your first billboard above.</p>';
+      }
+      $('#camps').addEventListener('click', async (e) => {
+        const b = e.target.closest('button[data-act]');
+        if (!b) return;
+        b.disabled = true;
+        try {
+          if (b.dataset.act === 'cancel') {
+            if (!confirm('Cancel this unpaid booking?')) return;
+            await api(`/api/adv/bookings/${b.dataset.id}/cancel`, { method: 'POST', body: {} });
+            loadCampaigns();
+          } else {
+            const r = await api(`/api/adv/bookings/${b.dataset.id}/${b.dataset.act}`, { method: 'POST', body: { days: Number(b.dataset.days) || undefined } });
+            location.href = r.authorization_url;
+          }
+        } catch (ex) {
+          toast(ex.message, 6000);
+        } finally {
+          b.disabled = false;
+        }
+      });
+
+      // ---------- coming back from Paystack ----------
+      const params = new URLSearchParams(location.search);
+      const ref = params.get('paid') || params.get('reference');
+      if (ref) {
+        const box = $('#return-banner');
+        box.hidden = false;
+        box.className = 'banner warn';
+        box.textContent = 'Checking your payment…';
+        try {
+          const r = await api(`/api/adv/verify?reference=${encodeURIComponent(ref)}`);
+          box.className = 'banner good';
+          box.innerHTML = `<b>Payment received. Thank you!</b> Your advert for <b>${esc(r.booking.boardCode)}</b> is with the POD team for a quick artwork check. It goes live as soon as it is approved, usually within 24 hours. You can follow it under <b>My campaigns</b>.`;
+        } catch (e) {
+          box.innerHTML = `We could not confirm this payment yet (${esc(e.message)}). If you were charged, it will update automatically within a few minutes. Refresh this page later.`;
+        }
+        history.replaceState(null, '', '/advertise');
+      }
+
+      navState();
+      if (S.token) loadCampaigns();
+      updateSteps();
+    </script>
+  </body>
+</html>

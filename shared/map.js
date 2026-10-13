@@ -283,7 +283,63 @@ function tryGenerate(state, seed) {
     drums.push(i);
   });
 
+  // ---------- paid billboards: skyline towers outside the walls and LED road screens ----------
+  // Own random stream, placed last, so the rest of the layout never shifts.
+  const brng = mulberry32(seed ^ 0xb1b0);
+  const billboards = [];
+  const urbanSky = state.biome === 'urban' || state.biome === 'creeks';
+  [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ].forEach(([sx, sz], i) => {
+    const along = range(brng, -45, 45);
+    const dist = 124 + range(brng, 0, 8);
+    const x = sx ? sx * dist : along;
+    const z = sz ? sz * dist : along;
+    const tower = urbanSky || brng() < 0.35;
+    const base = tower ? range(brng, 24, 38) : range(brng, 16, 22);
+    billboards.push({
+      id: `${state.id}:s${i}`,
+      type: 'sky',
+      x,
+      z,
+      nx: -sx,
+      nz: -sz,
+      w: 28,
+      h: 15.75,
+      y: base + 2.2 + 15.75 / 2,
+      tower: tower ? { h: base, w: range(brng, 32, 40), d: range(brng, 16, 22), seed: Math.floor(brng() * 1e6) } : null,
+      pole: tower ? 0 : base
+    });
+  });
+  const ledSpots = [
+    [-48, 0, -1],
+    [48, 0, 1],
+    [-30, -40, -1],
+    [30, 40, 1],
+    [-30, 40, -1],
+    [30, -40, 1]
+  ];
+  for (const [lx, lz, face] of ledSpots) {
+    if (billboards.filter((b) => b.type === 'led').length >= 2) break;
+    if (billboards.some((b) => b.type === 'led' && Math.sign(b.x) === Math.sign(lx))) continue;
+    for (let tries = 0; tries < 25; tries++) {
+      const x = lx + range(brng, -10, 10);
+      const z = lz + range(brng, -14, 14);
+      if (!free(x - 0.5, z - 4.6, x + 0.5, z + 4.6, 1.5)) continue;
+      if (water.some((w) => x > w.x0 - 2 && x < w.x1 + 2)) continue;
+      reserve(x - 0.5, z - 4.6, x + 0.5, z + 4.6, 1);
+      for (const pz of [z - 3, z + 3]) box(x - 0.2, 0, pz - 0.2, x + 0.2, 9.5, pz + 0.2, 'metal', { pen: false, hidden: true });
+      const n = billboards.filter((b) => b.type === 'led').length;
+      billboards.push({ id: `${state.id}:l${n}`, type: 'led', x, z, nx: face, nz: 0, w: 8, h: 4.5, y: 7.2, twoSided: true });
+      break;
+    }
+  }
+
   const map = {
+    billboards,
     drums,
     stateId: state.id,
     state,

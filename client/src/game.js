@@ -14,6 +14,7 @@ import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS,
 import { Arena } from './world/arena.js';
 import { Ambience } from './world/ambience.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
+import { Billboards } from './world/billboards.js';
 import { Soldier } from './characters/soldiers.js';
 import { ViewModel } from './fps/viewmodel.js';
 import { Effects } from './fps/effects.js';
@@ -72,9 +73,10 @@ export class Game {
     scene.add(this.camera);
     this.arena = new Arena(this.renderer, scene, this.map, this.quality);
     this.ambience = new Ambience(scene, this.map, this.arena);
-    this.walls = new AdWalls(scene, this.map);
+    this.boards = new Billboards(scene, this.map, this.renderer);
+    this.walls = new AdWalls(scene, this.map, this.boards);
     this.walls.setGems(info.gems);
-    this.walls.loadAds(info.state);
+    this.boards.load(info.state);
     for (const i of info.drums || []) this.arena.killDrum(i);
     this.siteMarkers = new SiteMarkers(scene, this.map);
     this.siteMarkers.apply(info.sites);
@@ -164,6 +166,7 @@ export class Game {
     if (!this.scene) return;
     this.modes.stop();
     this.ambience?.dispose();
+    this.boards?.dispose();
     this.running = false;
     cancelAnimationFrame(this.raf);
     for (const u of this.unsub) u();
@@ -977,7 +980,7 @@ export class Game {
     if (this.viewsT > ADS.reportEveryMs / 1000) {
       this.viewsT = 0;
       if (st === 'alive' || st === 'spirit') {
-        const slots = this.walls.visibleSlots(this.camera, this.map.index, lineBlocked, this.smokes || [], ADS.viewRadius);
+        const slots = this.boards.visible(this.camera, this.map.index, lineBlocked, this.smokes || []);
         if (slots.length) this.net.send({ t: 'views', slots });
       }
     }
@@ -985,6 +988,7 @@ export class Game {
     this.arena.update(dt, this.camera);
     this.ambience.update(dt, this.arena.time, this.camera);
     this.walls.update(dt, this.arena.time, sNow, this.camera);
+    this.boards.update(dt, sNow);
     this.siteMarkers.update(dt, this.arena.time);
     this.fx.update(dt, this.camera);
     this.vm.update(dt, { speed: this.vel.length(), sprint: this.sprinting, ads: this.adsOn, crouch: this.body.crouch, onGround: this.body.onGround, look, landed: this.justLanded });

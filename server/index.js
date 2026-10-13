@@ -10,21 +10,40 @@ import { STATES, STATE_BY_ID } from '../shared/states.js';
 import { FACTIONS, GEMS, NET, rankFor, MATCH, MODES, STAGES, GAME } from '../shared/config.js';
 import { generateMap } from '../shared/map.js';
 import { Match } from './match.js';
-import { AdManager } from './ads.js';
-import { JsonStore } from './store.js';
+import { AdManager, lagosToday } from './ads.js';
+import { JsonStore, SUPABASE } from './store.js';
+import { media } from './media.js';
+import { Advertisers } from './advertisers.js';
+import * as paystack from './paystack.js';
+import { boardsFor, BOARD_TYPES, tierFor } from '../shared/billboards.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = join(__dirname, '..', 'dist');
 const PORT = Number(process.env.PORT) || 2567;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me';
 
-// Ad walls per state (maps are deterministic, so count once at boot).
-const slotCounts = {};
-for (const s of STATES) slotCounts[s.id] = generateMap(s.id).adWalls.length;
+// Billboards per state (maps are deterministic, so build the catalogue once at boot).
+const catalogue = {};
+const mapOutline = {};
+for (const s of STATES) {
+  const map = generateMap(s.id);
+  catalogue[s.id] = boardsFor(map);
+  mapOutline[s.id] = {
+    half: map.half,
+    sites: map.sites.map((x) => ({ id: x.id, x: x.x, z: x.z, label: x.label })),
+    bases: { sec: { x: map.bases.sec.x, z: 0 }, out: { x: map.bases.out.x, z: 0 } },
+    landmark: { x: map.landmark.x, z: map.landmark.z, name: map.landmark.name },
+    water: map.water.map((w) => [w.x0, w.z0, w.x1, w.z1]),
+    buildings: map.buildings.map((b) => [b.x0 ?? b.x - b.w / 2, b.z0 ?? b.z - b.d / 2, b.x1 ?? b.x + b.w / 2, b.z1 ?? b.z + b.d / 2])
+  };
+}
 
-const ads = new AdManager(slotCounts);
+await media.init();
+const ads = new AdManager(catalogue);
+const advertisers = new Advertisers();
 const store = new JsonStore('players.json', { profiles: {}, accounts: {} });
 await ads.load();
+await advertisers.load();
 await store.load();
 const saveProfile = () => store.markDirty();
 
@@ -129,15 +148,130 @@ function json(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req, limit = 4 * 1024 * 1024) {
+async function readRaw(req, limit) {
   let size = 0;
   const chunks = [];
   for await (const c of req) {
     size += c.length;
-    if (size > limit) throw new Error('Body too large');
+    if (size > limit) throw new Error('Upload too large (max 6 MB image)');
     chunks.push(c);
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  return Buffer.concat(chunks);
+}
+
+async function readBody(req, limit = 10 * 1024 * 1024) {
+  return JSON.parse((await readRaw(req, limit)).toString('utf8') || '{}');
+}
+
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+const publicOrigin = (req) => (process.env.PUBLIC_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`).replace(/\/+$/, '');
+
+// ---------- ad portal helpers ----------
+function boardView(b, now = Date.now()) {
+  const stateId = b.id.split(':')[0];
+  const today = lagosToday(now);
+  const shared = ads.availability(b.id, today, 1, false);
+  return { ...b, state: stateId, estViews: ads.estViews(b.id, now), usedToday: shared.used, shares: shared.shares, exclusiveToday: !shared.ok && shared.used >= shared.shares };
+}
+
+async function startPayment(req, ad, account) {
+  const reference = ads.newReference(ad);
+  const tx = await paystack.initialize({
+    email: account.email,
+    amountKobo: ad.priceNaira * 100,
+    reference,
+    callbackUrl: `${publicOrigin(req)}/advertise?paid=${encodeURIComponent(reference)}`,
+    metadata: { bookingId: ad.id, billboard: ad.boardCode, business: account.business, custom_fields: [{ display_name: 'Billboard', variable_name: 'billboard', value: ad.boardCode }] }
+  });
+  ads.store.save();
+  return { authorization_url: tx.authorization_url, reference };
+}
+
+async function confirmPayment(reference) {
+  const ad = ads.byReference(reference);
+  if (!ad) throw new Error('Unknown payment reference');
+  if (ad.status !== 'unpaid') return ad;
+  const tx = await paystack.verify(reference);
+  return ads.markPaid(reference, tx);
+}
+
+async function advRoute(req, res, route, url) {
+  const ip = clientIp(req);
+  if (route === 'config' && req.method === 'GET') {
+    return json(res, 200, {
+      game: GAME,
+      payments: paystack.paystackMode(),
+      storage: SUPABASE ? 'supabase' : 'local',
+      types: BOARD_TYPES,
+      pricing: ads.pricing,
+      today: lagosToday(),
+      states: STATES.map((s) => ({ id: s.id, name: s.name, zone: s.zone, biome: s.biome, tier: tierFor(ads.pricing, s.id).name, boards: catalogue[s.id].length, players: lobby().find((l) => l.id === s.id)?.humans || 0 }))
+    });
+  }
+  if (route === 'boards' && req.method === 'GET') {
+    const st = url.searchParams.get('state');
+    if (!catalogue[st]) return json(res, 400, { error: 'Unknown state' });
+    return json(res, 200, { state: st, map: mapOutline[st], boards: catalogue[st].map((b) => boardView(b)) });
+  }
+  if (route === 'quote' && req.method === 'POST') {
+    const b = await readBody(req, 64 * 1024);
+    const { q, avail } = ads.checkRequest({ boardId: b.boardId, days: b.days, exclusive: b.exclusive, startDay: b.startDay });
+    return json(res, 200, { quote: q, availability: avail });
+  }
+  if (route === 'register' && req.method === 'POST') return json(res, 200, advertisers.register(await readBody(req, 64 * 1024), ip));
+  if (route === 'login' && req.method === 'POST') return json(res, 200, advertisers.login(await readBody(req, 64 * 1024), ip));
+  if (route === 'verify' && req.method === 'GET') {
+    const ad = await confirmPayment(String(url.searchParams.get('reference') || ''));
+    return json(res, 200, { booking: ads.publicBooking(ad) });
+  }
+  // Everything below needs a signed-in advertiser.
+  const acc = advertisers.fromRequest(req);
+  if (!acc) return json(res, 401, { error: 'Please log in again' });
+  if (route === 'logout' && req.method === 'POST') {
+    advertisers.logout(req);
+    return json(res, 200, { ok: true });
+  }
+  if (route === 'me' && req.method === 'GET') {
+    const mine = ads.ads.filter((a) => a.kind === 'paid' && a.advertiserId === acc.id).sort((a, b) => b.created - a.created);
+    return json(res, 200, { account: advertisers.public(acc), bookings: mine.map((a) => ads.publicBooking(a)) });
+  }
+  if (route === 'me' && req.method === 'PATCH') return json(res, 200, { account: advertisers.update(acc, await readBody(req, 64 * 1024)) });
+  if (route === 'bookings' && req.method === 'POST') {
+    if (!paystack.paystackReady()) return json(res, 503, { error: 'Payments are not switched on yet. Please try again later.' });
+    const ad = await ads.createBooking(acc, await readBody(req));
+    try {
+      return json(res, 200, { booking: ads.publicBooking(ad), ...(await startPayment(req, ad, acc)) });
+    } catch (e) {
+      return json(res, 502, { error: `Could not start the payment: ${e.message}`, booking: ads.publicBooking(ad) });
+    }
+  }
+  const m = /^bookings\/([a-z0-9-]+)\/(pay|renew|cancel)$/.exec(route);
+  if (m && req.method === 'POST') {
+    const ad = ads.ads.find((a) => a.id === m[1] && a.kind === 'paid' && a.advertiserId === acc.id);
+    if (!ad) return json(res, 404, { error: 'Booking not found' });
+    if (m[2] === 'pay') {
+      if (ad.status !== 'unpaid') return json(res, 400, { error: 'This booking is already paid' });
+      const avail = ads.availability(ad.board, ad.startDay, ad.days, ad.exclusive, ad.id);
+      if (!avail.ok) return json(res, 409, { error: avail.reason });
+      if (ad.startDay < lagosToday()) return json(res, 400, { error: 'The start date has passed. Make a new booking.' });
+      return json(res, 200, await startPayment(req, ad, acc));
+    }
+    if (m[2] === 'cancel') {
+      if (ad.status !== 'unpaid') return json(res, 400, { error: 'Only unpaid bookings can be cancelled here. Contact us about paid ones.' });
+      await ads.remove(ad.id);
+      return json(res, 200, { ok: true });
+    }
+    // Renew: same artwork and billboard, starting when the current run ends (or today).
+    const body = await readBody(req, 64 * 1024);
+    const from = ad.endMs && ad.endMs > Date.now() ? lagosToday(ad.endMs) : lagosToday();
+    const copy = await ads.createBooking(acc, { boardId: ad.board, days: body.days || ad.days, exclusive: ad.exclusive, startDay: body.startDay || from, link: ad.link, title: ad.title, copyFrom: ad });
+    try {
+      return json(res, 200, { booking: ads.publicBooking(copy), ...(await startPayment(req, copy, acc)) });
+    } catch (e) {
+      return json(res, 502, { error: `Could not start the payment: ${e.message}`, booking: ads.publicBooking(copy) });
+    }
+  }
+  return json(res, 404, { error: 'Unknown route' });
 }
 
 function isAdmin(req) {
@@ -161,9 +295,37 @@ const server = http.createServer(async (req, res) => {
     if (path.startsWith('/ads/')) {
       const img = await ads.image(path.slice(5));
       if (!img) return json(res, 404, { error: 'not found' });
-      res.writeHead(200, { 'content-type': MIME[extname(path)] || 'image/png', 'cache-control': 'public, max-age=86400', 'access-control-allow-origin': '*' });
+      res.writeHead(200, { 'content-type': MIME[extname(path)] || 'image/png', 'cache-control': 'public, max-age=604800, immutable', 'access-control-allow-origin': '*' });
       return res.end(img);
     }
+    if (path === '/advertise' || path === '/advertise/') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      return res.end(await readFile(join(__dirname, 'advertise.html')));
+    }
+    if (path === '/shared/billboards.js') {
+      res.writeHead(200, { 'content-type': MIME['.js'], 'cache-control': 'no-cache' });
+      return res.end(await readFile(join(__dirname, '..', 'shared', 'billboards.js')));
+    }
+    if (path === '/api/paystack/webhook' && req.method === 'POST') {
+      const raw = await readRaw(req, 256 * 1024);
+      if (!paystack.validSignature(raw, req.headers['x-paystack-signature'])) return json(res, 401, { error: 'bad signature' });
+      const ev = JSON.parse(raw.toString('utf8'));
+      try {
+        if (ev.event === 'charge.success' && ev.data?.reference) await confirmPayment(ev.data.reference);
+        if (/^refund\./.test(ev.event)) {
+          const ref = ev.data?.transaction_reference || ev.data?.transaction?.reference;
+          const ad = ref && ads.byReference(ref);
+          if (ad) {
+            ad.refund = { ...(ad.refund || {}), status: ev.data.status || ev.event.split('.')[1] };
+            ads.store.markDirty();
+          }
+        }
+      } catch (e) {
+        console.error('paystack webhook', ev.event, e.message);
+      }
+      return json(res, 200, { ok: true });
+    }
+    if (path.startsWith('/api/adv/')) return await advRoute(req, res, path.slice('/api/adv/'.length), url);
     if (path === '/admin') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(await readFile(join(__dirname, 'admin.html')));
@@ -172,7 +334,43 @@ const server = http.createServer(async (req, res) => {
       if (!isAdmin(req)) return json(res, 401, { error: 'Wrong admin key' });
       const route = path.slice('/api/admin/'.length);
       if (route === 'overview' && req.method === 'GET') {
-        return json(res, 200, { states: STATES.map((s) => ({ id: s.id, name: s.name, walls: slotCounts[s.id] })), lobby: lobby(), ads: ads.ads });
+        const now = Date.now();
+        return json(res, 200, {
+          states: STATES.map((s) => ({ id: s.id, name: s.name, walls: catalogue[s.id].filter((b) => b.type === 'wall').length, boards: catalogue[s.id].length })),
+          lobby: lobby(),
+          ads: ads.ads.map((a) => ({ ...a, liveStatus: ads.status(a, now), image: media.url(a.file), preview: `/ads/${a.file}`, boardLabel: a.board ? catalogue[a.board.split(':')[0]].find((b) => b.id === a.board)?.label : null })),
+          pricing: ads.pricing,
+          types: BOARD_TYPES,
+          advertisers: advertisers.list(),
+          payments: paystack.paystackMode(),
+          storage: SUPABASE ? 'supabase' : 'local'
+        });
+      }
+      if (route === 'pricing' && req.method === 'PUT') return json(res, 200, { pricing: ads.setPricing(await readBody(req, 64 * 1024)) });
+      if (route === 'reset-password' && req.method === 'POST') {
+        const b = await readBody(req, 64 * 1024);
+        return json(res, 200, { account: advertisers.resetPassword(b.email, b.password) });
+      }
+      const bk = /^bookings\/([a-z0-9-]+)\/(approve|reject|verify)$/.exec(route);
+      if (bk && req.method === 'POST') {
+        const ad = ads.find(bk[1]);
+        if (bk[2] === 'approve') return json(res, 200, { ad: ads.approve(ad.id) });
+        if (bk[2] === 'verify') {
+          if (!ad.reference) throw new Error('No payment started for this booking');
+          return json(res, 200, { ad: await confirmPayment(ad.reference) });
+        }
+        const b = await readBody(req, 64 * 1024);
+        if (!['review', 'approved'].includes(ad.status)) throw new Error('Only paid bookings can be rejected and refunded');
+        let refund = { status: 'not needed' };
+        if (ad.paidAt) {
+          try {
+            const r = await paystack.refund(ad.reference);
+            refund = { status: r.status || 'pending', id: r.id || null, at: Date.now() };
+          } catch (e) {
+            return json(res, 502, { error: `Paystack refund failed: ${e.message}. Nothing was changed; try again or refund from the Paystack dashboard.` });
+          }
+        }
+        return json(res, 200, { ad: ads.reject(ad.id, b.reason, refund) });
       }
       if (route === 'ads' && req.method === 'POST') return json(res, 200, { ad: await ads.create(await readBody(req)) });
       if (route === 'report.csv') {
@@ -303,19 +501,21 @@ setInterval(() => {
 setInterval(() => {
   store.save();
   ads.store.save();
-  ads.uniqueStore.save();
+  advertisers.store.save();
 }, 15000);
+// Unique-viewer lists are bigger and change often: save them less frequently.
+setInterval(() => ads.uniqueStore.save(), 120000);
+setInterval(() => ads.housekeeping().catch((e) => console.error('ad housekeeping', e.message)), 60000);
 
 async function shutdown() {
-  await store.save(true);
-  await ads.store.save(true);
-  await ads.uniqueStore.save(true);
+  await Promise.all([store.save(true), ads.store.save(true), ads.uniqueStore.save(true), advertisers.store.save(true)]);
   process.exit(0);
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 server.listen(PORT, () => {
-  console.log(`${GAME.name} ${GAME.version} server on http://localhost:${PORT}  (game /ws, advertiser dashboard /admin)`);
+  console.log(`${GAME.name} ${GAME.version} server on http://localhost:${PORT}  (game /ws, ad portal /advertise, admin /admin)`);
+  console.log(`Storage: ${SUPABASE ? 'Supabase' : 'local files (set SUPABASE_URL + SUPABASE_SERVICE_KEY to keep data across restarts)'}. Payments: Paystack ${paystack.paystackMode()}.`);
   if (ADMIN_KEY === 'change-me') console.log('Set ADMIN_KEY before going live.');
 });

@@ -787,34 +787,80 @@ export function houseAdTexture(i) {
   const key = `house-${i % HOUSE.length}`;
   if (cache.has(key)) return cache.get(key);
   const h = HOUSE[i % HOUSE.length];
-  const [c, ctx] = makeCanvas(1024, 480);
-  const g = ctx.createLinearGradient(0, 0, 1024, 480);
+  // 2:1, the same shape advertisers upload for wall banners.
+  const W = 1200;
+  const H = 600;
+  const [c, ctx] = makeCanvas(W, H);
+  const g = ctx.createLinearGradient(0, 0, W, H);
   g.addColorStop(0, h.bg[0]);
   g.addColorStop(1, h.bg[1]);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 1024, 480);
-  // Diagonal light streaks.
+  ctx.fillRect(0, 0, W, H);
   ctx.globalAlpha = 0.08;
   ctx.fillStyle = '#fff';
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 7; k++) {
     ctx.beginPath();
-    ctx.moveTo(k * 220 - 100, 0);
-    ctx.lineTo(k * 220 + 20, 0);
-    ctx.lineTo(k * 220 - 160, 480);
-    ctx.lineTo(k * 220 - 280, 480);
+    ctx.moveTo(k * 240 - 100, 0);
+    ctx.lineTo(k * 240 + 20, 0);
+    ctx.lineTo(k * 240 - 170, H);
+    ctx.lineTo(k * 240 - 290, H);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
   ctx.textAlign = 'center';
   ctx.fillStyle = h.accent;
-  ctx.font = '400 110px "Black Ops One", Impact, sans-serif';
-  ctx.fillText(h.title, 512, 230, 960);
+  ctx.font = '400 128px "Black Ops One", Impact, sans-serif';
+  ctx.fillText(h.title, W / 2, 280, W - 80);
   ctx.fillStyle = '#ffffff';
-  ctx.font = '600 46px "Rajdhani", sans-serif';
-  ctx.fillText(h.sub, 512, 320, 960);
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '600 30px "Rajdhani", sans-serif';
-  ctx.fillText('Advertise for this wall · talk to the POD team', 512, 420);
+  ctx.font = '600 54px "Rajdhani", sans-serif';
+  ctx.fillText(h.sub, W / 2, 385, W - 80);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '600 36px "Rajdhani", sans-serif';
+  ctx.fillText('Advertise for this wall · /advertise', W / 2, 520);
+  const t = toTexture(c, { repeat: false });
+  cache.set(key, t);
+  return t;
+}
+
+// What an unsold skyline billboard or LED screen shows: an invitation to advertisers.
+export function advertiseHereTexture(code, typeName, host) {
+  const key = `adhere-${code}`;
+  if (cache.has(key)) return cache.get(key);
+  const W = 1600;
+  const H = 900;
+  const [c, ctx] = makeCanvas(W, H);
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#120b05');
+  g.addColorStop(0.55, '#3a1a06');
+  g.addColorStop(1, '#ff7a1a');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.1;
+  ctx.strokeStyle = '#ffb347';
+  ctx.lineWidth = 3;
+  for (let x = -H; x < W; x += 70) {
+    ctx.beginPath();
+    ctx.moveTo(x, H);
+    ctx.lineTo(x + H, 0);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#ffb347';
+  ctx.font = '700 56px "Rajdhani", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${typeName.toUpperCase()} · ${code}`, 90, 150);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '400 150px "Black Ops One", Impact, sans-serif';
+  ctx.fillText('YOUR BRAND', 84, 360, W - 170);
+  ctx.fillText('FIT DEY HERE', 84, 520, W - 170);
+  ctx.fillStyle = '#ffe1c2';
+  ctx.font = '600 58px "Rajdhani", sans-serif';
+  ctx.fillText('Thousands of soldiers go see am every day.', 90, 630, W - 180);
+  ctx.fillStyle = '#ff7a1a';
+  ctx.fillRect(90, 690, W - 180, 120);
+  ctx.fillStyle = '#140a03';
+  ctx.font = '700 64px "Rajdhani", sans-serif';
+  ctx.fillText(`Book am: ${host}/advertise`, 120, 772, W - 240);
   const t = toTexture(c, { repeat: false });
   cache.set(key, t);
   return t;

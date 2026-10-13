@@ -26,8 +26,9 @@ const check = (cond, msg) => {
 };
 const section = (name) => console.log(`• ${name}`);
 
-const slotCounts = Object.fromEntries(STATES.map((s) => [s.id, generateMap(s.id).adWalls.length]));
-const ads = new AdManager(slotCounts);
+const { boardsFor } = await import('../shared/billboards.js');
+const catalogue = Object.fromEntries(STATES.map((s) => [s.id, boardsFor(generateMap(s.id))]));
+const ads = new AdManager(catalogue);
 await ads.load();
 const hooks = { ads, saveProfile() {} };
 const fakeWs = () => {
@@ -242,10 +243,19 @@ section('Fuel drums explode, water drums do not');
 }
 
 section('Advertiser analytics');
-const img = 'data:image/png;base64,' + Buffer.from('fakepng').toString('base64');
+// Smallest thing with a real PNG header (8-byte signature + IHDR with width and height).
+const pngHeader = (w, h) => {
+  const b = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(b);
+  b.write('IHDR', 12, 'ascii');
+  b.writeUInt32BE(w, 16);
+  b.writeUInt32BE(h, 20);
+  return b;
+};
+const img = 'data:image/png;base64,' + pngHeader(1200, 600).toString('base64');
 const ad = await ads.create({ advertiser: 'Test Brand', imageDataUrl: img, states: ['kano'], priceNaira: 100000 });
 const slots = ads.slotsFor('kano').slots;
-check(Object.keys(slots).length === slotCounts.kano, 'advert fills every wall in the targeted state');
+check(Object.keys(slots).length === catalogue.kano.length, 'house advert fills every billboard in the targeted state');
 check(Object.keys(ads.slotsFor('lagos').slots).length === 0, 'advert does not appear in states it did not target');
 m2.handle(A, { t: 'views', slots: ['kano:0', 'kano:1'] });
 m2.handle(A, { t: 'views', slots: ['kano:0'] });
@@ -367,6 +377,14 @@ for (const s of STATES) {
   }
 }
 check(true, 'all 37 battlefields ran a tick with bots');
+{
+  const bad = STATES.filter((s) => {
+    const b = catalogue[s.id];
+    return b.filter((x) => x.type === 'sky').length !== 4 || b.filter((x) => x.type === 'led').length !== 2 || new Set(b.map((x) => x.code)).size !== b.length;
+  });
+  check(!bad.length, `every state has 4 sky billboards, 2 LED screens and unique codes (${bad.map((s) => s.id).join(', ') || 'ok'})`);
+  check(STATES.every((s) => generateMap(s.id).connected), 'billboard poles never block a route');
+}
 
 Date.now = realNow;
 console.log(`\n${passed} passed, ${failed} failed`);

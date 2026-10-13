@@ -28,10 +28,13 @@ ADMIN_KEY=your-secret npm start    # serves the game, the WebSocket and /admin o
 | --- | --- | --- |
 | `PORT` | `2567` | HTTP and WebSocket port |
 | `ADMIN_KEY` | `change-me` | Password for the advertiser dashboard. **Set this before going live.** |
-| `DATA_DIR` | `./data` | Where accounts, profiles and adverts are saved (JSON files) |
+| `DATA_DIR` | `./data` | Local JSON files, used only when Supabase is not set |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | not set | Keep all data and advert images in Supabase (see the ad portal section) |
+| `PAYSTACK_SECRET_KEY` | not set | Turns on payments in the ad portal |
+| `PUBLIC_URL` | request host | Address Paystack sends advertisers back to |
 | `VITE_SERVER_URL` | same host | Set at build time if the game server lives on another domain (e.g. `wss://api.example.com/ws`) |
 
-To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. All 62 checks pass, including Team Deathmatch, Plant & Defuse rounds and Campaign Stages.
+To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. Two suites run: 64 game checks (including Team Deathmatch, Plant & Defuse and Campaign Stages), and 43 ad portal checks. The portal checks run the real server against stand-in Paystack and Supabase servers: book, pay, webhook, approve, reject with refund, and restart.
 
 ---
 
@@ -110,21 +113,68 @@ Red steel drums stencilled **PMS / FLAMMABLE** hold fuel; blue plastic drums hol
 
 Tune it in `shared/config.js` → `DRUMS`.
 
-## Selling the walls: the advertiser dashboard
+## Selling billboards: the ad portal
 
-To sell the walls, open **`/admin`** and sign in with your `ADMIN_KEY`. From there you can:
+Advertisers book and pay by themselves at **`/advertise`**. You only approve the artwork.
 
-- Upload an advert image and choose which states show it (or all 36 + FCT).
-- Set dates and the price paid.
-- Watch live reports for each campaign:
-  - **Views** (a player actually had the wall on screen, within 45 m, not blocked by walls or smoke)
-  - **Unique players**
-  - **Gem pickups** from that advert
-  - Breakdowns by **state, side, faction and hour of day**
-  - CPM
-  - CSV export
+**Billboards in every state** (each one has a code such as `LAG-S2`):
 
-**Privacy.** Advertisers only see aggregated numbers. Unique players are counted with salted hashes, and no names, accounts or locations are ever exposed. This keeps you on the right side of Nigeria's data protection rules (NDPA). Have a lawyer confirm the details before you sell.
+| Type | Where | Artwork | Default price / day |
+| --- | --- | --- | --- |
+| **Sky Billboard** (4 per state) | 28 m billboards on skyline towers or highway unipoles just outside the walls, seen from most of the map | 16:9, at least 1920×1080 | ₦25,000 |
+| **LED Road Screen** (2 per state) | Double-sided screens on poles in the middle of the fighting | 16:9, at least 1280×720 | ₦12,000 |
+| **Wall Banner** (about 12 per state) | The lit walls that hold life gems | 2:1, at least 1200×600 | ₦5,000 |
+
+**Price** = daily price × state tier × days.
+- State tiers: Premium ×1.5 for Lagos, FCT and Rivers. Major ×1.25 for Kano, Oyo, Kaduna, Enugu, Delta, Anambra, Edo, Ogun and Akwa Ibom.
+- Discounts: 10% off 7+ days and 20% off 30+ days.
+- Each billboard rotates up to 4 advertisers, switching every 12 s. **Exclusive** (no rotation) costs ×3.
+
+You can change every price in `/admin`.
+
+**How a booking works:**
+1. The advertiser signs up, picks a state and a billboard on the map, and uploads artwork. The portal checks the shape and HD size and can crop it to fit. They then choose a start date and number of days.
+2. They pay with **Paystack** (card, transfer or USSD). The server confirms the payment with Paystack itself, through both the return page and the webhook. Paystack signatures are checked, and the amount and currency must match.
+3. The booking appears in `/admin` under **waiting for your review**:
+   - **Approve** puts it live for exactly the days paid, starting on its start date or now if that is later. It stops by itself when the time is up.
+   - **Reject** refunds the advertiser in full through Paystack and shows them your reason.
+4. The advertiser follows views, unique players and the Security/Outlaw split per day in **My campaigns**. They can renew with one tap.
+
+**Other details:**
+- **No double-selling.** A billboard can't be booked over capacity, or exclusively when someone else already shares those dates.
+- **Unpaid bookings.** An unpaid booking holds its slot for 2 hours, then releases it.
+- **HD in the game.** Paid artwork loads at full resolution with mipmaps and maximum anisotropic filtering. It is drawn unlit, so colours match the artwork exactly, and only lightly hazed by fog. Unsold billboards show a "YOUR BRAND FIT DEY HERE · /advertise" invitation.
+- **Rotation clock.** All players see the same advert at the same moment, and every view is credited to the advert on screen at that time.
+
+`/admin` (sign in with `ADMIN_KEY`) also has:
+- house/direct campaigns for deals you make yourself
+- reports by state, side, faction and hour
+- CSV export
+- the advertiser list and password resets
+- a status line that tells you if Paystack or Supabase is not set up
+
+**Privacy.** Advertisers only see aggregated numbers. Unique players are counted with salted hashes, and no names, accounts or locations are ever exposed. Have a lawyer confirm the details for Nigeria's data protection rules (NDPA) before you sell.
+
+### One-time setup on Render
+
+1. **Supabase** (free): this keeps accounts, profiles, bookings and images across restarts.
+   1. Create a project at supabase.com.
+   2. Open **SQL Editor**, paste [`supabase/setup.sql`](supabase/setup.sql) and click **Run**.
+   3. Under **Project Settings → API**, copy the **Project URL** and a **secret key** (`sb_secret_…`, or the legacy `service_role` key).
+2. **Paystack:** under **Settings → API Keys & Webhooks**:
+   1. Copy your **secret key** (`sk_live_…`).
+   2. Set the **Webhook URL** to `https://three6states.onrender.com/api/paystack/webhook`.
+3. **Render → your service → Environment**: add these variables, then **Save** (Render redeploys):
+
+| Variable | Value |
+| --- | --- |
+| `SUPABASE_URL` | your Project URL, e.g. `https://abcd.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | the Supabase secret key |
+| `PAYSTACK_SECRET_KEY` | `sk_live_…` (or `sk_test_…` to try it first) |
+| `PUBLIC_URL` | `https://three6states.onrender.com` |
+| `ADMIN_KEY` | a long password only you know |
+
+Keep the secret keys only in Render. Never put them in the code or send them in chat.
 
 ---
 
@@ -233,7 +283,7 @@ client/            browser game (Vite)
   src/main.js      boot → sign in → war map → battle
   src/game.js      the battle: local fighter, remote fighters, every server event
   src/modes-client.js  mode HUD: bomb, rounds, waves, quick chat
-  src/world/       arena (terrain, buildings, sky, water), ambience (clouds, smoke columns, birds, flyovers), props (trees, landmarks, machinery), markers (ad walls, gems, sites)
+  src/world/       billboards (skyline towers, LED screens, HD ad loading and rotation), arena (terrain, buildings, sky, water), ambience (clouds, smoke columns, birds, flyovers), props (trees, landmarks, machinery), markers (ad walls, gems, sites)
   src/characters/  jointed soldiers in faction uniforms
   src/fps/         first-person viewmodel, procedural guns, effects
   src/core/        audio, music, input, network, server address, textures, quality presets
@@ -243,7 +293,12 @@ server/
   match.js         authoritative battle simulation (20 Hz)
   modes.js         game mode rules (Hold Ground, Gbas Gbos, Plant & Defuse, Campaign)
   bots.js          bot AI (A* pathing, aiming, strafing, grenades, killstreaks)
-  ads.js           advert rotation and privacy-safe analytics
+  ads.js           billboards, bookings, rotation and privacy-safe analytics
+  advertisers.js   advertiser accounts for the portal
+  paystack.js      Paystack payments, verification, refunds, webhook signatures
+  media.js         advert images (Supabase Storage or local files)
+  store.js         persistence (Supabase table or local JSON)
+  advertise.html   the self-serve ad portal (/advertise)
   admin.html       advertiser dashboard
   test.js          simulation tests
 shared/            states, config, map generator and physics, used by both client and server
@@ -257,7 +312,7 @@ Any Node 20+ host that supports WebSockets works, for example Render, Railway, F
 
 1. Run `npm run build`.
 2. Run `npm start`.
-3. Keep `DATA_DIR` on a persistent disk.
+3. Set the Supabase variables above, so data survives restarts. Without them it falls back to JSON files in `DATA_DIR`, which only works on a persistent disk.
 
 One server process runs every state's battle. For very large player counts, the next step is one process per region, plus a database instead of JSON files.
 

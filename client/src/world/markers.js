@@ -4,13 +4,13 @@ import * as THREE from 'three';
 import * as T from '../core/textures.js';
 import { GEMS } from '../../../shared/config.js';
 import { RESOURCES } from '../../../shared/states.js';
-import { api } from '../core/server.js';
+import { panelMaterial } from './billboards.js';
 
 const SIDE_COL = { sec: new THREE.Color('#4f9dff'), out: new THREE.Color('#ff5a4f'), none: new THREE.Color('#e8e8e8'), contested: new THREE.Color('#ffd23f'), discovery: new THREE.Color('#ffc13b') };
 
 // ---------- advert walls + life gems ----------
 export class AdWalls {
-  constructor(scene, map) {
+  constructor(scene, map, boards) {
     this.map = map;
     this.group = new THREE.Group();
     scene.add(this.group);
@@ -35,11 +35,17 @@ export class AdWalls {
       const face = new THREE.Group();
       face.position.set(a.face.x, a.y, a.face.z);
       face.rotation.y = yaw;
-      const mat = new THREE.MeshStandardMaterial({ map: T.houseAdTexture(i), emissive: '#ffffff', emissiveMap: T.houseAdTexture(i), emissiveIntensity: 0.2, roughness: 0.45 });
-      const panel = new THREE.Mesh(new THREE.PlaneGeometry(a.w - 0.25, a.h - 0.2), mat);
-      panel.position.z = 0.015;
-      panel.receiveShadow = true;
+      // 2:1 printed banner (the shape advertisers upload), on a dark backing board.
+      const house = T.houseAdTexture(i);
+      const mat = panelMaterial(house);
+      const ph = a.h - 0.24;
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(ph * 2, ph), mat);
+      panel.position.z = 0.02;
       face.add(panel);
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(a.w - 0.2, a.h - 0.18), backMat);
+      board.position.z = 0.012;
+      face.add(board);
+      boards?.registerWall(a, mat, house);
       // Frame and two flood lamps.
       for (const [w, h, x, y] of [
         [a.w, 0.12, 0, a.h / 2 - 0.06],
@@ -82,30 +88,6 @@ export class AdWalls {
       this.group.add(g);
       this.walls.push({ a, panel, mat, gem, crystal, glow, ring, label, until: 0, labelText: '', burst: 0 });
     });
-  }
-
-  // Apply the paid adverts served for this state.
-  async loadAds(stateId) {
-    try {
-      const r = await fetch(api(`/api/ads?state=${encodeURIComponent(stateId)}`));
-      if (!r.ok) return;
-      const { slots } = await r.json();
-      const loader = new THREE.TextureLoader();
-      for (const w of this.walls) {
-        const s = slots[w.a.id];
-        if (!s?.image) continue;
-        loader.load(api(s.image), (tex) => {
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.anisotropy = 8;
-          w.mat.map = tex;
-          w.mat.emissiveMap = tex;
-          w.mat.needsUpdate = true;
-          w.advertiser = s.advertiser;
-        });
-      }
-    } catch {
-      /* offline: keep house adverts */
-    }
   }
 
   setGems(untilList) {
@@ -174,28 +156,6 @@ export class AdWalls {
         w.label.visible = true;
       } else w.label.visible = false;
     }
-  }
-
-  // Walls the player can actually see right now (for advertiser view counts).
-  visibleSlots(camera, index, lineBlocked, smokes, radius) {
-    const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-    const out = [];
-    const p = camera.position;
-    const pt = new THREE.Vector3();
-    for (const w of this.walls) {
-      const a = w.a;
-      const dx = a.face.x - p.x;
-      const dz = a.face.z - p.z;
-      const d = Math.hypot(dx, dz);
-      if (d > radius) continue;
-      if (dx * a.nx + dz * a.nz > 0) continue; // looking at the back
-      if (!frustum.containsPoint(pt.set(a.face.x, a.y, a.face.z))) continue;
-      const fx = a.face.x + a.nx * 0.3;
-      const fz = a.face.z + a.nz * 0.3;
-      if (lineBlocked(index, p.x, p.y, p.z, fx, a.y, fz, smokes)) continue;
-      out.push(a.id);
-    }
-    return out;
   }
 }
 
