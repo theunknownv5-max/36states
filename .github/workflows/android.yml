@@ -9,6 +9,10 @@ name: Android APK
 on:
   push:
     branches: [main]
+    # The native game (native/) has its own workflow; changes there don't rebuild the lite app.
+    paths-ignore:
+      - 'native/**'
+      - '.github/workflows/native.yml'
   workflow_dispatch:
 
 permissions:
