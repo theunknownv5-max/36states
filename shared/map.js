@@ -126,7 +126,65 @@ function tryGenerate(state, seed) {
         box(cx - w / 2 - 1, 0, z - 1.4, cx + w / 2 + 1, 0.25, z + 1.4, 'bridge', { walkway: true });
       }
       reserve(cx - w / 2, -G, cx + w / 2, G);
+      visuals.push({ type: 'riverbank', x0: cx - w / 2, x1: cx + w / 2, lush: state.biome === 'creeks' });
     }
+  }
+
+  // ---------- extra world: river, rail yard, warehouses (own random stream) ----------
+  const wrng = mulberry32(seed ^ 0x77a1);
+  if (['savanna', 'rainforest', 'plateau', 'sahel'].includes(state.biome)) {
+    // A river between one base and the middle, crossed by three bridges. In the Sahel it is a
+    // shallow seasonal river.
+    const w = state.biome === 'rainforest' ? 11 : state.biome === 'sahel' ? 7 : 9;
+    const cx = (wrng() < 0.5 ? -1 : 1) * range(wrng, 55, 64);
+    water.push({ x0: cx - w / 2, z0: -G, x1: cx + w / 2, z1: G, depth: state.biome === 'sahel' ? 0.4 : 0.7, river: true });
+    for (const bz of [-64, 0, 64]) {
+      const z = bz + range(wrng, -8, 8);
+      box(cx - w / 2 - 1.2, 0, z - 1.7, cx + w / 2 + 1.2, 0.25, z + 1.7, 'bridge', { walkway: true });
+      visuals.push({ type: 'bridgeRails', x0: cx - w / 2 - 1.2, x1: cx + w / 2 + 1.2, z, half: 1.7 });
+    }
+    reserve(cx - w / 2 - 1, -G, cx + w / 2 + 1, G);
+    visuals.push({ type: 'riverbank', x0: cx - w / 2, x1: cx + w / 2, lush: state.biome !== 'sahel' });
+  }
+
+  // Old railway along the edge away from the landmark: abandoned wagons for cover, and a
+  // live line on a viaduct outside the wall where trains thunder past.
+  const railZ = (lm.z > 0 ? -1 : 1) * 99;
+  visuals.push({ type: 'rails', z: railZ, x0: -G + 1, x1: G - 1 });
+  visuals.push({ type: 'viaduct', z: railZ > 0 ? 119 : -119 });
+  {
+    const placed = [];
+    const styles = ['boxcar', 'tanker', 'flat', 'boxcar', 'loco'];
+    for (let k = 0, tries = 0; k < 4 && tries < 60; tries++) {
+      const style = styles[k];
+      const L = style === 'loco' ? 13 : style === 'flat' ? 10 : 11;
+      const x = range(wrng, -72, 72);
+      if (placed.some((p) => Math.abs(p - x) < L + 5)) continue;
+      if (!free(x - L / 2, railZ - 1.45, x + L / 2, railZ + 1.45, 0.5)) continue;
+      const h = style === 'flat' ? 1.3 : style === 'tanker' ? 3.1 : style === 'loco' ? 3.9 : 3.4;
+      box(x - L / 2, 0, railZ - 1.45, x + L / 2, h, railZ + 1.45, 'wagon', { pen: false, style });
+      if (style === 'flat' && wrng() < 0.7) box(x - 1.5, 1.3, railZ - 1.1, x + 1.5, 2.6, railZ + 1.1, 'crate', { prop: 'crate' });
+      visuals.push({ type: 'wagon', x, z: railZ, L, h, style, tilt: (wrng() - 0.5) * 0.05 });
+      placed.push(x);
+      k++;
+    }
+    reserve(-G, railZ - 2.4, G, railZ + 2.4);
+  }
+
+  // Warehouses: big corrugated sheds with loading doors at both ends, containers inside.
+  const warehouses = [];
+  for (let n = 0, tries = 0; n < (state.biome === 'urban' || state.biome === 'creeks' ? 2 : 1) && tries < 120; tries++) {
+    const alongX = wrng() < 0.5;
+    const L = range(wrng, 22, 28);
+    const D = range(wrng, 13, 16);
+    const W = alongX ? L : D;
+    const Dz = alongX ? D : L;
+    const x = range(wrng, -58, 58);
+    const z = range(wrng, -78, 78);
+    if (!free(x - W / 2, z - Dz / 2, x + W / 2, z + Dz / 2, 3)) continue;
+    reserve(x - W / 2, z - Dz / 2, x + W / 2, z + Dz / 2, 2);
+    warehouses.push(makeWarehouse(x, z, W, Dz, alongX, wrng, box, visuals));
+    n++;
   }
 
   // ---------- advert walls (each carries a life gem) ----------
@@ -195,7 +253,9 @@ function tryGenerate(state, seed) {
     reserve(x - w / 2, z - d / 2, x + w / 2, z + d / 2, 1.5);
     const solid = state.biome === 'urban' && rng() < 0.4;
     const height = solid ? range(rng, 8, 18) : rules.wall === 'mud' ? 2.7 : 3.1;
-    buildings.push(makeBuilding(x, z, w, d, height, solid, rules, rng, box, visuals));
+    // About a third of the houses are abandoned ruins: no roof, shot-up broken walls, rubble.
+    if (!solid && wrng() < 0.32) buildings.push(makeRuin(x, z, w, d, height + 0.3, rules, wrng, box, visuals));
+    else buildings.push(makeBuilding(x, z, w, d, height, solid, rules, rng, box, visuals));
     n++;
   }
 
@@ -320,7 +380,17 @@ function tryGenerate(state, seed) {
     [-30, -40, -1],
     [30, 40, 1],
     [-30, 40, -1],
-    [30, -40, 1]
+    [30, -40, 1],
+    [-40, 20, -1],
+    [40, -20, 1],
+    [-40, -20, -1],
+    [40, 20, 1],
+    [-22, 0, -1],
+    [22, 0, 1],
+    [-70, 40, -1],
+    [70, -40, 1],
+    [-70, -40, -1],
+    [70, 40, 1]
   ];
   for (const [lx, lz, face] of ledSpots) {
     if (billboards.filter((b) => b.type === 'led').length >= 2) break;
@@ -575,6 +645,103 @@ function buildLandmark(lm, rng, box, visuals, water) {
   visuals.push({ type: 'landmarkSign', x, z, name: lm.name });
 }
 
+// ---------- abandoned building ----------
+function makeRuin(x, z, w, d, h, rules, rng, box, visuals) {
+  const t = rules.wall === 'mud' ? 0.35 : 0.28;
+  const doorSide = Math.floor(rng() * 4);
+  const sides = [
+    { x0: x - w / 2, z0: z - d / 2, x1: x + w / 2, z1: z - d / 2 + t, along: 'x' },
+    { x0: x + w / 2 - t, z0: z - d / 2, x1: x + w / 2, z1: z + d / 2, along: 'z' },
+    { x0: x - w / 2, z0: z + d / 2 - t, x1: x + w / 2, z1: z + d / 2, along: 'x' },
+    { x0: x - w / 2, z0: z - d / 2, x1: x - w / 2 + t, z1: z + d / 2, along: 'z' }
+  ];
+  sides.forEach((sd, i) => {
+    const len = sd.along === 'x' ? sd.x1 - sd.x0 : sd.z1 - sd.z0;
+    const start = sd.along === 'x' ? sd.x0 : sd.z0;
+    const door = i === doorSide ? range(rng, 1.6, len - 3.2) : -99;
+    // Walk along the wall in short pieces of different heights: a jagged, shot-up top.
+    for (let a = 0; a < len - 0.01; ) {
+      const seg = Math.min(len - a, range(rng, 0.9, 2.2));
+      const mid = a + seg / 2;
+      const corner = a < 0.6 || a + seg > len - 0.6;
+      const inDoor = mid > door && mid < door + 1.7;
+      const gone = !corner && !inDoor && rng() < 0.16; // blasted hole
+      if (!inDoor && !gone) {
+        const hh = corner ? h : range(rng, 0.9, h);
+        if (sd.along === 'x') box(start + a, 0, sd.z0, start + a + seg, hh, sd.z1, 'ruin', { pen: true });
+        else box(sd.x0, 0, start + a, sd.x1, hh, start + a + seg, 'ruin', { pen: true });
+      }
+      a += seg;
+    }
+  });
+  // Rubble heaps and a fallen roof beam inside.
+  for (let k = 0; k < 3; k++) {
+    const rx = x + range(rng, -w / 2 + 1.5, w / 2 - 1.5);
+    const rz = z + range(rng, -d / 2 + 1.5, d / 2 - 1.5);
+    const s = range(rng, 0.6, 1.2);
+    box(rx - s, 0, rz - s * 0.8, rx + s, range(rng, 0.35, 0.75), rz + s * 0.8, 'rubble', { pen: false });
+  }
+  visuals.push({ type: 'ruin', x, z, w, d, h, seed: Math.floor(rng() * 1e6) });
+  return { x, z, w, d, h, solid: false, kind: 'ruin', ruin: true };
+}
+
+// ---------- warehouse ----------
+function makeWarehouse(x, z, W, D, alongX, rng, box, visuals) {
+  const H = 7;
+  const t = 0.35;
+  const door = 6; // big loading doors on both short ends
+  const x0 = x - W / 2;
+  const x1 = x + W / 2;
+  const z0 = z - D / 2;
+  const z1 = z + D / 2;
+  const K = 'warehouse';
+  if (alongX) {
+    // Long walls (north/south) with a small side door in one.
+    box(x0, 0, z0, x1, H, z0 + t, K);
+    const sd = x + range(rng, -W / 4, W / 4);
+    box(x0, 0, z1 - t, sd - 0.9, H, z1, K);
+    box(sd + 0.9, 0, z1 - t, x1, H, z1, K);
+    box(sd - 0.9, 2.3, z1 - t, sd + 0.9, H, z1, K);
+    for (const ex of [x0, x1 - t]) {
+      box(ex, 0, z0, ex + t, H, z - door / 2, K);
+      box(ex, 0, z + door / 2, ex + t, H, z1, K);
+      box(ex, 5, z - door / 2, ex + t, H, z + door / 2, K);
+    }
+  } else {
+    box(x0, 0, z0, x0 + t, H, z1, K);
+    const sd = z + range(rng, -D / 4, D / 4);
+    box(x1 - t, 0, z0, x1, H, sd - 0.9, K);
+    box(x1 - t, 0, sd + 0.9, x1, H, z1, K);
+    box(x1 - t, 2.3, sd - 0.9, x1, H, sd + 0.9, K);
+    for (const ez of [z0, z1 - t]) {
+      box(x0, 0, ez, x - door / 2, H, ez + t, K);
+      box(x + door / 2, 0, ez, x1, H, ez + t, K);
+      box(x - door / 2, 5, ez, x + door / 2, H, ez + t, K);
+    }
+  }
+  box(x0 - 0.3, H, z0 - 0.3, x1 + 0.3, H + 0.15, z1 + 0.3, 'zinc', { roof: true, hidden: true });
+  // Containers and pallet stacks inside, against the long walls so the middle stays a lane.
+  const inner = alongX ? W : D;
+  const n = 2 + Math.floor(rng() * 2);
+  for (let k = 0; k < n; k++) {
+    const u = -inner / 2 + 3 + ((inner - 6) * (k + 0.5)) / n + range(rng, -1, 1);
+    const side = k % 2 ? 1 : -1;
+    if (rng() < 0.6) {
+      const len = 6.1;
+      const wid = 2.45;
+      if (alongX) box(x + u - len / 2, 0, z + side * (D / 2 - 0.6 - wid) - (side < 0 ? 0 : 0), x + u + len / 2, 2.6, z + side * (D / 2 - 0.6), 'container', { prop: 'container' });
+      else box(x + side * (W / 2 - 0.6 - wid), 0, z + u - len / 2, x + side * (W / 2 - 0.6), 2.6, z + u + len / 2, 'container', { prop: 'container' });
+    } else {
+      const cx = alongX ? x + u : x + side * (W / 2 - 1.6);
+      const cz = alongX ? z + side * (D / 2 - 1.6) : z + u;
+      box(cx - 0.75, 0, cz - 0.75, cx + 0.75, 1.4, cz + 0.75, 'crate', { prop: 'crate' });
+      if (rng() < 0.6) box(cx - 0.65, 1.4, cz - 0.65, cx + 0.65, 2.7, cz + 0.65, 'crate', { prop: 'crate' });
+    }
+  }
+  visuals.push({ type: 'warehouse', x, z, w: W, d: D, h: H, alongX, seed: Math.floor(rng() * 1e6) });
+  return { x, z, w: W, d: D, h: H };
+}
+
 // ---------- buildings ----------
 function makeBuilding(x, z, w, d, height, solid, rules, rng, box, visuals) {
   const kind = rules.wall;
@@ -793,4 +960,17 @@ export function findPath(nav, ax, az, bx, bz, maxIter = 6000) {
 
 export function inWater(map, x, z) {
   return map.water.find((w) => x > w.x0 && x < w.x1 && z > w.z0 && z < w.z1) || null;
+}
+
+// Where gemstones sit on the ground advert tiles (4 along each tile's long side).
+export function tileGemSpots(map) {
+  const out = [];
+  for (const b of map.billboards || []) {
+    if (b.type !== 'ground') continue;
+    for (const k of [-0.36, -0.12, 0.12, 0.36]) {
+      const u = k * b.w;
+      out.push({ tile: b.id, x: b.x + u * Math.cos(b.rot || 0), z: b.z - u * Math.sin(b.rot || 0) });
+    }
+  }
+  return out;
 }

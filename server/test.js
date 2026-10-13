@@ -195,6 +195,8 @@ section('Fuel drums explode, water drums do not');
         const vx = cx + dx * 2.2, vz = cz + dz * 2.2; // victim behind the drum
         if (Math.abs(sx) > 100 || Math.abs(sz) > 100) continue;
         if (insideAnyBox(mm.map.index, sx, 0, sz) || insideAnyBox(mm.map.index, vx, 0, vz)) continue;
+        if (mm.map.water.some((w) => vx > w.x0 - 1 && vx < w.x1 + 1 && vz > w.z0 && vz < w.z1)) continue; // water puts fire out
+        if (lineBlocked(mm.map.index, cx + dx * 0.5, 0.8, cz + dz * 0.5, vx, 0.9, vz)) continue; // something between the drum and the victim
         // Line of sight to the drum's middle, stopping just short of it.
         if (lineBlocked(mm.map.index, sx, 1.62, sz, cx - dx * 0.5, 0.5, cz - dz * 0.5)) continue;
         setup = { mm, bi, b, cx, cz, sx, sz, vx, vz };
@@ -402,6 +404,127 @@ section('Safe chat with a business and daily missions');
   const got = daily.claimMission(prof, v.missions[0].id);
   check(got && (prof.gems > gems || prof.xp > xp), 'completed mission pays out');
   check(daily.claimMission(prof, v.missions[0].id) === null, 'a mission pays only once');
+}
+
+section('Staying alive: regen, pills, gemstones, punches, two guns');
+{
+  const { HEALTH, TILE_GEMS, PUNCH, GEAR: G, WEAPONS: W } = await import('../shared/config.js');
+  const { tileGemSpots } = await import('../shared/map.js');
+  const stateId = STATES.find((s) => tileGemSpots(generateMap(s.id)).length).id;
+  const mm = new Match(stateId, hooks, 'tdm');
+  const prof = profile('Tough');
+  const H = mm.addHuman(fakeWs(), 'police', prof).player;
+  mm.spawn(H);
+  check(H.armor >= HEALTH.startArmor && H.bloodpill === HEALTH.startPills, 'humans land with light armour and a blood pill');
+  fakeNow += 10000;
+  const bot = [...mm.players.values()].find((o) => !o.human && o.side !== H.side);
+  H.armor = 0;
+  H.health = 100;
+  mm.damage(H, bot, 40, { weapon: 'ak47' });
+  check(Math.abs(H.health - (100 - 40 * HEALTH.botDamageToHumans)) < 0.01, `bots hit humans softer (${H.health})`);
+  H.health = 100;
+  mm.damage(H, bot, 144, { weapon: 'ak47', zone: 'head' });
+  check(H.health === 100 - HEALTH.botMaxHit, `a bot headshot can't one-shot a player (${H.health})`);
+  H.health = 10;
+  H.protectUntil = 0;
+  mm.damage(H, bot, 30, { weapon: 'ak47' });
+  check(H.status === 'alive' && H.health === HEALTH.secondWindHp, 'second wind saves you from a bot once per life');
+  H.protectUntil = 0;
+  H.health = 10;
+  fakeNow += 2000;
+  mm.damage(H, bot, 30, { weapon: 'ak47' });
+  check(H.status !== 'alive', 'but only once');
+  mm.spawn(H);
+  fakeNow += 10000;
+  H.health = 60;
+  H.hurtAt = fakeNow;
+  // Regeneration after the delay.
+  const hp0 = H.health;
+  for (const o of mm.players.values()) if (o !== H) o.status = 'dead';
+  fakeNow += HEALTH.regenDelayMs + 100;
+  run(mm, 2);
+  check(H.health > hp0 + 10, `health regenerates out of fire (${hp0.toFixed(0)} → ${H.health.toFixed(0)})`);
+  // Blood pill.
+  H.health = 40;
+  H.hurtAt = fakeNow;
+  mm.onPill(H);
+  check(H.bloodpill === HEALTH.startPills - 1, 'blood pill used');
+  run(mm, G.bloodpill.secs + 0.2);
+  check(H.health >= 40 + G.bloodpill.heal - 1, `blood pill heals over time (${H.health.toFixed(0)})`);
+  // Gemstone on a ground advert tile.
+  H.health = 30;
+  H.hurtAt = fakeNow;
+  const gem = mm.tileGems[0];
+  gem.at = 0;
+  gem.type = 'emerald';
+  Object.assign(H, { x: gem.x, z: gem.z, y: 0 });
+  mm.stepTileGems(fakeNow);
+  check(H.health >= 30 + TILE_GEMS.types.emerald.heal - 0.01 && gem.at > fakeNow, 'emerald on the ground tile heals and then recharges');
+  // Punch combo.
+  const foe = bot;
+  foe.status = 'alive';
+  foe.health = 400;
+  foe.armor = 0;
+  foe.protectUntil = 0;
+  Object.assign(foe, { x: H.x, z: H.z - 1.2, y: 0 });
+  H.yaw = 0;
+  let total = 0;
+  for (let i = 0; i < PUNCH.combo; i++) {
+    fakeNow += PUNCH.cooldownMs + 20;
+    const before = foe.health;
+    mm.onMelee(H, { kind: 'punch' });
+    total += before - foe.health;
+  }
+  check(total >= PUNCH.dmg * PUNCH.combo + PUNCH.comboBonus - 0.1, `three punches in a row land a heavy blow (${total.toFixed(0)} dmg)`);
+  // Dual guns need rank.
+  H.money = 99999;
+  H.spawnAt = fakeNow;
+  mm.onBuy(H, 'dualmp5');
+  check(H.weapons.primary !== 'dualmp5', 'two-gun MP5 locked for a recruit');
+  prof.xp = 2000 * (W.dualmp5.unlockLevel - 1);
+  mm.onBuy(H, 'dualmp5');
+  check(H.weapons.primary === 'dualmp5', 'two-gun MP5 bought after reaching the rank');
+}
+
+section('Real players: no-bot rooms, friends, crews, rivals');
+{
+  const { Social } = await import('./social.js');
+  const real = new Match('kogi', hooks, 'tdm', { noBots: true });
+  const A = real.addHuman(fakeWs(), 'police', profile('Ada')).player;
+  real.addHuman(fakeWs(), 'bandit', profile('Bayo'));
+  check([...real.players.values()].every((p) => p.human), 'real-players-only room has no bots');
+  const store = { data: { profiles: {} } };
+  const mk = (n) => (store.data.profiles[`tok-${n}`] = { token: `tok-${n}`, name: n });
+  const ada = mk('Ada');
+  const bayo = mk('Bayo');
+  const soc = new Social(store, () => {}, () => ({ online: true, where: { state: 'kogi', mode: 'tdm' } }));
+  const codeA = soc.codeOf(ada);
+  check(/^POD-[A-Z0-9]{5}$/.test(codeA) && soc.codeOf(ada) === codeA, `friend code is stable (${codeA})`);
+  soc.addFriend(bayo, codeA);
+  check(ada.requests.includes(bayo.token), 'friend request arrives');
+  soc.accept(ada, soc.codeOf(bayo));
+  check(ada.friends.includes(bayo.token) && bayo.friends.includes(ada.token), 'friends both ways after accepting');
+  const crew = soc.createCrew(ada, 'Lagos Lions', 'lgl');
+  soc.joinCrew(bayo, `CREW-${crew.id}`);
+  check(crew.tag === 'LGL' && crew.members.length === 2 && soc.tagOf(bayo) === 'LGL', 'crew created and joined, tag shared');
+  let threw = false;
+  try {
+    soc.createCrew(mk('Chidi'), 'Copycats', 'LGL');
+  } catch {
+    threw = true;
+  }
+  check(threw, 'crew tags are unique');
+  soc.recordKill(bayo, ada);
+  soc.recordKill(bayo, ada);
+  check(soc.rivalOf(ada)?.name === 'Bayo', 'the player who keeps killing you becomes your rival');
+  const r = soc.recordKill(ada, bayo);
+  check(r.revenge, 'killing your rival back counts as revenge');
+  const v = soc.view(ada);
+  check(v.friends[0].name === 'Bayo' && v.crew.tag === 'LGL' && v.rivals[0].theyKilledMe === 2, 'squad view lists friends, crew and rivals');
+  // Crew tag shows in battle names.
+  const tagged = new Match('kogi', { ...hooks, social: soc }, 'tdm', { noBots: true });
+  const T = tagged.addHuman(fakeWs(), 'police', ada).player;
+  check(T.name === '[LGL] Ada', `crew tag before the name in battle (${T.name})`);
 }
 
 section('Every state loads');

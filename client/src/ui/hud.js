@@ -76,6 +76,7 @@ export class Hud {
     const list = [];
     for (const k of ['frag', 'smoke', 'flash']) if (m[k] > 0) list.push(`<span class="${this.nadeSel === k ? 'sel' : ''}">${{ frag: '💣', smoke: '☁', flash: '✦' }[k]} ${m[k]}</span>`);
     if (m.medkit > 0) list.push(`<span>✚ ${m.medkit} (X)</span>`);
+    if (m.bloodpill > 0) list.push(`<span>💊 ${m.bloodpill} (N)</span>`);
     $('nades').innerHTML = list.join('');
   }
 
@@ -321,7 +322,8 @@ export class Hud {
       ['SMGs & shotguns', ['mp5', 'danegun']],
       ['Rifles', ['ak47', 'g3', 'svd']],
       ['Heavy', ['pkm', 'rpg']],
-      ['Gear', ['vest', 'helmet', 'medkit']],
+      ['Two hands (rank unlock)', ['dualp9', 'dualmp5']],
+      ['Gear', ['vest', 'helmet', 'medkit', 'bloodpill']],
       ['Grenades', ['frag', 'smoke', 'flash']]
     ];
     let key = 1;
@@ -336,8 +338,9 @@ export class Hud {
         const price = priceFor(id, m.faction);
         const b = document.createElement('button');
         b.className = 'item';
-        b.disabled = !inZone || m.money < price || m.status !== 'alive';
-        const stats = w ? `${w.dmg}${w.pellets ? '×' + w.pellets : ''} dmg · ${w.mag} rds · ${w.rpm} rpm` : g.name;
+        const locked = w?.unlockLevel && (m.level || 1) < w.unlockLevel;
+        b.disabled = !inZone || m.money < price || m.status !== 'alive' || locked;
+        const stats = locked ? `🔒 Opens at rank level ${w.unlockLevel}` : w ? `${w.dmg}${w.pellets ? '×' + w.pellets : ''} dmg · ${w.mag} rds · ${w.rpm} rpm` : id === 'bloodpill' ? `+${g.heal} health over ${g.secs}s, keep moving` : g.name;
         b.innerHTML = `<kbd>${key <= 9 ? key : ''}</kbd><b>${w?.name || g.name}</b><span class="price">${price === 0 ? 'FREE' : fmt(price)}</span>${price < base ? `<span class="old">${fmt(base)}</span>` : ''}<small>${stats}</small>`;
         b.onclick = () => onBuy(id);
         b.dataset.item = id;

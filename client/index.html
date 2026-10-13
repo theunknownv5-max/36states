@@ -69,6 +69,7 @@
         </div>
         <div class="lobby-actions">
           <button class="btn ghost icon-btn" id="btn-daily" title="Daily rewards and missions">🎁<span class="lbl"> Daily</span> <i class="badge" id="daily-badge" hidden></i></button>
+          <button class="btn ghost icon-btn" id="btn-squad" title="Friends, crew and rivals">👥<span class="lbl"> Squad</span> <i class="badge" id="squad-badge" hidden></i></button>
           <button class="btn ghost icon-btn" id="btn-inbox" title="Messages from businesses">📨<span class="lbl"> Inbox</span> <i class="badge" id="inbox-badge" hidden></i></button>
           <button class="btn ghost icon-btn" id="btn-top" title="Top soldiers">🏆<span class="lbl"> Top</span></button>
           <button class="btn ghost" id="btn-settings-lobby">⚙ Settings</button>
@@ -236,6 +237,7 @@
               <div><kbd>Mouse</kbd> shoot / aim · <kbd>R</kbd> reload · <kbd>1 2 3</kbd> weapons · <kbd>4</kbd> pick grenade · <kbd>G</kbd> throw</div>
               <div><kbd>B</kbd> buy · <kbd>E</kbd> revive / plant / defuse · <kbd>X</kbd> first aid · <kbd>5</kbd> drone · <kbd>6</kbd> artillery</div>
               <div><kbd>Tab</kbd> scores · <kbd>Y</kbd>/<kbd>U</kbd> chat · <kbd>V</kbd> quick talk · <kbd>Shift</kbd> (scoped) hold breath</div>
+              <div><kbd>F</kbd> punch (3 in a row = heavy blow) · <kbd>3</kbd> machete · <kbd>N</kbd> blood pill</div>
               <div><kbd>H</kbd> chase cam · <kbd>T</kbd> scout drone · <kbd>J</kbd> chat with the business on the advert you dey look</div>
             </div>
             <button class="btn danger" id="btn-leave">Comot from battle</button>
@@ -274,6 +276,8 @@
           <button class="tb t-nade" data-key="KeyG" aria-label="Grenade">💣</button>
           <button class="tb t-use" data-key="KeyE" aria-label="Use" hidden>✚</button>
           <button class="tb t-med" data-key="KeyX" aria-label="First aid" hidden>🩹</button>
+          <button class="tb t-pill" data-key="KeyN" aria-label="Blood pill" hidden>💊</button>
+          <button class="tb t-punch" data-key="KeyF" aria-label="Punch">👊</button>
         </div>
         <div id="rotate"><div><div class="phone-ico"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10.5 18.5h3"/></svg></div><b>Turn your phone sideways</b><span>Proof of Duty na landscape game</span></div></div>
       </div>
@@ -293,6 +297,9 @@
           <label>Mouse sensitivity <input type="range" id="set-sens" min="0.2" max="3" step="0.05" /></label>
           <label>Touch look speed <input type="range" id="set-touch" min="0.3" max="3" step="0.05" /></label>
           <label class="sw"><span>Invert mouse up/down</span><input type="checkbox" id="set-invert" /><i></i></label>
+          <label>Camera view <select id="set-view"><option value="fp">Hands only (first person)</option><option value="chase">Full body (third person)</option></select></label>
+          <h4>Battle</h4>
+          <label class="sw"><span>Fight with bots (off = real players only)</span><input type="checkbox" id="set-bots" /><i></i></label>
           <h4>Graphics</h4>
           <label>Quality <select id="set-quality"><option value="low">Low (old phones)</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra (gaming PC)</option></select></label>
           <label>Field of view <input type="range" id="set-fov" min="65" max="100" step="1" /></label>
@@ -345,6 +352,15 @@
       <div class="card sheet-card">
         <div class="menu-head"><h2>📨 Inbox</h2><button class="x" data-close-sheet="inbox">✕</button></div>
         <div id="inbox-list" class="inbox-list"></div>
+      </div>
+    </div>
+
+    <div id="squad" class="sheet" hidden>
+      <div class="card sheet-card">
+        <div class="menu-head"><h2>👥 Squad</h2><button class="x" data-close-sheet="squad">✕</button></div>
+        <div class="squad-tabs"><button data-tab="friends" class="on">Friends</button><button data-tab="crew">Crew</button><button data-tab="rivals">Rivals</button></div>
+        <div id="squad-note" class="squad-note" hidden></div>
+        <div id="squad-body"></div>
       </div>
     </div>
 

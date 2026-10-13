@@ -412,6 +412,66 @@ export class AudioEngine {
     } else pan.setPosition(p.x, p.y, p.z);
   }
 
+  // Train on the viaduct: a rumbling, clattering loop that follows the train, plus the horn.
+  train(on) {
+    if (!on) return this.stopLoop('train', 2);
+    if (!this.ready() || this.loops.has('train')) return;
+    const ctx = this.ctx;
+    const pan = ctx.createPanner();
+    pan.panningModel = this.hrtf ? 'HRTF' : 'equalpower';
+    pan.distanceModel = 'inverse';
+    pan.refDistance = 40;
+    pan.rolloffFactor = 1;
+    pan.maxDistance = 3000;
+    pan.connect(this.amb);
+    this.trainPan = pan;
+    this.loop('train', () => {
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(1.6, ctx.currentTime + 2.5);
+      gain.connect(pan);
+      const stop = [...this.noiseLoop(gain, { buffer: this.brown, f: 220, gain: 1.2, lfo: 6.5, lfoDepth: 0.45 }), ...this.noiseLoop(gain, { type: 'bandpass', f: 1800, q: 3, gain: 0.12, lfo: 13, lfoDepth: 0.9 })];
+      return { gain, stop };
+    });
+  }
+
+  moveTrain(p) {
+    const pan = this.trainPan;
+    if (!pan || !this.ctx) return;
+    if (pan.positionX) {
+      pan.positionX.value = p.x;
+      pan.positionY.value = p.y;
+      pan.positionZ.value = p.z;
+    } else pan.setPosition(p.x, p.y, p.z);
+  }
+
+  horn(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 60, rolloff: 0.6, reverb: 0.6, max: 4000 });
+    for (const [f, t] of [
+      [233, 0],
+      [294, 0],
+      [233, 1.1],
+      [294, 1.1]
+    ])
+      this.tone(o.input, o.when + t, { f, dur: 0.9, gain: 0.16, type: 'sawtooth', attack: 0.05 });
+  }
+
+  // Punch: a dull body thud; heavy ones with a crack.
+  punch(pos, heavy) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 3, reverb: 0.1 });
+    this.tone(o.input, o.when, { f: heavy ? 110 : 150, f2: 50, dur: 0.14, gain: heavy ? 0.8 : 0.55 });
+    this.noiseHit(o.input, o.when, { dur: 0.06, gain: heavy ? 0.6 : 0.35, type: 'lowpass', f: 1400, f2: 300 });
+  }
+
+  // Gemstone or blood pill: a bright shimmer.
+  heal(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 4, reverb: 0.4 });
+    [880, 1175, 1568].forEach((f, i) => this.tone(o.input, o.when + i * 0.07, { f, dur: 0.5, gain: 0.12, type: 'triangle' }));
+  }
+
   // Bomb timer beep.
   beep(pos, f = 1000) {
     if (!this.ready()) return;

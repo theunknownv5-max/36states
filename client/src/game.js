@@ -10,11 +10,13 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GradeShader } from './fps/grade.js';
 import { generateMap } from '../../shared/map.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
-import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS } from '../../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TILE_GEMS } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
 import { Ambience } from './world/ambience.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
 import { Billboards } from './world/billboards.js';
+import { Places } from './world/places.js';
+import { TileGems } from './world/tile-gems.js';
 import { Soldier } from './characters/soldiers.js';
 import { ViewModel } from './fps/viewmodel.js';
 import { Effects } from './fps/effects.js';
@@ -75,6 +77,7 @@ export class Game {
     scene.add(this.camera);
     this.arena = new Arena(this.renderer, scene, this.map, this.quality);
     this.ambience = new Ambience(scene, this.map, this.arena);
+    this.places = new Places(scene, this.map);
     this.boards = new Billboards(scene, this.map, this.renderer);
     this.cams?.exitDrone();
     this.cams = new CameraModes(this);
@@ -83,6 +86,7 @@ export class Game {
     this.walls = new AdWalls(scene, this.map, this.boards);
     this.walls.setGems(info.gems);
     this.boards.load(info.state);
+    this.tileGems = new TileGems(scene, this.map, info.tileGems || []);
     for (const i of info.drums || []) this.arena.killDrum(i);
     this.siteMarkers = new SiteMarkers(scene, this.map);
     this.siteMarkers.apply(info.sites);
@@ -173,6 +177,8 @@ export class Game {
     this.modes.stop();
     this.ambience?.dispose();
     this.boards?.dispose();
+    this.places?.dispose();
+    this.tileGems?.dispose();
     this.cams?.exitDrone();
     this.adChat?.close(true);
     this.running = false;
@@ -280,6 +286,33 @@ export class Game {
     on('chat', (m) => this.hud.chat(m));
     on('reload', (m) => m.id !== this.myId && audio.reload(m.w, this.posOf(m.id)));
     on('swing', (m) => m.id !== this.myId && audio.swing(this.posOf(m.id)));
+    on('punchHit', (m) => {
+      const pos = m.id === this.myId ? null : this.posOf(m.id);
+      audio.punch?.(pos, m.heavy);
+      if (m.id === this.myId) this.fx.shake = Math.min(1, this.fx.shake + (m.heavy ? 0.5 : 0.25));
+      if (m.by === this.myId && m.heavy) this.hud.callout('HEAVY BLOW!');
+    });
+    on('combo', () => this.hud.callout('COMBO!'));
+    on('revenge', (m) => {
+      this.hud.callout('REVENGE!');
+      this.hud.toast(`You don pay ${m.name} back! +150 XP`, 'streak', 2400);
+    });
+    on('secondWind', () => {
+      this.hud.callout('SECOND WIND!');
+      this.hud.toast('You nearly die! Find cover now, your body go recover.', 'bad', 2600);
+      this.fx.shake = 1;
+    });
+    on('pill', (m) => audio.heal?.(m.id === this.myId ? null : this.posOf(m.id)));
+    on('tgem', (m) => {
+      this.tileGems?.taken(m.i, m.at, m.type);
+      if (m.id === this.myId) {
+        const g = TILE_GEMS.types[m.took];
+        audio.heal?.(null);
+        this.hud.toast(`${g.name}! ${g.heal ? `+${g.heal} health` : ''}${g.heal && g.armor ? ' · ' : ''}${g.armor ? `+${g.armor} armour` : ''}`, 'gem', 1800);
+        $('tint').className = 'healed';
+        setTimeout(() => $('tint').className === 'healed' && ($('tint').className = ''), 450);
+      }
+    });
     on('throw', (m) => m.id !== this.myId && audio.bounce(this.posOf(m.id)));
     on('smoke', (m) => {
       this.fx.smoke(m.x, m.z, m.r, m.dur);
@@ -620,9 +653,12 @@ export class Game {
       case 'KeyX':
         return this.medkit();
       case 'KeyE':
-      case 'KeyF':
         if (this.modes.useAction(true)) return;
         return this.tryRevive();
+      case 'KeyF':
+        return this.quickPunch();
+      case 'KeyN':
+        return this.takePill();
       case 'Digit5':
         if (this.me.streaksAvail?.uav) this.net.send({ t: 'streak', kind: 'uav' });
         return;
@@ -912,6 +948,22 @@ export class Game {
     this.hud.nades(this.me);
   }
 
+  // Quick punch with the free hand, any time (three in a row on one enemy = heavy blow).
+  quickPunch() {
+    const now = performance.now();
+    if (now - (this.local.lastPunch || 0) < 380) return;
+    this.local.lastPunch = now;
+    this.net.send({ t: 'melee', kind: 'punch' });
+    this.vm.punch?.();
+    audio.swing();
+  }
+
+  takePill() {
+    if (!(this.me?.bloodpill > 0)) return this.hud.toast('You no get blood pill. Buy for armoury.', 'bad', 1500);
+    if (this.me.health >= 100) return this.hud.toast('You never wound. Keep the pill.', 'info', 1300);
+    this.net.send({ t: 'pill' });
+  }
+
   medkit() {
     if (!(this.me.medkit > 0)) return this.hud.toast('You no get first aid. Buy for armoury.', 'bad', 1500);
     if (this.me.health >= 100) return;
@@ -1016,6 +1068,8 @@ export class Game {
     this.ambience.update(dt, this.arena.time, this.camera);
     this.walls.update(dt, this.arena.time, sNow, this.camera);
     this.boards.update(dt, sNow);
+    this.places.update(dt, sNow);
+    this.tileGems.update(dt, this.arena.time, sNow);
     this.siteMarkers.update(dt, this.arena.time);
     this.fx.update(dt, this.camera);
     this.vm.update(dt, { speed: this.vel.length(), sprint: this.sprinting, ads: this.adsOn, crouch: this.body.crouch, onGround: this.body.onGround, look, landed: this.justLanded });
@@ -1328,7 +1382,8 @@ export class Game {
     const combat = st === 'alive' && !drone;
     const use = combat && (!!this.downedMate() || !!this.modes.availableAction());
     const med = combat && m.medkit > 0 && m.health < 100;
-    const key = `${show}${combat}${use}${med}${drone}`;
+    const pill = combat && m.bloodpill > 0 && m.health < 100;
+    const key = `${show}${combat}${use}${med}${drone}${pill}`;
     if (key === this.touchKey) return;
     this.touchKey = key;
     const t = $('touch');
@@ -1337,13 +1392,24 @@ export class Game {
     t.classList.toggle('drone', drone);
     t.querySelector('.t-use').hidden = !use;
     t.querySelector('.t-med').hidden = !med;
+    t.querySelector('.t-pill').hidden = !pill;
     if (!show || !combat) this.input.resetTouch(t);
   }
 
   labelItems(sNow) {
     const items = [];
     const me = this.body;
+    const rival = this.me?.rival;
     for (const [id, s] of this.soldiers) {
+      if (rival && s.visible && s.state && !s.isMate && !(s.state.flags & (256 | 4))) {
+        const r = this.roster.get(id);
+        const plain = (r?.name || '').replace(/^\[[A-Z0-9]+\] /, '');
+        if (plain === rival) {
+          const d = Math.hypot(s.state.x - me.x, s.state.z - me.z);
+          const cam = this.camera.position;
+          if (d < 80 && !lineBlocked(this.map.index, cam.x, cam.y, cam.z, s.state.x, s.state.y + 1.6, s.state.z, this.smokes || [])) items.push({ x: s.state.x, y: s.state.y + 2.15, z: s.state.z, cls: 'lab rival', html: `⚔ RIVAL · ${plain.replace(/[<>&]/g, '')}` });
+        }
+      }
       if (!s.visible || !s.state || !s.isMate) continue;
       const r = this.roster.get(id);
       const d = Math.hypot(s.state.x - me.x, s.state.z - me.z);

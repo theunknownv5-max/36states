@@ -372,6 +372,13 @@ export class Arena {
       else if (k === 'zinc') B.add('zinc', b, 3);
       else if (k === 'container') B.add('container', b, 2.5, rgb(CONTAINER_TINTS[Math.floor(tintFor(b) * CONTAINER_TINTS.length)]));
       else if (k === 'metal' || k === 'pipe' || k === 'tank') B.add('metal', b, 2);
+      else if (k === 'ruin') B.add(this.map.biome === 'sahel' ? 'mud' : 'concrete', b, 3, [0.5, 0.46, 0.41]);
+      else if (k === 'rubble') B.add('concrete', b, 1.5, [0.55, 0.52, 0.48]);
+      else if (k === 'warehouse') B.add('zinc', b, 3, [0.72, 0.78, 0.82]);
+      else if (k === 'wagon') {
+        if (b.style === 'tanker' || b.style === 'loco') continue; // drawn as proper shapes
+        B.add('rust', b, 3, b.style === 'flat' ? [0.7, 0.62, 0.55] : [0.95, 0.75, 0.6]);
+      }
       else B.add('concrete', b, 3);
     }
     B.build(mats, this.root);

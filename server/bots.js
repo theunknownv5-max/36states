@@ -302,6 +302,8 @@ export class BotBrain {
     const id = p.weapons[p.slot];
     const w = WEAPONS[id];
     if (!w || w.melee) return;
+    // Face to face: sometimes they fight hand to hand (punch or machete).
+    if (dist < 1.9 && tgt.status === 'alive' && Math.random() < 0.35) return m.onMelee(p, { kind: Math.random() < 0.55 ? 'punch' : 'knife' });
     const a = m.ammoOf(p, id);
     if (p.reloadUntil && t < p.reloadUntil) return;
     if (!a || a.mag <= 0) {
@@ -318,7 +320,7 @@ export class BotBrain {
     // Knife range? Use it.
     if (dist < 1.6 && Math.random() < 0.5) return m.onMelee(p, {});
     const [ex, ey, ez] = this.eye(p);
-    const ty = tgt.y + (tgt.status === 'downed' ? 0.3 : tgt.crouch ? 0.85 : 1.25) + (Math.random() < 0.18 * this.skill ? 0.4 : 0);
+    const ty = tgt.y + (tgt.status === 'downed' ? 0.3 : tgt.crouch ? 0.85 : 1.25) + (Math.random() < (tgt.human ? 0.06 : 0.18) * this.skill ? 0.4 : 0);
     const dir = normalise([tgt.x - ex, ty - ey, tgt.z - ez]);
     // Aim settles over the first second and a half of a fight; spraying makes it worse.
     const settle = Math.max(0.2, 1 - (t - this.engagedAt) / 1500);

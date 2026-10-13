@@ -44,7 +44,9 @@ const settings = {
   gunsOn: store.get('gunsOn', '1') === '1',
   touchSens: +store.get('touch', 1),
   quality: detectQuality(),
-  invertY: store.get('invert') === '1'
+  invertY: store.get('invert') === '1',
+  view: store.get('view', 'fp') === 'chase' ? 'chase' : 'fp', // hands only (default) or full body
+  bots: store.get('bots', '1') === '1' // off = rooms with real players only
 };
 
 document.title = `${GAME.name}`;
@@ -120,6 +122,8 @@ function saveSettings() {
   store.set('musicOn', settings.musicOn ? '1' : '0');
   store.set('gunsOn', settings.gunsOn ? '1' : '0');
   store.set('touch', settings.touchSens);
+  store.set('view', settings.view);
+  store.set('bots', settings.bots ? '1' : '0');
 }
 
 function openSettings() {
@@ -132,6 +136,8 @@ function openSettings() {
   $('set-invert').checked = settings.invertY;
   $('set-quality').value = settings.quality;
   $('set-fov').value = settings.fov;
+  $('set-view').value = settings.view;
+  $('set-bots').checked = settings.bots;
   $('set-note').textContent = '';
   showSheet('settings');
 }
@@ -165,6 +171,16 @@ function bindSettings() {
   on('set-touch', 'input', (t) => {
     settings.touchSens = +t.value;
     input.touchSens = settings.touchSens;
+  });
+  on('set-view', 'change', (t) => {
+    settings.view = t.value === 'chase' ? 'chase' : 'fp';
+    saveSettings();
+    game?.cams?.setView(settings.view);
+  });
+  on('set-bots', 'change', (t) => {
+    settings.bots = t.checked;
+    saveSettings();
+    $('set-note').textContent = settings.bots ? 'Bots go fill empty places for your next battle.' : 'Next battle: real players only. No bots at all.';
   });
   on('set-invert', 'change', (t) => {
     settings.invertY = t.checked;
@@ -279,6 +295,94 @@ function showAuth() {
 }
 
 // ---------- lobby ----------
+// ---------- squad: friends, crew, rivals ----------
+let squad = null;
+let squadTab = 'friends';
+function setupSquad() {
+  const badge = () => {
+    const n = squad?.requests?.length || 0;
+    $('squad-badge').hidden = !n;
+    $('squad-badge').textContent = n;
+  };
+  net.on('social', (m) => {
+    squad = m.social;
+    badge();
+    const note = $('squad-note');
+    note.hidden = !(m.note || m.error);
+    note.className = `squad-note ${m.error ? 'bad' : ''}`;
+    note.textContent = m.error || m.note || '';
+    if (!$('squad').hidden) renderSquad();
+  });
+  net.on('friendWhere', (m) => {
+    showSheet('squad', false);
+    warmap.setMode(m.mode);
+    warmap.select(m.state);
+    toast(`Joining ${m.name}…`);
+    join({ state: m.state, faction: m.faction, mode: m.mode, bots: !m.real });
+  });
+  $('btn-squad').onclick = () => {
+    showSheet('squad');
+    renderSquad();
+    net.send({ t: 'social' });
+  };
+  for (const b of document.querySelectorAll('.squad-tabs button'))
+    b.onclick = () => {
+      squadTab = b.dataset.tab;
+      for (const x of document.querySelectorAll('.squad-tabs button')) x.classList.toggle('on', x === b);
+      renderSquad();
+    };
+  $('squad-body').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const a = b.dataset.act;
+    if (a === 'copy') {
+      navigator.clipboard?.writeText(b.dataset.code).catch(() => {});
+      return toast(`Copied ${b.dataset.code}`);
+    }
+    if (a === 'add') return net.send({ t: 'friendAdd', code: $('sq-code').value });
+    if (a === 'createCrew') return net.send({ t: 'crewCreate', name: $('sq-crew-name').value, tag: $('sq-crew-tag').value });
+    if (a === 'joinCrew') return net.send({ t: 'crewJoin', code: $('sq-crew-code').value });
+    if (a === 'crewLeave') return confirm('Comot from this crew?') && net.send({ t: 'crewLeave' });
+    net.send({ t: a, code: b.dataset.code });
+  });
+  net.send({ t: 'social' });
+}
+
+const MODE_NAMES = { conquest: 'Hold Ground', tdm: 'Gbas Gbos', bomb: 'Plant & Defuse' };
+function renderSquad() {
+  const s = squad;
+  const body = $('squad-body');
+  if (!s) {
+    body.innerHTML = '<p class="muted">Loading…</p>';
+    return;
+  }
+  const person = (f, actions) => {
+    const where = f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}${f.where.real ? ' · real players' : ''}` : f.online ? 'Online · for lobby' : 'Offline';
+    return `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${f.tag ? `[${esc(f.tag)}] ` : ''}${esc(f.name)}</b><small>${esc(where)}</small></div><div class="sq-acts">${actions}</div></div>`;
+  };
+  if (squadTab === 'friends') {
+    body.innerHTML = `
+      <div class="sq-code">Your friend code <b>${esc(s.code)}</b> <button class="btn ghost" data-act="copy" data-code="${esc(s.code)}">Copy</button></div>
+      <div class="sq-row"><input id="sq-code" placeholder="Friend code, e.g. POD-7K3QX" maxlength="12" autocomplete="off"><button class="btn primary" data-act="add">Add friend</button></div>
+      ${s.requests.length ? `<h4>Requests</h4>${s.requests.map((f) => person(f, `<button class="btn primary" data-act="friendAccept" data-code="${f.code}">Accept</button><button class="btn ghost" data-act="friendDecline" data-code="${f.code}">No</button>`)).join('')}` : ''}
+      <h4>Friends (${s.friends.length})</h4>
+      ${s.friends.length ? s.friends.sort((a, b) => b.online - a.online).map((f) => person(f, `${f.where ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}<button class="btn ghost" data-act="friendRemove" data-code="${f.code}" title="Remove">✕</button>`)).join('') : '<p class="muted">Share your code with your people. When they add you, you fit see when dem dey fight and jump into the same battle.</p>'}`;
+  } else if (squadTab === 'crew') {
+    const c = s.crew;
+    body.innerHTML = c
+      ? `<div class="sq-code">[${esc(c.tag)}] <b>${esc(c.name)}</b> · code <b>${esc(c.code)}</b> <button class="btn ghost" data-act="copy" data-code="${esc(c.code)}">Copy</button></div>
+         <p class="muted">Your crew tag dey show before your name for battle. Share the code make your people join.</p>
+         <h4>Members (${c.members.length})</h4>${c.members.sort((a, b) => b.online - a.online).map((f) => person(f, f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : '')).join('')}
+         <button class="btn danger" data-act="crewLeave" style="margin-top:12px">Leave crew</button>`
+      : `<h4>Start a crew</h4><div class="sq-row"><input id="sq-crew-name" placeholder="Crew name" maxlength="24"><input id="sq-crew-tag" placeholder="TAG" maxlength="4" style="max-width:90px;text-transform:uppercase"><button class="btn primary" data-act="createCrew">Create</button></div>
+         <h4>Join a crew</h4><div class="sq-row"><input id="sq-crew-code" placeholder="Crew code, e.g. CREW-AB12C" maxlength="12"><button class="btn primary" data-act="joinCrew">Join</button></div>`;
+  } else {
+    body.innerHTML = s.rivals.length
+      ? `<p class="muted">Real soldiers you keep trading kills with. Your top rival get ⚔ mark for battle; kill am back for revenge XP.</p>${s.rivals.map((r) => `<div class="sq-person"><i class="dot rival"></i><div><b>${esc(r.name)}</b><small>Dem kill you ${r.theyKilledMe} · You kill dem ${r.iKilledThem}</small></div><div class="sq-acts">${r.theyKilledMe > r.iKilledThem ? '<span class="tag bad">You owe am</span>' : r.iKilledThem > r.theyKilledMe ? '<span class="tag good">You dey lead</span>' : '<span class="tag">Level</span>'}</div></div>`).join('')}`
+      : '<p class="muted">No rival yet. Rivals na real players wey you trade kills with. Bots no count.</p>';
+  }
+}
+
 // ---------- daily duty: login calendar + missions ----------
 let dailyState = null;
 function setupDaily(d) {
@@ -373,6 +477,7 @@ function join(msg) {
   music.unlock();
   goFullscreen();
   music.loadTrack();
+  if (msg.mode !== 'stage' && msg.bots === undefined) msg.bots = settings.bots;
   lastJoin = msg;
   lastSpawn = null;
   net.send({ t: 'join', ...msg });
@@ -447,12 +552,15 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     if (inGame && game.running && !isTouch() && game.status === 'alive') game.input.lock();
   };
   $('btn-inbox').onclick = () => inboxUI.open();
+  game.saveSettings = saveSettings;
+  setupSquad();
   setupDaily(welcome.daily);
   if (new URLSearchParams(location.search).has('debug')) {
     window.__game = game;
     window.__THREE = THREE;
     window.__music = music;
     import('../../shared/map.js').then((m) => (window.__findPath = m.findPath));
+    import('../../shared/physics.js').then((m) => (window.__phys = m));
   }
   net.on('lobby', (m) => {
     warmap.setLobby(m.states);

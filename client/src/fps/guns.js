@@ -184,8 +184,38 @@ function danegun() {
   return g;
 }
 
+// Two guns, one per hand (dual wield). The right gun keeps the usual muzzle; the left one's
+// muzzle is muzzle2. Children: [right, left].
+function dual(make, spread) {
+  const g = new THREE.Group();
+  const right = make();
+  const left = make();
+  right.position.x = spread;
+  left.position.x = -spread;
+  left.rotation.z = 0.06;
+  right.rotation.z = -0.06;
+  g.add(right, left);
+  const u = right.userData;
+  g.userData = {
+    dual: true,
+    right,
+    left,
+    muzzle: u.muzzle.clone().add(right.position),
+    muzzle2: left.userData.muzzle.clone().add(left.position),
+    eject: u.eject ? u.eject.clone().add(right.position) : null,
+    mag: u.mag,
+    sightY: u.sightY,
+    scope: false
+  };
+  return g;
+}
+
 export function buildGun(id) {
   switch (id) {
+    case 'dualp9':
+      return dual(() => pistol(false), 0.16);
+    case 'dualmp5':
+      return dual(() => rifle({ furniture: 'poly', stock: 'fold', mag: 'curve', rec: 0.28, barrel: 0.12, handguard: 0.14, gasTube: false }), 0.2);
     case 'ak47':
       return rifle({ furniture: 'wood', stock: 'wood', mag: 'curve', rec: 0.36, barrel: 0.32 });
     case 'g3':
@@ -213,6 +243,8 @@ export function buildGun(id) {
 // One cache of third-person guns per weapon id (cloned per soldier).
 const tpCache = new Map();
 export function thirdPersonGun(id) {
+  if (id === 'dualp9') id = 'p9';
+  if (id === 'dualmp5') id = 'mp5';
   if (!tpCache.has(id)) tpCache.set(id, buildGun(id));
   const src = tpCache.get(id);
   const c = src.clone(true);

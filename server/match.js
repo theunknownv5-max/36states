@@ -1,8 +1,8 @@
 // One live battle in one state. The server decides every hit, death, revive,
 // gem pickup, capture, explosion and payout. Bots fill empty slots.
 import { randomUUID } from 'node:crypto';
-import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, priceFor } from '../shared/config.js';
-import { generateMap, inWater } from '../shared/map.js';
+import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, HEALTH, PUNCH, TILE_GEMS, priceFor, rankFor } from '../shared/config.js';
+import { generateMap, inWater, tileGemSpots } from '../shared/map.js';
 import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise } from '../shared/physics.js';
 import { RESOURCES } from '../shared/states.js';
 import { mulberry32 } from '../shared/rng.js';
@@ -27,7 +27,10 @@ export class Match {
     this.artillery = [];
     this.uav = { sec: 0, out: 0 };
     this.gems = this.map.adWalls.map(() => 0); // available-at time for each wall's gem
+    // Healing gemstones on the ground advert tiles.
+    this.tileGems = tileGemSpots(this.map).map((g) => ({ ...g, type: 'ruby', at: 0 }));
     this.rng = mulberry32((Date.now() & 0xffff) ^ 0x5eed);
+    for (const g of this.tileGems) g.type = this.pickGemType();
     this.emptySince = now();
     this.reset();
   }
@@ -86,7 +89,8 @@ export class Match {
     if (!this.mode.def.solo && this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
       return { error: `${SIDES[side].label} don get too many people here. Join ${SIDES[other].label}.` };
     }
-    const p = this.newPlayer({ human: true, conn, profile, faction, name: profile.name });
+    const tag = this.hooks.social?.tagOf(profile);
+    const p = this.newPlayer({ human: true, conn, profile, faction, name: tag ? `[${tag}] ${profile.name}` : profile.name });
     this.players.set(p.id, p);
     this.spawn(p, true);
     this.balanceBots();
@@ -168,8 +172,9 @@ export class Match {
   // Keep each side at MATCH.minPerSide fighters by adding or removing bots.
   balanceBots() {
     for (const side of ['sec', 'out']) {
-      const want = this.mode.wantBots(side);
+      let want = this.mode.wantBots(side);
       if (want < 0) continue; // the mode manages this side's bots itself (campaign waves)
+      if (this.opts.noBots) want = 0; // "real players only" rooms
       const bots = [...this.players.values()].filter((p) => !p.human && p.side === side);
       for (let i = bots.length; i < want; i++) {
         const factions = Object.keys(FACTIONS).filter((f) => FACTIONS[f].side === side);
@@ -194,7 +199,7 @@ export class Match {
   }
 
   spawn(p, first = false, keepKit = false) {
-    const kit = keepKit ? { weapons: { ...p.weapons }, ammo: JSON.parse(JSON.stringify(p.ammo)), armor: p.armor, helmet: p.helmet, frag: p.frag, smoke: p.smoke, flash: p.flash, medkit: p.medkit, slot: p.slot } : null;
+    const kit = keepKit ? { weapons: { ...p.weapons }, ammo: JSON.parse(JSON.stringify(p.ammo)), armor: p.armor, helmet: p.helmet, frag: p.frag, smoke: p.smoke, flash: p.flash, medkit: p.medkit, bloodpill: p.bloodpill, slot: p.slot } : null;
     const base = this.map.bases[p.side];
     // Pick the spawn point furthest from enemies.
     let best = base.spawns[0];
@@ -219,6 +224,13 @@ export class Match {
     p.ammo.knife = { mag: 0, reserve: 0 };
     p.slot = 'secondary';
     p.frag = p.smoke = p.flash = p.medkit = 0;
+    p.bloodpill = 0;
+    p.pillUntil = 0;
+    p.secondWindUsed = false;
+    if (p.human) {
+      p.armor = Math.max(p.armor, HEALTH.startArmor);
+      p.bloodpill = HEALTH.startPills;
+    }
     if (!p.human) {
       const lo = botLoadout(p.faction, this.rng);
       this.giveWeapon(p, lo);
@@ -279,6 +291,9 @@ export class Match {
       smoke: p.smoke,
       flash: p.flash,
       medkit: p.medkit,
+      bloodpill: p.bloodpill || 0,
+      level: p.human ? rankFor(p.profile.xp).level : 1,
+      rival: this.hooks.social?.rivalOf(p.profile)?.name || null,
       status: p.status,
       gems: p.profile.gems,
       streak: p.streak,
@@ -312,6 +327,7 @@ export class Match {
       modeState: this.mode.state(),
       sites: this.siteView(),
       gems: this.gems,
+      tileGems: this.tileGemView(),
       drums: this.drumsDead,
       discovery: this.discovery,
       roster: this.roster(),
@@ -356,6 +372,8 @@ export class Match {
         return this.onThrow(p, m);
       case 'medkit':
         return this.onMedkit(p);
+      case 'pill':
+        return this.onPill(p);
       case 'revive':
         return this.onRevive(p, m.target);
       case 'streak':
@@ -585,9 +603,15 @@ export class Match {
   onMelee(p, m) {
     if (!this.canAct(p)) return;
     const t = now();
-    if (t - p.lastFire < 500) return;
-    p.lastFire = t;
-    const w = WEAPONS.knife;
+    const punch = m?.kind === 'punch';
+    if (punch) {
+      if (t - (p.lastPunch || 0) < PUNCH.cooldownMs || t - p.lastFire < 250) return;
+      p.lastPunch = t;
+    } else {
+      if (t - p.lastFire < 500) return;
+      p.lastFire = t;
+    }
+    const w = punch ? { range: PUNCH.range, dmg: PUNCH.dmg, backstab: PUNCH.backstab } : WEAPONS.knife;
     const fx = -Math.sin(p.yaw);
     const fz = -Math.cos(p.yaw);
     let best = null;
@@ -600,13 +624,25 @@ export class Match {
       if ((dx * fx + dz * fz) / (dist || 1) < 0.5) continue;
       if (!best || dist < best.dist) best = { o, dist, dx, dz };
     }
-    this.broadcastNear(p, { t: 'swing', id: p.id }, 30);
+    this.broadcastNear(p, { t: 'swing', id: p.id, punch }, 30);
     if (!best) return;
     // Backstab: attacker is behind the victim.
     const vfx = -Math.sin(best.o.yaw);
     const vfz = -Math.cos(best.o.yaw);
     const behind = best.dx * vfx + best.dz * vfz > 0;
-    this.damage(best.o, p, behind ? w.backstab : w.dmg, { zone: 'body', weapon: 'knife', melee: true, from: [p.x, p.y + 1.4, p.z] });
+    let dmg = behind ? w.backstab : w.dmg;
+    if (punch) {
+      // Combo: keep landing punches on the same person for a heavy blow.
+      const c = p.combo && p.combo.id === best.o.id && t - p.combo.t < PUNCH.comboWindowMs ? p.combo.n + 1 : 1;
+      p.combo = { id: best.o.id, n: c, t };
+      if (c >= PUNCH.combo) {
+        dmg += PUNCH.comboBonus;
+        p.combo.n = 0;
+        this.send(p, { t: 'combo' });
+      }
+    }
+    this.damage(best.o, p, dmg, { zone: 'body', weapon: punch ? 'fist' : 'knife', melee: true, from: [p.x, p.y + 1.4, p.z] });
+    this.broadcastNear(best.o, { t: 'punchHit', id: best.o.id, by: p.id, heavy: punch && p.combo.n === 0 }, 30);
   }
 
   // ---------- damage, downs, deaths ----------
@@ -620,6 +656,11 @@ export class Match {
     if (this.protectedNow(v) && attacker !== v) return;
     if (this.chatting(v) && attacker !== v) return;
     v.hurtAt = now();
+    // Bots hit human players softer, so a fight is about skill and not getting melted.
+    if (attacker && !attacker.human && v.human) {
+      amount *= HEALTH.botDamageToHumans;
+      if (!explosive) amount = Math.min(amount, HEALTH.botMaxHit);
+    }
     let hp = amount;
     const w = WEAPONS[weapon] || {};
     const pen = w.armorPen ?? 0.6;
@@ -644,6 +685,16 @@ export class Match {
     const dir = from || (attacker ? [attacker.x, attacker.y + 1.4, attacker.z] : null);
     this.send(v, { t: 'hurt', dmg: Math.round(hp), from: dir, zone });
     v.bot?.onHurt(attacker);
+    // Second wind: once per life a human survives a killing blow on a little health.
+    if (v.health <= 0 && v.human && attacker && !attacker.human && !v.secondWindUsed && v.status === 'alive') {
+      v.secondWindUsed = true;
+      v.health = HEALTH.secondWindHp;
+      v.protectUntil = now() + HEALTH.secondWindMs;
+      v.hurtAt = now();
+      this.send(v, { t: 'secondWind' });
+      this.syncMe(v);
+      return;
+    }
     if (v.health <= 0) {
       const instant = !v.human || zone === 'head' || explosive || melee;
       const teammateAlive = [...this.players.values()].some((o) => o !== v && o.human && o.side === v.side && o.status === 'alive');
@@ -688,6 +739,16 @@ export class Match {
       if (killer.streak === KILLSTREAKS.uav.kills) this.grantStreak(killer, 'uav');
       if (killer.streak === artilleryAt) this.grantStreak(killer, 'artillery');
       this.syncMe(killer);
+      // Rivalries between real people.
+      if (killer.human && v.human && this.hooks.social) {
+        const r = this.hooks.social.recordKill(killer.profile, v.profile);
+        if (r.revenge) {
+          this.addXP(killer, 150);
+          this.send(killer, { t: 'revenge', name: v.profile.name });
+        }
+        const rival = this.hooks.social.rivalOf(v.profile);
+        if (rival && rival.token === killer.profile.token) this.toast(v, `Na your rival ${killer.profile.name} again! Pay am back.`, 'bad');
+      }
       if (killer.human) {
         killer.profile.kills++;
         this.mission(killer, 'kills');
@@ -773,6 +834,7 @@ export class Match {
     const g = GEAR[item];
     if (!w && !g) return;
     if (w && (w.melee || item === 'p9')) return;
+    if (w?.unlockLevel && rankFor(p.profile.xp).level < w.unlockLevel) return this.toast(p, `${w.name} go open when you reach rank level ${w.unlockLevel}.`, 'bad');
     if (p.money < price) return this.toast(p, 'Your money no reach.', 'bad');
     if (w) {
       if (p.weapons[w.slot] === item) {
@@ -788,6 +850,9 @@ export class Match {
     } else if (item === 'medkit') {
       if (p.medkit >= g.max) return this.toast(p, 'Na only one you fit carry.', 'bad');
       p.medkit++;
+    } else if (item === 'bloodpill') {
+      if ((p.bloodpill || 0) >= g.max) return this.toast(p, `Na only ${g.max} pills you fit carry.`, 'bad');
+      p.bloodpill = (p.bloodpill || 0) + 1;
     } else {
       if (p[item] >= g.max) return this.toast(p, `Na only ${g.max} you fit carry.`, 'bad');
       p[item]++;
@@ -795,6 +860,51 @@ export class Match {
     p.money -= price;
     this.send(p, { t: 'bought', item });
     this.syncMe(p);
+  }
+
+  // Blood pill: heals over a few seconds, and you can keep moving and fighting.
+  onPill(p) {
+    if (p.status !== 'alive' || this.chatting(p) || !(p.bloodpill > 0) || p.health >= PLAYER.maxHealth || p.pillUntil > now()) return;
+    p.bloodpill--;
+    p.pillUntil = now() + GEAR.bloodpill.secs * 1000;
+    this.broadcastNear(p, { t: 'pill', id: p.id }, 15);
+    this.syncMe(p);
+  }
+
+  pickGemType() {
+    const types = Object.entries(TILE_GEMS.types);
+    let r = this.rng() * types.reduce((n, [, t]) => n + t.weight, 0);
+    for (const [id, t] of types) if ((r -= t.weight) <= 0) return id;
+    return 'ruby';
+  }
+
+  tileGemView() {
+    return this.tileGems.map((g) => [g.type, g.at]);
+  }
+
+  // Walk over a gemstone on a ground advert tile to heal up.
+  stepTileGems(t) {
+    this.tileGems.forEach((g, i) => {
+      if (g.at > t) return;
+      for (const p of this.players.values()) {
+        if (!p.human || p.status !== 'alive') continue;
+        if (Math.hypot(p.x - g.x, p.z - g.z) > TILE_GEMS.radius || p.y > 1.5) continue;
+        const def = TILE_GEMS.types[g.type];
+        const needHeal = def.heal && p.health < PLAYER.maxHealth;
+        const needArmor = def.armor && p.armor < 100;
+        if (!needHeal && !needArmor) continue; // leave it for someone who needs it
+        if (def.heal) p.health = Math.min(PLAYER.maxHealth, p.health + def.heal);
+        if (def.armor) p.armor = Math.min(100, p.armor + def.armor);
+        const was = g.type;
+        g.at = t + TILE_GEMS.respawnMs;
+        g.type = this.pickGemType();
+        this.broadcast({ t: 'tgem', i, at: g.at, type: g.type, took: was, by: p.name, id: p.id });
+        this.hooks.ads.recordGem(g.tile, false);
+        this.mission(p, 'gems');
+        this.syncMe(p);
+        break;
+      }
+    });
   }
 
   onMedkit(p) {
@@ -1186,6 +1296,13 @@ export class Match {
         this.ammoOf(p, p.reloading);
         this.syncMe(p);
       }
+      // Health comes back on its own a few seconds after the last hit (humans).
+      if (p.human && p.status === 'alive' && p.health < PLAYER.maxHealth) {
+        let gain = 0;
+        if (t - (p.hurtAt || 0) > HEALTH.regenDelayMs) gain += HEALTH.regenPerSec * dt;
+        if (p.pillUntil > t) gain += (GEAR.bloodpill.heal / GEAR.bloodpill.secs) * dt;
+        if (gain) p.health = Math.min(PLAYER.maxHealth, p.health + gain);
+      }
       if (p.healAt && t >= p.healAt) {
         p.healAt = 0;
         if (p.status === 'alive') p.health = Math.min(PLAYER.maxHealth, p.health + GEAR.medkit.heal);
@@ -1234,6 +1351,7 @@ export class Match {
     this.stepDrums(dt);
     if (this.mode.usesSites()) this.stepSites(dt);
     this.stepGems();
+    this.stepTileGems(t);
     if (this.mode.usesSites()) this.stepDiscovery();
     this.mode.tick(dt);
     if (this.ended) return;

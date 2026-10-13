@@ -89,6 +89,9 @@ export const WEAPONS = {
   danegun: { name: 'Dane Gun', slot: 'primary', price: 900, pellets: 9, dmg: 17, head: 1.6, armorPen: 0.5, rpm: 55, mag: 1, reserve: 14, reload: 1.7, range: 30, falloff: [6, 24], spread: 0.075, moveSpread: 0.02, adsSpread: 0.06, kick: 0.09, auto: false, speed: 0.98, kill: 900, pen: 0, sound: 'shotgun' },
   pkm: { name: 'PKM Machine Gun', slot: 'primary', price: 5200, dmg: 34, head: 3.5, armorPen: 0.8, rpm: 700, mag: 100, reserve: 100, reload: 5.0, range: 200, falloff: [40, 170], spread: 0.018, moveSpread: 0.09, adsSpread: 0.007, kick: 0.012, auto: true, speed: 0.8, kill: 300, pen: 0.8, sound: 'mg' },
   svd: { name: 'SVD Sniper', slot: 'primary', price: 4750, dmg: 96, head: 2.6, legMult: 0.7, armorPen: 0.95, rpm: 140, mag: 10, reserve: 30, reload: 3.0, range: 400, falloff: [200, 400], spread: 0.06, moveSpread: 0.1, adsSpread: 0.0004, kick: 0.07, auto: false, speed: 0.85, zoom: 4, kill: 100, pen: 1, sound: 'sniper' },
+  // Two guns, one in each hand. Unlocked by rank (see unlockLevel), bought in the armoury.
+  dualp9: { name: 'Dual P9 (two hands)', slot: 'secondary', dual: true, unlockLevel: 3, price: 1200, dmg: 26, head: 3.6, armorPen: 0.5, rpm: 720, mag: 26, reserve: 78, reload: 2.9, range: 60, falloff: [16, 50], spread: 0.02, moveSpread: 0.035, adsSpread: 0.014, kick: 0.012, auto: false, speed: 1.0, kill: 300, pen: 0.2, sound: 'pistol' },
+  dualmp5: { name: 'Dual MP5 (two hands)', slot: 'primary', dual: true, unlockLevel: 6, price: 3800, dmg: 22, head: 2.8, armorPen: 0.55, rpm: 1250, mag: 60, reserve: 180, reload: 3.4, range: 70, falloff: [14, 48], spread: 0.03, moveSpread: 0.04, adsSpread: 0.02, kick: 0.009, auto: true, speed: 0.95, kill: 600, pen: 0.3, sound: 'smg' },
   rpg: { name: 'RPG-7', slot: 'primary', price: 6000, projectile: 'rocket', dmg: 160, blast: 7, rocketSpeed: 70, rpm: 30, mag: 1, reserve: 2, reload: 3.6, range: 300, spread: 0.01, moveSpread: 0.04, adsSpread: 0.004, kick: 0.12, auto: false, speed: 0.8, kill: 300, sound: 'rpg', explosive: true }
 };
 
@@ -98,7 +101,38 @@ export const GEAR = {
   frag: { name: 'Frag grenade', price: 300, max: 2, fuse: 2.6, blast: 7, dmg: 115, explosive: true },
   smoke: { name: 'Smoke grenade', price: 300, max: 1, fuse: 1.6, radius: 5.5, duration: 16 },
   flash: { name: 'Flashbang', price: 200, max: 2, fuse: 1.5, radius: 18 },
-  medkit: { name: 'First aid kit', price: 400, max: 1, heal: 50, useTime: 3 }
+  medkit: { name: 'First aid kit', price: 400, max: 1, heal: 50, useTime: 3 },
+  // Quick blood top-up you can take while moving: heals over a few seconds.
+  bloodpill: { name: 'Blood pill', price: 250, max: 3, heal: 35, secs: 2.5 }
+};
+
+// Bare-hand punch (quick melee, any time). Three hits on the same enemy in a row land a heavy blow.
+export const PUNCH = { dmg: 28, backstab: 55, range: 1.8, cooldownMs: 360, combo: 3, comboWindowMs: 1600, comboBonus: 30 };
+
+// Staying alive: health comes back after a few seconds out of fire; bots hit humans a bit softer;
+// everyone lands with light armour and one blood pill.
+export const HEALTH = {
+  regenDelayMs: 5000,
+  regenPerSec: 9,
+  botDamageToHumans: 0.7,
+  botMaxHit: 38, // no single bot bullet can one-shot a player (not even a headshot)
+  secondWindHp: 20, // once per life, a hit that would kill you leaves you on this much health
+  secondWindMs: 1500, // with a moment of protection to find cover
+  startArmor: 40,
+  startPills: 1
+};
+
+// Gemstones on the ground advert tiles: walk over one to heal (or armour up). They come back after a while.
+export const TILE_GEMS = {
+  perTile: 4,
+  respawnMs: 40000,
+  radius: 1.4,
+  types: {
+    ruby: { name: 'Ruby', heal: 30, color: '#ff2d55', weight: 45 },
+    emerald: { name: 'Emerald', heal: 60, color: '#22e07a', weight: 28 },
+    sapphire: { name: 'Sapphire', armor: 50, color: '#2f7bff', weight: 20 },
+    topaz: { name: 'Golden Topaz', heal: 100, armor: 25, color: '#ffc21a', weight: 7 }
+  }
 };
 
 // Oil drums. Only the ones holding fuel or gas explode when shot; water drums just ring.

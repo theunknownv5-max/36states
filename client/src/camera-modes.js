@@ -6,7 +6,7 @@
 //    while flying and recharges after; it is unlimited while your side's recon drone
 //    streak is up, and while you are dead and waiting to come back.
 import * as THREE from 'three';
-import { raycast, dirFromAngles } from '../../shared/physics.js';
+import { raycast, dirFromAngles, hitSoldier } from '../../shared/physics.js';
 import { audio } from './core/audio.js';
 import { WEAPONS } from '../../shared/config.js';
 
@@ -23,9 +23,8 @@ export class CameraModes {
     this.battery = DRONE.battery;
     this.drone = null;
     this.ray = new THREE.Raycaster();
-    try {
-      this.chase = localStorage.getItem('pod.chase') === '1';
-    } catch {}
+    // Your saved choice in Settings: hands only (first person, default) or full body.
+    this.chase = game.settings?.view === 'chase';
     if (this.chase) this.mode = 'chase';
     this.climb = 0;
     // Touch buttons on the drone display.
@@ -46,12 +45,17 @@ export class CameraModes {
   // ---------- switching ----------
   toggleChase() {
     if (this.mode === 'drone') return;
-    this.chase = !this.chase;
-    this.mode = this.chase ? 'chase' : 'fp';
-    try {
-      localStorage.setItem('pod.chase', this.chase ? '1' : '0');
-    } catch {}
-    this.g.hud.toast(this.chase ? 'Chase cam: you dey see yourself from back' : 'First person view', 'info', 1400);
+    this.setView(this.chase ? 'fp' : 'chase');
+    this.g.hud.toast(this.chase ? 'Full body view (H to switch back)' : 'Hands only view (H for full body)', 'info', 1400);
+  }
+
+  setView(view) {
+    this.chase = view === 'chase';
+    if (this.mode !== 'drone') this.mode = this.chase ? 'chase' : 'fp';
+    if (this.g.settings) {
+      this.g.settings.view = this.chase ? 'chase' : 'fp';
+      this.g.saveSettings?.();
+    }
   }
 
   unlimited() {
@@ -139,8 +143,9 @@ export class CameraModes {
     const fwd = new THREE.Vector3(...dirFromAngles(yaw, pitch));
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     const ads = g.adsOn;
-    const back = ads ? 1.6 : 3.1;
-    const want = eye.clone().addScaledVector(fwd, -back).addScaledVector(right, ads ? 0.55 : 0.75).add(new THREE.Vector3(0, ads ? 0.15 : 0.35, 0));
+    // Over the right shoulder, far enough right that your body never covers the crosshair.
+    const back = ads ? 1.5 : 2.7;
+    const want = eye.clone().addScaledVector(fwd, -back).addScaledVector(right, ads ? 0.7 : 1.05).add(new THREE.Vector3(0, ads ? 0.18 : 0.42, 0));
     // Pull in when a wall is behind us.
     const dir = want.clone().sub(eye);
     const len = dir.length();
@@ -152,6 +157,8 @@ export class CameraModes {
     this.smooth.lerp(target, Math.min(1, dt * 18));
     cam.position.copy(this.smooth);
     cam.rotation.set(pitch, yaw, 0);
+    // Wall right behind you: fade your own body out instead of filling the screen with it.
+    if (g.ownSoldier?.root) g.ownSoldier.root.visible = dist > 0.9;
     return true;
   }
 
@@ -214,7 +221,14 @@ export class CameraModes {
     const cam = g.camera.position;
     const cd = dirFromAngles(g.yaw + g.punch.y, g.pitch + g.punch.p);
     const hit = raycast(g.map.index, cam.x, cam.y, cam.z, cd[0], cd[1], cd[2], 400);
-    const t = Math.min(hit.t, 400);
+    let t = Math.min(hit.t, 400);
+    // If an enemy is under the crosshair, aim at the enemy (not at the wall behind them):
+    // otherwise the shot from your eyes would slip past the side of the target.
+    for (const s of g.soldiers.values()) {
+      if (!s.visible || s.isMate || !s.state || s.state.flags & (256 | 4)) continue;
+      const h = hitSoldier(cam.x, cam.y, cam.z, cd[0], cd[1], cd[2], { x: s.state.x, y: s.state.y, z: s.state.z, crouch: s.state.flags & 1, downed: s.state.flags & 2 });
+      if (h && h.t < t) t = h.t + 0.05;
+    }
     const p = [cam.x + cd[0] * t, cam.y + cd[1] * t, cam.z + cd[2] * t];
     const v = [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
     const l = Math.hypot(...v) || 1;

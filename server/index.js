@@ -16,6 +16,7 @@ import { media } from './media.js';
 import { Advertisers } from './advertisers.js';
 import { Inbox } from './inbox.js';
 import { Daily } from './daily.js';
+import { Social } from './social.js';
 import * as paystack from './paystack.js';
 import { boardsFor, BOARD_TYPES, tierFor } from '../shared/billboards.js';
 
@@ -52,6 +53,17 @@ await inbox.load();
 await store.load();
 const saveProfile = () => store.markDirty();
 const daily = new Daily(saveProfile);
+// Where a real player is right now (for friends and crews).
+function presence(token) {
+  const conns = tokenConns.get(token);
+  if (!conns || !conns.size) return { online: false, where: null };
+  for (const c of conns) {
+    const m = c.match;
+    if (m && c.player && !m.mode.def.solo) return { online: true, where: { state: m.stateId, mode: m.modeId, side: c.player.side, faction: c.player.faction, real: !!m.opts.noBots } };
+  }
+  return { online: true, where: null };
+}
+const social = new Social(store, saveProfile, presence);
 const threadView = (th) => inbox.playerView(th, (f) => media.url(f));
 function notifyPlayer(token, msg) {
   for (const c of tokenConns.get(token) || []) if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg));
@@ -60,7 +72,7 @@ function notifyPlayer(token, msg) {
 const matches = new Map(); // "mode:state" (or "stage:<player>") -> Match
 function matchFor(stateId, mode = 'conquest', key = `${mode}:${stateId}`, opts = {}) {
   if (!matches.has(key)) {
-    const m = new Match(stateId, { ads, saveProfile, daily }, mode, opts);
+    const m = new Match(stateId, { ads, saveProfile, daily, social }, mode, opts);
     m.key = key;
     matches.set(key, m);
   }
@@ -115,13 +127,15 @@ function lobby() {
     let score = null;
     for (const id of Object.keys(MODES)) {
       if (MODES[id].solo) continue;
-      const m = matches.get(`${id}:${s.id}`);
-      if (!m) continue;
-      const h = m.humans().length;
-      modes[id] = h;
-      humans += h;
-      bots += m.players.size - h;
-      if (h && (!score || id === 'conquest')) score = m.score;
+      for (const key of [`${id}:${s.id}`, `${id}:${s.id}:real`]) {
+        const m = matches.get(key);
+        if (!m) continue;
+        const h = m.humans().length;
+        modes[id] = (modes[id] || 0) + h;
+        humans += h;
+        bots += m.players.size - h;
+        if (h && (!score || id === 'conquest')) score = m.score;
+      }
     }
     return { id: s.id, humans, bots, sec: score?.sec || 0, out: score?.out || 0, live: humans > 0, modes };
   });
@@ -481,6 +495,11 @@ wss.on('connection', (ws) => {
       for (const m of matches.values()) for (const p of m.humans()) if (p.profile === conn.profile) m.removePlayer(p.id);
       // A fresh campaign match every time you start a stage.
       if (key) matches.delete(key);
+      // Real players only: a room with no bots at all.
+      if (mode !== 'stage' && msg.bots === false) {
+        key = `${mode}:${state}:real`;
+        opts = { noBots: true };
+      }
       const match = matchFor(state, mode, key || `${mode}:${state}`, opts);
       const r = match.addHuman(ws, faction, conn.profile);
       if (r.error) return send({ t: 'joinError', error: r.error });
@@ -529,6 +548,54 @@ wss.on('connection', (ws) => {
     if (msg.t === 'threadRead') {
       inbox.readBy(String(msg.id || ''), 'player', conn.profile.token);
       return send({ t: 'inboxUnread', unread: inbox.unreadFor(conn.profile.token) });
+    }
+    // ---------- friends, crews, rivals ----------
+    const socialReply = (extra = {}) => send({ t: 'social', social: social.view(conn.profile), ...extra });
+    const pingSocial = (token) => {
+      const p = store.data.profiles[token];
+      if (p) notifyPlayer(token, { t: 'social', social: social.view(p) });
+    };
+    if (msg.t === 'social') return socialReply();
+    try {
+      if (msg.t === 'friendAdd') {
+        const r = social.addFriend(conn.profile, msg.code);
+        pingSocial(r.to);
+        return socialReply({ note: r.sent ? `Friend request don go to ${r.sent}.` : `You and ${r.friend} don be friends now.` });
+      }
+      if (msg.t === 'friendAccept') {
+        const r = social.accept(conn.profile, msg.code);
+        pingSocial(r.to);
+        return socialReply({ note: `You and ${r.friend} don be friends now.` });
+      }
+      if (msg.t === 'friendDecline') {
+        social.decline(conn.profile, msg.code);
+        return socialReply();
+      }
+      if (msg.t === 'friendRemove') {
+        social.removeFriend(conn.profile, msg.code);
+        return socialReply();
+      }
+      if (msg.t === 'crewCreate') {
+        const c = social.createCrew(conn.profile, msg.name, msg.tag);
+        return socialReply({ note: `Crew [${c.tag}] ${c.name} don start. Share the code make your people join.` });
+      }
+      if (msg.t === 'crewJoin') {
+        const c = social.joinCrew(conn.profile, msg.code);
+        for (const t of c.members) if (t !== conn.profile.token) pingSocial(t);
+        return socialReply({ note: `Welcome to [${c.tag}] ${c.name}!` });
+      }
+      if (msg.t === 'crewLeave') {
+        social.leaveCrew(conn.profile);
+        return socialReply({ note: 'You don comot from the crew.' });
+      }
+      if (msg.t === 'joinFriend') {
+        const f = social.byCode(msg.code);
+        const where = f && presence(f.token).where;
+        if (!where) return socialReply({ note: 'Your friend no dey any battle now.' });
+        return send({ t: 'friendWhere', ...where, name: f.name });
+      }
+    } catch (e) {
+      return socialReply({ error: e.message });
     }
     // ---------- daily rewards and missions ----------
     if (msg.t === 'daily') return send({ t: 'daily', daily: daily.view(conn.profile), profile: profilePublic(conn.profile) });

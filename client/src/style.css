@@ -2521,7 +2521,48 @@ body.drone-on #scope { display: none !important; }
 /* No backdrop blur over the live 3D view: it is expensive on phones. */
 #adchat .card,
 #inbox .card,
-#daily .card { backdrop-filter: none; background: #13110f; }
+#daily .card,
+#squad .card { backdrop-filter: none; background: #13110f; }
 #adchat .card,
 #inbox .card,
-#daily .card { animation: none; }
+#daily .card,
+#squad .card { animation: none; }
+.tb.t-pill {
+  right: 205px;
+  bottom: 236px;
+  background: rgba(255, 60, 90, 0.35);
+}
+.tb.t-punch {
+  left: 26px;
+  bottom: 236px;
+  width: 58px;
+  height: 58px;
+  font-size: 24px;
+}
+#touch.combat-off .t-punch,
+#touch.combat-off .t-pill,
+#touch.drone .t-punch,
+#touch.drone .t-pill { display: none !important; }
+#tint.healed { background: radial-gradient(ellipse at center, transparent 45%, rgba(60, 255, 140, 0.28) 100%); opacity: 1; transition: opacity 0.4s; }
+
+/* ---------- squad ---------- */
+.squad-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.squad-tabs button { flex: 1; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 999px; padding: 7px 10px; font: 700 15px var(--body); cursor: pointer; }
+.squad-tabs button.on { background: var(--pod); color: #160a00; border-color: var(--pod); }
+.squad-note { background: rgba(79, 224, 138, 0.12); border: 1px solid rgba(79, 224, 138, 0.35); border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; }
+.squad-note.bad { background: rgba(255, 79, 79, 0.12); border-color: rgba(255, 79, 79, 0.4); }
+.sq-code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sq-code b { color: var(--pod-2); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.sq-row { display: flex; gap: 8px; margin: 10px 0; }
+.sq-row input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #0d0b09; color: var(--text); font: 600 16px var(--body); }
+.sq-person { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.sq-person small { display: block; color: var(--muted); }
+.sq-acts { display: flex; gap: 6px; }
+.sq-acts .btn { padding: 6px 10px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; }
+.dot.on { background: var(--good); box-shadow: 0 0 8px var(--good); }
+.dot.rival { background: var(--bad); }
+.tag { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); }
+.tag.bad { color: var(--bad); }
+.tag.good { color: var(--good); }
+.lab.rival { color: #ff6b6b; font-weight: 800; }

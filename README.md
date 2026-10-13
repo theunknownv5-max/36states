@@ -34,7 +34,7 @@ ADMIN_KEY=your-secret npm start    # serves the game, the WebSocket and /admin o
 | `PUBLIC_URL` | request host | Address Paystack sends advertisers back to |
 | `VITE_SERVER_URL` | same host | Set at build time if the game server lives on another domain (e.g. `wss://api.example.com/ws`) |
 
-To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. Two suites run: 72 game checks (including Team Deathmatch, Plant & Defuse and Campaign Stages), and 56 ad portal checks. The portal checks run the real server against stand-in Paystack and Supabase servers: book, pay, webhook, approve, reject with refund, and restart, plus player chat with businesses, blocking and daily rewards.
+To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. Two suites run: 94 game checks (including Team Deathmatch, Plant & Defuse and Campaign Stages), and 56 ad portal checks. The portal checks run the real server against stand-in Paystack and Supabase servers: book, pay, webhook, approve, reject with refund, and restart, plus player chat with businesses, blocking and daily rewards.
 
 ---
 
@@ -49,9 +49,46 @@ To run the simulation tests, use `npm test`. It plays bot battles in every state
 
 Press **V** (or the chat button on phones) for Pidgin quick chat.
 
+## Staying alive
+
+- **Health regeneration:** health comes back on its own after 5 seconds out of fire.
+- **Bots hit softer:** bots hit human players for 70% damage, no single bot bullet can do more than 38 (so no one-shot headshots from bots), and bots aim at players' heads less often.
+- **Second wind:** once per life, a bot's killing blow leaves you on 20 health with a moment of protection to find cover.
+- **Starting kit:** everyone lands with light armour (40) and one **blood pill** (N, or 💊 on phones). A pill heals 35 over 2.5 s and you can keep moving. You can buy up to 3.
+- **Gemstones** sit on every ground advert tile and come back 40 s after someone takes one:
+  - **Ruby:** +30 health
+  - **Emerald:** +60 health
+  - **Sapphire:** +50 armour
+  - **Golden Topaz:** full health and +25 armour (rare)
+
+## Close combat and two guns
+
+- **Punch (F, or 👊):** works any time, with any weapon in hand. Three punches in a row on the same enemy land a heavy blow. The machete is still on 3, with backstabs. Bots fight hand to hand when you get in their face.
+- **Two guns, one per hand:**
+  - **Dual P9:** unlocks at rank level 3.
+  - **Dual MP5:** unlocks at rank level 6.
+  - Buy them in the armoury once unlocked. The two guns fire left-right in turn.
+
+## Real players
+
+- **Bots are optional:** in Settings, turn off "Fight with bots" to play in rooms with real players only. Campaign stages keep their enemies.
+- **👥 Squad:**
+  - **Friends:** add people by friend code, see who is online and in which battle, and press **Join** to land in the same battle.
+  - **Crews:** your crew tag shows before your name in battle, for example `[LGL] Ada`.
+  - **Rivals:** the real players you keep trading kills with. Your top rival gets a ⚔ RIVAL mark when you can see them, and killing them back earns REVENGE XP.
+
+## The world
+
+- **Rivers** with bridges in the savanna, rainforest, plateau and Sahel. Creeks and the Lagos canal keep their channels.
+- **An old rail yard** on every map, with abandoned boxcars, a tanker, a flatcar and a locomotive to use as cover.
+- **A live railway on a viaduct** outside the wall, where trains thunder past on a timetable every player shares.
+- **Warehouses** with big loading doors and containers inside.
+- **Abandoned, burnt-out houses** with jagged shot-up walls, rubble and graffiti.
+
 ## Camera views
 
-- **Chase cam (H, or 🎥 on phones):** third person over your shoulder, and you still fight normally. Shots leave from your soldier's eyes toward whatever is under the crosshair, so aim and the server's hit checks stay honest. Sniper scopes switch to first person while you aim. The camera moves in when there is a wall behind you.
+- **Choose your view** in Settings: **Hands only** (first person, the default) or **Full body** (third person). Switch any time in battle with H, or 🎥 on phones.
+- **Full body:** third person over your shoulder, and you still fight normally. Shots leave from your soldier's eyes toward whatever is under the crosshair, so aim and the server's hit checks stay honest. Sniper scopes switch to first person while you aim. The camera moves in when there is a wall behind you.
 - **Scout drone (T, or 🛸):**
   - You fly a camera drone over the battlefield, with a cockpit display: recording light, altitude, heading, distance from your body, and battery.
   - Controls: WASD or the stick to fly, Shift for speed, Space/C (▲/▼ on phones) or the mouse wheel to change height.

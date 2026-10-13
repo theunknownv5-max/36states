@@ -84,6 +84,8 @@ export class ViewModel {
     const w = WEAPONS[id];
     this.def = w;
     this.pistol = w.slot === 'secondary';
+    this.dual = !!w.dual;
+    this.flip = false;
     this.melee = !!w.melee;
     this.rpg = id === 'rpg';
     this.addHands(gun);
@@ -97,6 +99,10 @@ export class ViewModel {
     } else if (this.rpg) {
       this.hip = new THREE.Vector3(0.16, -0.1, -0.28);
       this.holder.rotation.set(0, 0, 0);
+    } else if (this.dual) {
+      // Both arms out in front, one gun in each hand.
+      this.hip = new THREE.Vector3(0.0, this.pistol ? -0.17 : -0.16, this.pistol ? -0.42 : -0.36);
+      this.holder.rotation.set(0, 0, 0);
     } else if (this.pistol) {
       this.hip = new THREE.Vector3(0.15, -0.16, -0.44);
       this.holder.rotation.set(0, 0, 0);
@@ -106,6 +112,7 @@ export class ViewModel {
     }
     const sightY = gun.userData.sightY;
     this.ads = new THREE.Vector3(0, -sightY, this.pistol ? -0.38 : this.rpg ? -0.2 : gun.userData.scope ? -0.16 : -0.24);
+    if (this.dual) this.ads = this.hip.clone().add(new THREE.Vector3(0, 0.03, 0.04)); // no sights to look down: guns come up a little
     if (this.rpg) this.ads.x = -0.045; // offset optic on the left
     this.raise = instant ? 1 : 0;
   }
@@ -116,6 +123,24 @@ export class ViewModel {
     const k = this.skin || s;
     const P = (x, y, z) => new THREE.Vector3(x, y, z);
     const parts = [];
+    if (gun.userData.dual) {
+      // One hand on each gun.
+      for (const [part, side] of [
+        [gun.userData.right, 1],
+        [gun.userData.left, -1]
+      ]) {
+        const grip = this.pistol ? P(0, -0.05, 0.03) : P(0, -0.08, 0.1);
+        const arm = limb(grip, P(0.08 * side, -0.34, 0.22), 0.034, s);
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 8), g);
+        hand.position.copy(grip);
+        hand.scale.set(1, 1.2, 1.1);
+        for (const m of [arm, hand]) {
+          m.frustumCulled = false;
+          part.add(m);
+        }
+      }
+      return;
+    }
     if (this.melee) {
       const grip = P(0, -0.01, 0.05);
       parts.push(limb(grip, P(0.06, -0.3, 0.22), 0.032, s));
@@ -160,6 +185,12 @@ export class ViewModel {
     this.recoilRot = Math.min(1, this.recoilRot + 0.5 + (w.kick || 0.02) * 6);
     this.flash.visible = true;
     this.flash.material.rotation = Math.random() * Math.PI;
+    if (this.dual) {
+      // Left, right, left, right.
+      this.flip = !this.flip;
+      this.flash.position.copy(this.flip ? this.gun.userData.muzzle2 : this.gun.userData.muzzle);
+      this.dualKick = this.flip ? -1 : 1;
+    }
     const s = this.pistol ? 0.16 : this.rpg ? 0.6 : 0.24 + (w.dmg > 40 ? 0.08 : 0);
     this.flash.scale.set(s, s, 1);
     this.flashTime = 0.045;
@@ -193,6 +224,26 @@ export class ViewModel {
 
   swing() {
     this.swingT = 1;
+  }
+
+  // Quick punch with the left fist, whatever weapon you hold.
+  punch() {
+    if (!this.fist) {
+      const g = new THREE.Group();
+      const glove = this.glove || new THREE.MeshStandardMaterial({ color: '#222' });
+      const fist = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), glove);
+      fist.scale.set(1, 0.85, 1.2);
+      const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.035, 0.03), glove);
+      knuckles.position.set(0, 0.02, -0.05);
+      const arm = limb(new THREE.Vector3(0, 0, 0.03), new THREE.Vector3(-0.04, -0.06, 0.42), 0.036, this.sleeve || glove);
+      for (const m of [fist, knuckles, arm]) {
+        m.frustumCulled = false;
+        g.add(m);
+      }
+      this.fist = g;
+      this.camera.add(g);
+    }
+    this.punchT = 1;
   }
 
   // opts: { speed, sprint, ads, crouch, onGround, look: {yaw,pitch} deltas, landed }
@@ -244,6 +295,22 @@ export class ViewModel {
     } else if (mag && mag.userData.y0 !== undefined) {
       mag.position.y = mag.userData.y0;
       mag.visible = true;
+    }
+    // Left-hand punch: jab out and back, the gun dips aside.
+    if (this.fist) {
+      this.punchT = Math.max(0, (this.punchT || 0) - dt * 4.2);
+      const k = Math.sin((1 - this.punchT) * Math.PI);
+      this.fist.visible = this.punchT > 0;
+      this.fist.position.set(-0.2 + k * 0.12, -0.26 + k * 0.12, -0.3 - k * 0.32);
+      this.fist.rotation.set(0.1, -0.2 + k * 0.2, 0.2);
+      if (this.punchT > 0) {
+        this.kick.rotation.z += k * 0.35;
+        this.kick.position.x += k * 0.06;
+      }
+    }
+    if (this.dual && this.dualKick) {
+      this.gun.userData.right.position.z = this.dualKick > 0 ? this.recoil * 0.03 : 0;
+      this.gun.userData.left.position.z = this.dualKick < 0 ? this.recoil * 0.03 : 0;
     }
     // Machete swing.
     if (this.swingT > 0) {
