@@ -1,0 +1,4 @@
+Poppins: Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)
+Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org)
+
+DejaVu Sans: Copyright (c) 2003 Bitstream, Inc. and DejaVu changes are in public domain. Bitstream Vera Fonts License (https://dejavu-fonts.github.io/License.html)

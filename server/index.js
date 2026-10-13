@@ -20,6 +20,7 @@ import { Social } from './social.js';
 import { Control, pidOf } from './control.js';
 import { Push } from './push.js';
 import { adminRoutes } from './admin-routes.js';
+import { nativeRules, nativeMap, sendGz } from './native-api.js';
 import * as paystack from './paystack.js';
 import { boardsFor, BOARD_TYPES, tierFor } from '../shared/billboards.js';
 
@@ -349,6 +350,12 @@ const server = http.createServer(async (req, res) => {
   try {
     if (path === '/health') return json(res, 200, { ok: true, game: GAME.name, version: GAME.version, matches: matches.size, players: [...matches.values()].reduce((n, m) => n + m.humans().length, 0) });
     if (path === '/api/lobby') return json(res, 200, { states: lobby(), online: onlineCount() });
+    // The native Android game: rules and maps.
+    if (path === '/api/native/config') return sendGz(res, nativeRules());
+    if (path.startsWith('/api/native/map/')) {
+      const gz = nativeMap(path.slice(16));
+      return gz ? sendGz(res, gz) : json(res, 404, { error: 'unknown state' });
+    }
     if (path === '/api/leaderboard') return json(res, 200, { top: leaderboard() });
     if (path === '/api/ads') {
       const state = url.searchParams.get('state');
@@ -509,9 +516,10 @@ wss.on('connection', (ws) => {
       conn.token = r.token;
       if (!tokenConns.has(r.token)) tokenConns.set(r.token, new Set());
       tokenConns.get(r.token).add(conn);
-      // Old app build below the minimum the admin set: ask to update.
+      // Old app build below the minimum the admin set: ask to update. (The native app has its own
+      // build numbers, so this check is for the lite app only.)
       const ctl = control.publicState();
-      const needUpdate = msg.app && ctl.minBuild && (Number(msg.build) || 0) < ctl.minBuild;
+      const needUpdate = msg.app && !msg.native && ctl.minBuild && (Number(msg.build) || 0) < ctl.minBuild;
       return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), online: onlineCount(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile), control: ctl, push: { vapid: push.publicKey, fcm: push.fcmReady(), on: !!push.store.data.subs[r.token] }, needUpdate });
     }
     if (!conn.profile) return;

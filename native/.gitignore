@@ -1,4 +1,6 @@
 .godot/
 build/
 *.import
+!textures/*.import
+!sounds/*.wav.import
 export_credentials.cfg

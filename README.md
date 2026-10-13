@@ -363,6 +363,17 @@ The app connects to `https://three6states.onrender.com`. To point it at another 
 
 The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, with its own icon and splash screen (from `android-res/`). Every build is signed with the same permanent key (`android-res/pod-release.p12`), so new versions install over old ones. Keep the repo private and never delete that file. The release name shows the build number ("Android build N"), which the admin panel uses to ask players on old builds to update.
 
+## Native Android app (Godot)
+
+Besides the lite app (the web game wrapped with Capacitor), there is a **native Android game** in `native/`, built with the Godot 4 engine for smoother play on phones, lower sound delay and better graphics. Both apps play on the **same server**, so native and lite players fight in the same battles with the same accounts, gems, ranks and crews.
+
+- **How it stays in step:** the native app downloads the game rules (`/api/native/config`: weapons, factions, modes, prices, movement numbers) and each state's map (`/api/native/map/<state>`) from the server, so a balance change on the server reaches both apps at once. Movement and collision are a line-for-line port of `shared/physics.js`, and driving a port of `shared/vehicles.js`.
+- **What's in the first version:** sign-in (guest, log in, new account), the war map with live battles and online counts, Hold Ground, Gbas Gbos and the Practice Range, bots or real players only, every state's battlefield (terrain, rivers, buildings, trees, roofs, flags, lamps, landmarks), soldiers in faction uniforms, all the guns with recoil, reloads and hit markers, grenades, the armoury, life gems and tile gems, the death choices (life gem, spirit run, medevac), reviving, vehicles you can drive, billboards with the live adverts (and advert view reports), scoreboard, quick chat, settings with reset, and all the sound (generated with the same recipes as the lite app) plus the menu and battle music.
+- **Coming next in native:** Plant & Defuse, Campaign stages, the drone and the advert tour, C4, the ambulance, digging graves and tombs, crocodiles and dogs, the crew room and the ad chat. Until then those stay in the lite app.
+- **Build:** every push that touches `native/` runs `.github/workflows/native.yml`, which exports a signed APK (same key as the lite app) and publishes it on the Releases page as `native-<build number>`. The native app (`ng.tcee.proofofduty.native`) installs next to the lite app.
+- **Art and sound:** `native/tools/gen_textures.py` and `native/tools/gen_sounds.py` regenerate the textures and sound effects (Python with numpy and scipy).
+- **Testing:** `godot --headless -- --server=http://localhost:2599 --autotest=lagos` plays a short battle by itself and prints what happened (`--shots=DIR` saves screenshots when run with a display).
+
 ## Controls
 
 Settings → **Reset all settings to default** puts graphics, sound, controls and camera back to how they started.
@@ -453,6 +464,7 @@ server/
   test-admin.js    admin panel and push end-to-end tests
 shared/            states, config, map generator, physics, vehicles (driving physics, damage tuning) the underworld (cemetery, tunnels, loot, caves) and skills, used by both client and server
 android-res/       app icon and splash screen for the Android build
+native/            the native Android game (Godot 4): core/ (settings, network, sound), ui/ (boot, sign-in, war map, settings), game/ (battle, world builder, physics, soldiers, guns, vehicles, effects, HUD, touch controls), textures/, sounds/, music/, tools/ (art and sound generators), test/ (self-playing test)
 capacitor.config.json, .github/workflows/android.yml   Android app build
 ```
 

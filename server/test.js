@@ -889,6 +889,18 @@ check(true, 'all 37 battlefields ran a tick with bots');
   check(STATES.every((s) => generateMap(s.id).connected), 'billboard poles never block a route');
 }
 
+section('Native app data (rules and maps)');
+{
+  const { nativeRules, nativeMap } = await import('./native-api.js');
+  const { gunzipSync } = await import('node:zlib');
+  const rules = JSON.parse(gunzipSync(nativeRules()));
+  check(rules.WEAPON_IDS.join() === Object.keys(rules.WEAPONS).join() && rules.STATES.length === STATES.length && rules.PLAYER.run > 0, 'the rules carry weapons in snapshot order, every state and the movement numbers');
+  const nm = JSON.parse(gunzipSync(nativeMap('lagos')));
+  const sm = generateMap('lagos');
+  check(nm.boxes.length === sm.boxes.length && nm.seed === sm.seed && !nm.index && !nm.nav && Array.isArray(nm.holes), 'a native map is the same battlefield as the server, without the server-only index');
+  check(nativeMap('nowhere') === null, 'unknown states are refused');
+}
+
 Date.now = realNow;
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
