@@ -849,6 +849,10 @@ func _process(delta: float) -> void:
 	var now := Time.get_ticks_msec()
 	var s_now := Net.server_now()
 	var menu: bool = hud.panel != null or paused
+	# Menus take the touches while they're open.
+	touch.enabled = not menu and settings_overlay == null
+	if not touch.enabled:
+		touch.reset()
 	# Look.
 	var look := touch.take_look() * 0.0042 * float(Cfg.get_s("sens", 1.0))
 	if mouse_look:

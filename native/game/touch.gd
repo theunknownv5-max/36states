@@ -84,6 +84,8 @@ func tapped(name: String) -> bool:
 	return false
 
 func reset() -> void:
+	if fingers.is_empty() and not stick_on and not fire:
+		return
 	fingers.clear()
 	stick_on = false
 	move = Vector2.ZERO

@@ -89,9 +89,6 @@ func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		pos = e.position
 		tap = true
-	elif e is InputEventScreenTouch and e.pressed:
-		pos = e.position
-		tap = true
 	if not tap:
 		return
 	var x := _xf()
