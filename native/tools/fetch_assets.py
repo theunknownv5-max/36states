@@ -66,6 +66,14 @@ PROPS = [
     (['ladder'], 1), (['gas', 'cylinder', 'tank'], 1), (['trash', 'bin'], 1), (['log', 'stump'], 2), (['ruin', 'wall'], 1),
 ]
 MAX_PROP_MB = 30
+# Scanned props that don't belong on a Nigerian battlefield (or are too heavy for phones).
+SKIP = {'sofa_02', 'Ottoman_01', 'fancy_picture_frame_01', 'cassette_player', 'GothicCabinet_01', 'Camera_01', 'cannon_01',
+        'treasure_chest', 'street_rat', 'gate_latch_01', 'CoffeeCart_01', 'potted_plant_02', 'potted_plant_04',
+        'flower_heliophila', 'small_oil_can_01', 'Lantern_01'}
+# Specific props worth having when Poly Haven has them (trees and shrubs first).
+WANT = ['island_tree_01', 'island_tree_02', 'island_tree_03', 'tree_small_02', 'shrub_01', 'shrub_02', 'shrub_03',
+        'fern_02', 'jacaranda_tree', 'pachira_aquatica_01', 'quiver_tree_02', 'dry_branches_medium_01', 'tire_01',
+        'wooden_pallet_01', 'metal_trash_can', 'traffic_cone_01', 'wooden_fence_01', 'concrete_block_01', 'cinder_block_01']
 
 
 def get(url, tries=4):
@@ -172,6 +180,10 @@ def main():
 
     models = jget(f'{API}/assets?t=models')
     print(len(models), 'models on Poly Haven')
+    used |= SKIP
+    for aid in WANT:
+        if aid in models and aid not in used:
+            PROPS.insert(0, ([aid.replace('_', ' ')], 1))
     for kws, n in PROPS:
         got = 0
         for aid in rank(models, kws, used):
