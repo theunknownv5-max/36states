@@ -1,0 +1,821 @@
+{
+ "source": "Poly Haven (polyhaven.com), all assets CC0",
+ "materials": {
+  "ground_sand": {
+   "id": "coast_sand_01",
+   "name": "Coast Sand 01",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "2k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "ground_dirt": {
+   "id": "dry_ground_01",
+   "name": "Dry Ground 01",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "2k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "ground_red": {
+   "id": "red_laterite_soil_stones",
+   "name": "Red Laterite Soil Stones",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "res": "2k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "ground_gravel": {
+   "id": "gravel_floor",
+   "name": "Gravel Floor",
+   "authors": [
+    "Jenelle van Heerden",
+    "Matterfield"
+   ],
+   "res": "2k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "ground_mud": {
+   "id": "brown_mud",
+   "name": "Brown Mud",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "2k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "grass": {
+   "id": "sparse_grass",
+   "name": "Sparse Grass",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "res": "2k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "asphalt": {
+   "id": "asphalt_02",
+   "name": "Asphalt 02",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "concrete": {
+   "id": "concrete_wall_008",
+   "name": "Concrete Wall 008",
+   "authors": [
+    "Dario Barresi",
+    "Charlotte Baglioni"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "plaster": {
+   "id": "painted_plaster_wall",
+   "name": "Painted Plaster Wall",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "brick": {
+   "id": "red_brick_03",
+   "name": "Red Brick 03",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "planks": {
+   "id": "weathered_planks",
+   "name": "Weathered Planks",
+   "authors": [
+    "Dario Barresi",
+    "Dimitrios Savva"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "metal": {
+   "id": "metal_plate",
+   "name": "Metal Plate",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "rust": {
+   "id": "rusty_metal_02",
+   "name": "Rusty Metal 02",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "corrugated": {
+   "id": "corrugated_iron",
+   "name": "Corrugated Iron",
+   "authors": [
+    "Jenelle van Heerden",
+    "Dimitrios Savva"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "painted_metal": {
+   "id": "green_metal_rust",
+   "name": "Green Metal Rust",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "rock": {
+   "id": "rock_face",
+   "name": "Rock Face",
+   "authors": [
+    "Greg Zaal",
+    "Dario Barresi"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "bark": {
+   "id": "bark_brown_02",
+   "name": "Bark Brown 02",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "paving": {
+   "id": "cobblestone_floor_01",
+   "name": "Cobblestone Floor 01",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "stone_wall": {
+   "id": "stone_wall",
+   "name": "Stone Wall",
+   "authors": [
+    "Dario Barresi",
+    "Charlotte Baglioni"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "mud_wall": {
+   "id": "clay_plaster",
+   "name": "Clay Plaster",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "fabric": {
+   "id": "denim_fabric",
+   "name": "Denim Fabric",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "burlap": {
+   "id": "hessian_230",
+   "name": "Hessian 230",
+   "authors": [
+    "colormass",
+    "Rico Cilliers"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "tiles_roof": {
+   "id": "roof_tiles",
+   "name": "Roof Tiles",
+   "authors": [
+    "Stephan Seeliger"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  },
+  "leather": {
+   "id": "brown_leather",
+   "name": "Brown Leather",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "res": "1k",
+   "maps": [
+    "albedo",
+    "arm",
+    "normal"
+   ]
+  }
+ },
+ "skies": {
+  "clear": {
+   "id": "kloofendal_43d_clear_puresky",
+   "name": "Kloofendal 43d Clear (Pure Sky)",
+   "authors": [
+    "Greg Zaal"
+   ]
+  },
+  "cloudy": {
+   "id": "kloofendal_48d_partly_cloudy_puresky",
+   "name": "Kloofendal 48d Partly Cloudy (Pure Sky)",
+   "authors": [
+    "Greg Zaal",
+    "Jarod Guest"
+   ]
+  },
+  "overcast": {
+   "id": "kloofendal_overcast_puresky",
+   "name": "Kloofendal Overcast (Pure Sky)",
+   "authors": [
+    "Greg Zaal"
+   ]
+  },
+  "golden": {
+   "id": "qwantani_sunset_puresky",
+   "name": "Qwantani Sunset (Pure Sky)",
+   "authors": [
+    "Greg Zaal",
+    "Jarod Guest"
+   ]
+  }
+ },
+ "props": {
+  "Barrel_01": {
+   "name": "Barrel_01",
+   "keywords": [
+    "barrel"
+   ],
+   "file": "Barrel_01_1k.gltf",
+   "authors": [
+    "Jorge Camacho"
+   ],
+   "mb": 0.7
+  },
+  "cannon_01": {
+   "name": "Cannon 01",
+   "keywords": [
+    "barrel"
+   ],
+   "file": "cannon_01_1k.gltf",
+   "authors": [
+    "Yann Kervran",
+    "James Ray Cock"
+   ],
+   "mb": 3.3
+  },
+  "treasure_chest": {
+   "name": "Treasure Chest",
+   "keywords": [
+    "crate",
+    "wooden box"
+   ],
+   "file": "treasure_chest_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 5.2
+  },
+  "wooden_crate_01": {
+   "name": "Wooden Crate 01",
+   "keywords": [
+    "crate",
+    "wooden box"
+   ],
+   "file": "wooden_crate_01_1k.gltf",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "mb": 2.2
+  },
+  "small_oil_can_01": {
+   "name": "Small Oil Can 01",
+   "keywords": [
+    "jerrycan",
+    "jerry can",
+    "fuel can"
+   ],
+   "file": "small_oil_can_01_1k.gltf",
+   "authors": [
+    "Raven van de Werken"
+   ],
+   "mb": 0.9
+  },
+  "rock_moss_set_02": {
+   "name": "Rock Moss Set 02",
+   "keywords": [
+    "boulder",
+    "rock"
+   ],
+   "file": "rock_moss_set_02_1k.gltf",
+   "authors": [
+    "Kless Gyzen"
+   ],
+   "mb": 1.9
+  },
+  "rock_moss_set_01": {
+   "name": "Rock Moss Set 01",
+   "keywords": [
+    "boulder",
+    "rock"
+   ],
+   "file": "rock_moss_set_01_1k.gltf",
+   "authors": [
+    "Kless Gyzen"
+   ],
+   "mb": 1.8
+  },
+  "boulder_01": {
+   "name": "Boulder 01",
+   "keywords": [
+    "boulder",
+    "rock"
+   ],
+   "file": "boulder_01_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 5.5
+  },
+  "namaqualand_boulder_02": {
+   "name": "Namaqualand Boulder 02",
+   "keywords": [
+    "boulder",
+    "rock"
+   ],
+   "file": "namaqualand_boulder_02_1k.gltf",
+   "authors": [
+    "Greg Zaal",
+    "Rico Cilliers"
+   ],
+   "mb": 4.9
+  },
+  "street_rat": {
+   "name": "Street Rat",
+   "keywords": [
+    "tree",
+    "palm"
+   ],
+   "file": "street_rat_1k.gltf",
+   "authors": [
+    "Sean Buckley"
+   ],
+   "mb": 3.4
+  },
+  "outdoor_table_chair_set_01": {
+   "name": "Outdoor Table Chair Set 01",
+   "keywords": [
+    "tree",
+    "palm"
+   ],
+   "file": "outdoor_table_chair_set_01_1k.gltf",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "mb": 1.2
+  },
+  "dead_tree_trunk_02": {
+   "name": "Dead Tree Trunk 02",
+   "keywords": [
+    "tree",
+    "palm"
+   ],
+   "file": "dead_tree_trunk_02_1k.gltf",
+   "authors": [
+    "Jenelle van Heerden",
+    "Rico Cilliers"
+   ],
+   "mb": 4.7
+  },
+  "searsia_lucida": {
+   "name": "Searsia Lucida",
+   "keywords": [
+    "tree",
+    "palm"
+   ],
+   "file": "searsia_lucida_1k.gltf",
+   "authors": [
+    "James Ray Cock",
+    "Jenelle van Heerden"
+   ],
+   "mb": 18.9
+  },
+  "grass_medium_01": {
+   "name": "Grass Medium 01",
+   "keywords": [
+    "shrub",
+    "bush",
+    "fern",
+    "plant"
+   ],
+   "file": "grass_medium_01_1k.gltf",
+   "authors": [
+    "Rob Tuytel",
+    "Rico Cilliers"
+   ],
+   "mb": 2.9
+  },
+  "potted_plant_02": {
+   "name": "Potted Plant 02",
+   "keywords": [
+    "shrub",
+    "bush",
+    "fern",
+    "plant"
+   ],
+   "file": "potted_plant_02_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 2.5
+  },
+  "grass_bermuda_01": {
+   "name": "Grass Bermuda 01",
+   "keywords": [
+    "shrub",
+    "bush",
+    "fern",
+    "plant"
+   ],
+   "file": "grass_bermuda_01_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 1.4
+  },
+  "potted_plant_04": {
+   "name": "Potted Plant 04",
+   "keywords": [
+    "shrub",
+    "bush",
+    "fern",
+    "plant"
+   ],
+   "file": "potted_plant_04_1k.gltf",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "mb": 2.0
+  },
+  "grass_medium_02": {
+   "name": "Grass Medium 02",
+   "keywords": [
+    "grass"
+   ],
+   "file": "grass_medium_02_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 0.8
+  },
+  "flower_heliophila": {
+   "name": "Flower Heliophila",
+   "keywords": [
+    "grass"
+   ],
+   "file": "flower_heliophila_1k.gltf",
+   "authors": [
+    "Jenelle van Heerden"
+   ],
+   "mb": 3.7
+  },
+  "modular_chainlink_fence": {
+   "name": "Modular Chainlink Fence",
+   "keywords": [
+    "fence"
+   ],
+   "file": "modular_chainlink_fence_1k.gltf",
+   "authors": [
+    "James Ray Cock",
+    "Amal Kumar"
+   ],
+   "mb": 7.0
+  },
+  "gate_latch_01": {
+   "name": "Gate Latch 01",
+   "keywords": [
+    "fence"
+   ],
+   "file": "gate_latch_01_1k.gltf",
+   "authors": [
+    "Desktoy"
+   ],
+   "mb": 2.0
+  },
+  "CoffeeCart_01": {
+   "name": "Coffee Cart 01",
+   "keywords": [
+    "tire",
+    "tyre",
+    "wheel"
+   ],
+   "file": "CoffeeCart_01_1k.gltf",
+   "authors": [
+    "Joe Seabuhr"
+   ],
+   "mb": 1.8
+  },
+  "wooden_picnic_table": {
+   "name": "Wooden Picnic Table",
+   "keywords": [
+    "bench"
+   ],
+   "file": "wooden_picnic_table_1k.gltf",
+   "authors": [
+    "Ulan Cabanilla"
+   ],
+   "mb": 4.1
+  },
+  "sofa_02": {
+   "name": "Sofa 02",
+   "keywords": [
+    "plastic chair",
+    "chair"
+   ],
+   "file": "sofa_02_1k.gltf",
+   "authors": [
+    "Kirill Sannikov"
+   ],
+   "mb": 0.4
+  },
+  "wooden_table_02": {
+   "name": "Wooden Table 02",
+   "keywords": [
+    "table"
+   ],
+   "file": "wooden_table_02_1k.gltf",
+   "authors": [
+    "Serhii Khromov"
+   ],
+   "mb": 0.5
+  },
+  "Lantern_01": {
+   "name": "Lantern 01",
+   "keywords": [
+    "street lamp",
+    "lamp post",
+    "lamp"
+   ],
+   "file": "Lantern_01_1k.gltf",
+   "authors": [
+    "Rajil Jose Macatangay"
+   ],
+   "mb": 1.4
+  },
+  "Ottoman_01": {
+   "name": "Ottoman 01",
+   "keywords": [
+    "sign"
+   ],
+   "file": "Ottoman_01_1k.gltf",
+   "authors": [
+    "Caspian Fortune"
+   ],
+   "mb": 0.6
+  },
+  "concrete_road_barrier": {
+   "name": "Concrete Road Barrier",
+   "keywords": [
+    "barrier",
+    "road block"
+   ],
+   "file": "concrete_road_barrier_1k.gltf",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "mb": 3.6
+  },
+  "portable_generator": {
+   "name": "Portable Generator",
+   "keywords": [
+    "generator"
+   ],
+   "file": "portable_generator_1k.gltf",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "mb": 3.3
+  },
+  "wooden_bucket_02": {
+   "name": "Wooden Bucket 02",
+   "keywords": [
+    "bucket"
+   ],
+   "file": "wooden_bucket_02_1k.gltf",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "mb": 2.4
+  },
+  "hand_truck": {
+   "name": "Hand Truck",
+   "keywords": [
+    "sandbag",
+    "sack"
+   ],
+   "file": "hand_truck_1k.gltf",
+   "authors": [
+    "Mutanzom3D"
+   ],
+   "mb": 3.0
+  },
+  "plastic_bottle_gallon": {
+   "name": "Plastic Bottle Gallon",
+   "keywords": [
+    "wheelbarrow",
+    "cart"
+   ],
+   "file": "plastic_bottle_gallon_1k.gltf",
+   "authors": [
+    "Rahul Chaudhary"
+   ],
+   "mb": 1.3
+  },
+  "ladder_sectioned_01": {
+   "name": "Ladder Sectioned 01",
+   "keywords": [
+    "ladder"
+   ],
+   "file": "ladder_sectioned_01_1k.gltf",
+   "authors": [
+    "MP"
+   ],
+   "mb": 2.5
+  },
+  "small_lpg_tank": {
+   "name": "Small Lpg Tank",
+   "keywords": [
+    "gas",
+    "cylinder",
+    "tank"
+   ],
+   "file": "small_lpg_tank_1k.gltf",
+   "authors": [
+    "Ulan Cabanilla"
+   ],
+   "mb": 2.7
+  },
+  "GothicCabinet_01": {
+   "name": "Gothic Cabinet 01",
+   "keywords": [
+    "trash",
+    "bin"
+   ],
+   "file": "GothicCabinet_01_1k.gltf",
+   "authors": [
+    "Kirill Sannikov"
+   ],
+   "mb": 1.0
+  },
+  "Camera_01": {
+   "name": "Camera 01",
+   "keywords": [
+    "log",
+    "stump"
+   ],
+   "file": "Camera_01_1k.gltf",
+   "authors": [
+    "Rajil Jose Macatangay"
+   ],
+   "mb": 2.3
+  },
+  "cassette_player": {
+   "name": "Cassette Player",
+   "keywords": [
+    "log",
+    "stump"
+   ],
+   "file": "cassette_player_1k.gltf",
+   "authors": [
+    "Oday Abuzaeed"
+   ],
+   "mb": 0.9
+  },
+  "fancy_picture_frame_01": {
+   "name": "Fancy Picture Frame 01",
+   "keywords": [
+    "ruin",
+    "wall"
+   ],
+   "file": "fancy_picture_frame_01_1k.gltf",
+   "authors": [
+    "Rob Tuytel",
+    "Rico Cilliers"
+   ],
+   "mb": 0.7
+  }
+ }
+}
