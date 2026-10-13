@@ -7,6 +7,7 @@ import { join } from 'node:path';
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), '36states-test-'));
 let fakeNow = 1_800_000_000_000;
 const realNow = Date.now;
+const now2 = () => fakeNow;
 Date.now = () => fakeNow;
 
 const { Match } = await import('./match.js');
@@ -367,6 +368,40 @@ section('Campaign stage');
     mm2.kill(H2, null, 'p9');
   }
   check(mm2.ended && !mm2.mode.result.won, 'stage is lost when lives run out');
+}
+
+section('Safe chat with a business and daily missions');
+{
+  const { Daily } = await import('./daily.js');
+  const daily = new Daily();
+  const mm = new Match('kogi', { ...hooks, daily }, 'tdm');
+  const prof = profile('Chatter');
+  const H = mm.addHuman(fakeWs(), 'police', prof).player;
+  mm.spawn(H);
+  fakeNow += 10000;
+  run(mm, 0.2);
+  H.hurtAt = 0;
+  H.firedAt = 0;
+  const r = mm.setChat(H, true);
+  check(r.ok, `alive soldier can start a chat (${r.reason || 'ok'})`);
+  check(!mm.canAct(H), 'cannot shoot while chatting');
+  const enemy = [...mm.players.values()].find((o) => o.side !== H.side);
+  const hp = H.health;
+  mm.damage(H, enemy, 50, { weapon: 'ak47' });
+  check(H.health === hp, 'nobody can hurt a chatting soldier');
+  mm.onState(H, { x: H.x + 3, y: H.y, z: H.z, yaw: 0, pitch: 0 });
+  check(!mm.chatting(H), 'walking away ends the chat');
+  H.hurtAt = now2();
+  check(!mm.setChat(H, true).ok, 'cannot start a chat right after being shot');
+  const before = JSON.stringify(daily.view(prof).missions);
+  for (const m of daily.view(prof).missions) daily.progress(prof, m.kind, m.goal);
+  const v = daily.view(prof);
+  check(before !== JSON.stringify(v.missions) && v.missions.every((m) => m.prog >= m.goal), 'mission progress counts up to the goal');
+  const gems = prof.gems;
+  const xp = prof.xp;
+  const got = daily.claimMission(prof, v.missions[0].id);
+  check(got && (prof.gems > gems || prof.xp > xp), 'completed mission pays out');
+  check(daily.claimMission(prof, v.missions[0].id) === null, 'a mission pays only once');
 }
 
 section('Every state loads');

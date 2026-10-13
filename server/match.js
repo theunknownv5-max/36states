@@ -388,6 +388,8 @@ export class Match {
     p.ads = !!m.a;
     p.sprint = !!m.r;
     if (p.status === 'downed' || p.status === 'dead' || p.status === 'medevac') return;
+    // Walking away ends a chat with a business.
+    if (this.chatting(p) && p.chatAt && Math.hypot(m.x - p.chatAt.x, m.z - p.chatAt.z) > 1.5) this.endChat(p, 'moved');
     // Buy time at the start of a bomb round: nobody moves off the spawn.
     if (this.mode.frozen() && Math.hypot(m.x - p.x, m.z - p.z) > 0.05) {
       this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
@@ -411,7 +413,40 @@ export class Match {
   }
 
   canAct(p) {
-    return p.status === 'alive' && !this.mode.frozen();
+    return p.status === 'alive' && !this.mode.frozen() && !this.chatting(p);
+  }
+
+  // ---------- chatting with an advertiser ----------
+  // While a soldier chats with a business they are protected: no one can hurt them, bots
+  // ignore them, and they can't shoot or move. In a solo campaign stage the battle pauses.
+  chatting(p) {
+    return (p.chatUntil || 0) > now();
+  }
+
+  setChat(p, on) {
+    const t = now();
+    if (!on) {
+      if (p.chatUntil) {
+        p.chatUntil = 0;
+        p.protectUntil = Math.max(p.protectUntil || 0, t + 1500); // a moment to get your bearings
+      }
+      return { ok: true };
+    }
+    if (p.status !== 'alive') return { ok: false, reason: 'You fit chat only when you dey alive. Use the Inbox from the menu.' };
+    if (this.mode.frozen()) return { ok: false, reason: 'Wait make the round start first.' };
+    if (t - (p.hurtAt || 0) < 5000) return { ok: false, reason: 'Dem just shoot you! Find cover first, then chat.' };
+    if (t - (p.firedAt || 0) < 3000) return { ok: false, reason: 'You just fire gun. Wait small, then chat.' };
+    if (this.mode.carrier === p.id || this.mode.action?.pid === p.id) return { ok: false, reason: 'You dey carry the bomb. Pass am or finish the job first.' };
+    p.chatUntil = t + MATCH.chatMs;
+    p.chatAt = { x: p.x, z: p.z };
+    p.reloadUntil = 0;
+    return { ok: true, paused: !!this.mode.def.solo, until: p.chatUntil };
+  }
+
+  endChat(p, reason) {
+    if (!p.chatUntil) return;
+    this.setChat(p, false);
+    this.send(p, { t: 'chatEnded', reason });
   }
 
   ammoOf(p, id) {
@@ -583,6 +618,8 @@ export class Match {
     if (v.status !== 'alive') return;
     if (attacker && attacker !== v && attacker.side === v.side) return; // no friendly fire
     if (this.protectedNow(v) && attacker !== v) return;
+    if (this.chatting(v) && attacker !== v) return;
+    v.hurtAt = now();
     let hp = amount;
     const w = WEAPONS[weapon] || {};
     const pen = w.armorPen ?? 0.6;
@@ -651,7 +688,11 @@ export class Match {
       if (killer.streak === KILLSTREAKS.uav.kills) this.grantStreak(killer, 'uav');
       if (killer.streak === artilleryAt) this.grantStreak(killer, 'artillery');
       this.syncMe(killer);
-      if (killer.human) killer.profile.kills++;
+      if (killer.human) {
+        killer.profile.kills++;
+        this.mission(killer, 'kills');
+        if (headshot) this.mission(killer, 'headshots');
+      }
     }
     // Assists.
     for (const [id, rec] of v.damagers) {
@@ -674,6 +715,13 @@ export class Match {
     p.streaksAvail[kind] = true;
     this.toast(p, `${KILLSTREAKS[kind].name} don ready! Press ${kind === 'uav' ? '5' : '6'} to call am.`, 'streak');
     if (!p.human) p.bot.useStreak(kind);
+  }
+
+  // Daily mission progress (humans only).
+  mission(p, kind, n = 1) {
+    if (!p.human || !this.hooks.daily) return;
+    const done = this.hooks.daily.progress(p.profile, kind, n);
+    for (const m of done) this.toast(p, `Mission complete: ${m.title}! Claim am for 🎁 Daily.`, 'streak');
   }
 
   addXP(p, n) {
@@ -1045,6 +1093,7 @@ export class Match {
           c.money = Math.min(MONEY.max, c.money + MONEY.capture);
           c.points += 15;
           this.addXP(c, XP.capture);
+          this.mission(c, 'captures');
           this.syncMe(c);
         }
         this.score[newOwner] += 20;
@@ -1098,6 +1147,7 @@ export class Match {
         this.gems[i] = t + GEMS.cooldownMs;
         this.broadcast({ t: 'gem', i, until: this.gems[i], by: p.name, spirit });
         this.hooks.ads.recordGem(a.id, spirit);
+        this.mission(p, 'gems');
         if (spirit) {
           this.spawn(p);
           this.toast(p, 'The gem don pull your spirit come back!', 'gem');
@@ -1124,7 +1174,11 @@ export class Match {
       }
       return;
     }
+    // Campaign stage: the battle waits while you chat with a business.
+    const paused = this.mode.def.solo && this.humans().some((h) => this.chatting(h));
     for (const p of this.players.values()) {
+      if (p.chatUntil && t >= p.chatUntil) this.endChat(p, 'time');
+      if (paused) continue;
       // Lag-compensation history (last ~1 s).
       p.history.push({ t, x: p.x, y: p.y, z: p.z, crouch: p.crouch, downed: p.status === 'downed' });
       if (p.history.length > NET.tickHz) p.history.shift();
@@ -1147,6 +1201,7 @@ export class Match {
             r.money = Math.min(MONEY.max, r.money + MONEY.revive);
             r.points += 5;
             this.addXP(r, XP.revive);
+            this.mission(r, 'revives');
             this.broadcast({ t: 'revived', id: p.id, by: r.name });
             this.syncMe(p);
             this.syncMe(r);
@@ -1168,6 +1223,10 @@ export class Match {
       // A human who leaves the death screen alone too long gets the medevac.
       if (p.human && p.status === 'dead' && t - p.deadAt > 60000 && this.mode.canRespawn(p)) this.onRespawn(p, 'medevac');
       if (!p.human) p.bot.tick(p, dt);
+    }
+    if (paused) {
+      this.sendSnapshots();
+      return;
     }
     this.stepProjectiles(dt);
     this.stepArtillery();
@@ -1199,9 +1258,11 @@ export class Match {
     const mvp = roster.find((r) => !r.bot) || roster[0];
     for (const p of this.humans()) {
       p.profile.matches++;
+      this.mission(p, 'matches');
       if (p.side === winner) {
         p.profile.wins++;
         this.addXP(p, XP.win);
+        this.mission(p, 'wins');
       }
     }
     this.hooks.saveProfile();
@@ -1234,7 +1295,8 @@ export class Match {
           (o.sprint ? 128 : 0) |
           (o.status === 'dead' || o.status === 'medevac' ? 256 : 0) |
           (uav && o.side !== me.side ? 512 : 0) |
-          (o.burnUntil > t ? 1024 : 0);
+          (o.burnUntil > t ? 1024 : 0) |
+          (this.chatting(o) ? 2048 : 0);
         list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
       }
       this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes });

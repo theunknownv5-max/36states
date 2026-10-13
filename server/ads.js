@@ -112,7 +112,7 @@ export class AdManager {
     const slots = {};
     for (const b of this.catalogue[stateId] || []) {
       const live = this.liveFor(b, now);
-      if (live.length) slots[b.id] = live.map((ad) => ({ adId: ad.id, image: media.url(ad.file), advertiser: ad.advertiser, link: ad.link || null }));
+      if (live.length) slots[b.id] = live.map((ad) => ({ adId: ad.id, image: media.url(ad.file), advertiser: ad.advertiser, link: ad.link || null, chat: ad.kind === 'paid' && !!ad.advertiserId }));
     }
     const result = { version: this.store.data.version, rotateMs: this.pricing.rotateSecs * 1000, slots };
     this.cache.set(stateId, { at: now, result });

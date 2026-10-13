@@ -57,6 +57,9 @@
       .mock .tower { position: absolute; bottom: 38%; width: 30%; background: linear-gradient(90deg, #5b6066, #7a8087); }
       .mock .board { position: absolute; left: 50%; top: 9%; width: 70%; aspect-ratio: 16 / 9; transform: translateX(-50%); border: 6px solid #24272b; border-radius: 3px; background: #111 center / cover no-repeat; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
       .mock .board.r21 { aspect-ratio: 2 / 1; top: 30%; width: 58%; }
+      .mock.topdown { background: radial-gradient(circle at 30% 30%, #8a7a5e, #5d5040 70%); }
+      .mock.topdown .tower, .mock.topdown .legs, .mock.topdown .ground-fig { display: none; }
+      .mock.topdown .board { top: 18%; width: 74%; border: 0; border-radius: 2px; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55), 0 0 0 7px rgba(0, 0, 0, 0.25); transform: translateX(-50%) perspective(600px) rotateX(18deg); }
       .mock .legs { position: absolute; left: 50%; transform: translateX(-50%); top: 9%; width: 4%; height: 60%; background: #3b4046; z-index: -1; }
       .mock .ground-fig { position: absolute; bottom: 12%; width: 4%; height: 14%; background: #20201e; border-radius: 40% 40% 10% 10%; }
       .mock .tag { position: absolute; left: 10px; bottom: 10px; font: 700 12px var(--body); letter-spacing: 0.16em; text-transform: uppercase; background: rgba(0, 0, 0, 0.6); padding: 4px 8px; border-radius: 6px; }
@@ -150,6 +153,23 @@
       .rules { columns: 2; font-size: 15px; color: #d8cdc1; margin: 8px 0 0; padding-left: 18px; }
       footer { text-align: center; color: var(--muted); font-size: 14px; padding: 30px 16px; border-top: 1px solid var(--line); }
       .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #201a14; border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; z-index: 50; font-weight: 700; max-width: 92vw; }
+      .nbadge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font: 700 11px/18px var(--body); }
+      .inbox { display: grid; grid-template-columns: 280px 1fr; gap: 12px; min-height: 320px; }
+      .threads { display: grid; gap: 6px; align-content: start; max-height: 460px; overflow: auto; }
+      .threads button { text-align: left; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 10px; padding: 9px 10px; cursor: pointer; font: inherit; }
+      .threads button.on { border-color: var(--pod); }
+      .threads button b { display: flex; justify-content: space-between; gap: 6px; }
+      .threads button span { display: block; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .conv { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; }
+      .conv-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+      .conv-head .btn { margin-left: auto; }
+      .conv-msgs { flex: 1; min-height: 220px; max-height: 380px; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+      .conv-msgs .m { max-width: 80%; padding: 7px 10px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; font-size: 15px; }
+      .conv-msgs .m small { display: block; opacity: 0.6; font-size: 11px; }
+      .conv-msgs .me { align-self: flex-end; background: rgba(255, 122, 26, 0.2); }
+      .conv-msgs .them { align-self: flex-start; background: rgba(255, 255, 255, 0.07); }
+      .conv-form { display: flex; gap: 8px; margin-top: 8px; }
+      @media (max-width: 760px) { .inbox { grid-template-columns: 1fr; } .threads { max-height: 200px; } }
       @media (max-width: 520px) {
         header.top { gap: 8px; padding: 8px 12px; }
         header.top img { width: 32px; height: 32px; }
@@ -172,6 +192,7 @@
       <img src="/img/pod-logo.webp" alt="" onerror="this.style.display='none'" />
       <div class="brand">PROOF OF DUTY<small>Advertise · Ad Portal</small></div>
       <div class="sp"></div>
+      <button class="btn ghost small" id="nav-msgs" hidden>Messages <span class="nbadge" id="msg-badge" hidden></span></button>
       <button class="btn ghost small" id="nav-camps" hidden>My campaigns</button>
       <button class="btn ghost small" id="nav-login">Log in</button>
       <button class="btn ghost small" id="nav-logout" hidden>Log out</button>
@@ -227,6 +248,7 @@
             <div class="legend">
               <span><i style="background: #ff7a1a"></i>Sky billboard</span>
               <span><i style="background: #3fe0ff"></i>LED screen</span>
+              <span><i style="background: #b78cff"></i>Ground tile</span>
               <span><i style="background: #ffd23f"></i>Wall banner</span>
               <span><i style="background: #4f9dff"></i>Security base</span>
               <span><i style="background: #ff5a4f"></i>Outlaw base</span>
@@ -320,6 +342,22 @@
         <h2>My campaigns</h2>
         <p class="sub" id="acct-line"></p>
         <div class="camps" id="camps"></div>
+      </section>
+
+      <section class="card" id="messages" hidden>
+        <h2>Messages from players</h2>
+        <p class="sub">Players tap your advert in the game to chat with you. They only see your business name; you only see their soldier name. Reply here and it lands in their in-game Inbox.</p>
+        <div class="inbox">
+          <div class="threads" id="threads"></div>
+          <div class="conv" id="conv">
+            <p class="muted" id="conv-empty">Pick a conversation.</p>
+            <div id="conv-box" hidden>
+              <div class="conv-head"><b id="conv-name"></b><span class="muted" id="conv-board"></span><button class="btn danger small" id="conv-block">Block</button></div>
+              <div class="conv-msgs" id="conv-msgs"></div>
+              <form class="conv-form" id="conv-form"><input class="f" id="conv-input" maxlength="400" placeholder="Write a reply…" autocomplete="off" /><button class="btn small">Send</button></form>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="card" id="login-card" hidden>
@@ -444,14 +482,20 @@
       function drawMap() {
         const m = S.map;
         const h = m.half;
-        const col = { sky: '#ff7a1a', led: '#3fe0ff', wall: '#ffd23f' };
+        const col = { sky: '#ff7a1a', led: '#3fe0ff', ground: '#b78cff', wall: '#ffd23f' };
         let svg = `<rect x="${-h}" y="${-h}" width="${h * 2}" height="${h * 2}" fill="#2a241c" stroke="#5a4c3a" stroke-width="1.5" rx="3"/>`;
         for (const [x0, z0, x1, z1] of m.water) svg += `<rect x="${x0}" y="${Math.max(-h, z0)}" width="${x1 - x0}" height="${Math.min(h, z1) - Math.max(-h, z0)}" fill="#1f4d6b"/>`;
         for (const [x0, z0, x1, z1] of m.buildings) svg += `<rect x="${x0}" y="${z0}" width="${x1 - x0}" height="${z1 - z0}" fill="#4a4136"/>`;
         svg += `<rect x="${m.bases.sec.x - 12}" y="-24" width="24" height="48" fill="rgba(79,157,255,.25)" stroke="#4f9dff"/>`;
         svg += `<rect x="${m.bases.out.x - 12}" y="-24" width="24" height="48" fill="rgba(255,90,79,.25)" stroke="#ff5a4f"/>`;
         for (const s of m.sites) svg += `<circle cx="${s.x}" cy="${s.z}" r="11" fill="rgba(255,255,255,.06)" stroke="#bbb" stroke-dasharray="3 3"/><text x="${s.x}" y="${s.z + 4}" fill="#ddd" font-size="11" text-anchor="middle" font-weight="700">${s.id}</text>`;
-        for (const b of S.boards) {
+        for (const b of S.boards.filter((x) => x.type === 'ground')) {
+          const on = S.board?.id === b.id;
+          const w = b.rot ? b.h : b.w;
+          const h = b.rot ? b.w : b.h;
+          svg += `<g data-id="${b.id}" style="cursor:pointer"><rect x="${b.x - w / 2}" y="${b.z - h / 2}" width="${w}" height="${h}" fill="${col.ground}" fill-opacity="${on ? 0.9 : 0.55}" stroke="${on ? '#fff' : '#000'}" stroke-width="${on ? 2 : 0.8}"/><text x="${b.x}" y="${b.z + 3}" fill="#fff" font-size="8" text-anchor="middle" font-weight="700">${esc(b.code.split('-')[1])}</text></g>`;
+        }
+        for (const b of S.boards.filter((x) => x.type !== 'ground')) {
           const on = S.board?.id === b.id;
           const r = b.type === 'sky' ? 7 : b.type === 'led' ? 5 : 3.6;
           svg += `<g data-id="${b.id}" style="cursor:pointer"><circle cx="${b.x}" cy="${b.z}" r="${r + (on ? 4 : 0)}" fill="${col[b.type]}" stroke="${on ? '#fff' : '#000'}" stroke-width="${on ? 2.5 : 1}"/>${b.type !== 'wall' || on ? `<text x="${b.x}" y="${b.z - r - 4}" fill="#fff" font-size="9" text-anchor="middle" font-weight="700">${esc(b.code.split('-')[1])}</text>` : ''}</g>`;
@@ -696,7 +740,74 @@
         $('#nav-login').hidden = !!S.token;
         $('#nav-logout').hidden = !S.token;
         $('#nav-camps').hidden = !S.token;
+        $('#nav-msgs').hidden = !S.token;
+        $('#messages').hidden = !S.token;
+        if (S.token) loadInbox();
       }
+
+      // ---------- messages from players ----------
+      const fmtT = (t) => new Date(t).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      S.threads = [];
+      async function loadInbox() {
+        if (!S.token) return;
+        try {
+          const r = await api('/api/adv/inbox');
+          S.threads = r.threads;
+          $('#msg-badge').hidden = !r.unread;
+          $('#msg-badge').textContent = r.unread;
+          drawThreads();
+          if (S.thread) drawConv(S.threads.find((t) => t.id === S.thread));
+        } catch {}
+      }
+      function drawThreads() {
+        $('#threads').innerHTML = S.threads.length
+          ? S.threads.map((t) => { const last = t.msgs[t.msgs.length - 1]; return `<button data-th="${esc(t.id)}" class="${S.thread === t.id ? 'on' : ''}"><b>${esc(t.player)} ${t.unread ? `<span class="nbadge">${t.unread}</span>` : ''}</b><span>${last ? (last.me ? 'You: ' : '') + esc(last.text) : ''}</span><span>${esc(t.boardCode || '')} · ${last ? fmtT(last.at) : ''}</span></button>`; }).join('')
+          : '<p class="muted">No messages yet. When players tap your advert, their messages appear here.</p>';
+      }
+      function drawConv(t) {
+        $('#conv-empty').hidden = !!t;
+        $('#conv-box').hidden = !t;
+        if (!t) return;
+        $('#conv-name').textContent = t.player;
+        $('#conv-board').textContent = `via ${t.boardCode || 'your advert'}`;
+        $('#conv-block').textContent = t.blocked ? 'Unblock' : 'Block';
+        const box = $('#conv-msgs');
+        box.innerHTML = t.msgs.map((m) => `<div class="m ${m.me ? 'me' : 'them'}">${esc(m.text)}<small>${fmtT(m.at)}</small></div>`).join('');
+        box.scrollTop = box.scrollHeight;
+      }
+      $('#threads').addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-th]');
+        if (!b) return;
+        S.thread = b.dataset.th;
+        const t = S.threads.find((x) => x.id === S.thread);
+        drawThreads();
+        drawConv(t);
+        if (t?.unread) {
+          await api(`/api/adv/inbox/${t.id}/read`, { method: 'POST', body: {} }).catch(() => {});
+          loadInbox();
+        }
+      });
+      $('#conv-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = $('#conv-input').value.trim();
+        if (!text || !S.thread) return;
+        try {
+          await api(`/api/adv/inbox/${S.thread}/reply`, { method: 'POST', body: { text } });
+          $('#conv-input').value = '';
+          loadInbox();
+        } catch (ex) {
+          toast(ex.message);
+        }
+      });
+      $('#conv-block').addEventListener('click', async () => {
+        const t = S.threads.find((x) => x.id === S.thread);
+        if (!t) return;
+        if (!t.blocked && !confirm(`Block ${t.player}? They will not be able to message you.`)) return;
+        await api(`/api/adv/inbox/${t.id}/${t.blocked ? 'unblock' : 'block'}`, { method: 'POST', body: {} }).catch((ex) => toast(ex.message));
+        loadInbox();
+      });
+      $('#nav-msgs').addEventListener('click', () => $('#messages').scrollIntoView({ behavior: 'smooth' }));
+      setInterval(() => !document.hidden && loadInbox(), 20000);
       $('#nav-login').addEventListener('click', () => {
         $('#login-card').hidden = false;
         $('#login-card').scrollIntoView({ behavior: 'smooth' });

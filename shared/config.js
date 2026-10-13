@@ -144,6 +144,7 @@ export const RESPAWN = {
 };
 
 export const MATCH = {
+  chatMs: 120000, // longest protected chat with a business before you are back in the fight
   maxHumans: 16,
   minPerSide: 5, // bots fill each side up to this many fighters
   scoreLimit: 750,

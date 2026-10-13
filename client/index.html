@@ -68,7 +68,9 @@
           <span class="kd">K <b id="p-k">0</b> · D <b id="p-d">0</b> · W <b id="p-w">0</b></span>
         </div>
         <div class="lobby-actions">
-          <button class="btn ghost" id="btn-top">🏆 Top soldiers</button>
+          <button class="btn ghost icon-btn" id="btn-daily" title="Daily rewards and missions">🎁<span class="lbl"> Daily</span> <i class="badge" id="daily-badge" hidden></i></button>
+          <button class="btn ghost icon-btn" id="btn-inbox" title="Messages from businesses">📨<span class="lbl"> Inbox</span> <i class="badge" id="inbox-badge" hidden></i></button>
+          <button class="btn ghost icon-btn" id="btn-top" title="Top soldiers">🏆<span class="lbl"> Top</span></button>
           <button class="btn ghost" id="btn-settings-lobby">⚙ Settings</button>
           <button class="btn ghost" id="btn-how">How to play</button>
           <button class="btn ghost" id="btn-about">About</button>
@@ -148,6 +150,24 @@
         <div id="killfeed"></div>
         <div id="toasts"></div>
         <div id="prompt" class="prompt" hidden></div>
+        <button id="ad-prompt" class="ad-prompt" hidden></button>
+        <div id="chatting-badge" class="chatting-badge" hidden>📱 You dey chat · you dey safe</div>
+
+        <!-- Scout drone cockpit -->
+        <div id="drone-hud" hidden>
+          <div class="dr-scan"></div>
+          <i class="dr-c tl"></i><i class="dr-c tr"></i><i class="dr-c bl"></i><i class="dr-c br"></i>
+          <div class="dr-top"><span class="rec">● REC</span><b>POD SCOUT DRONE</b><span class="dr-cam">CAM 1 · 4K</span></div>
+          <div class="dr-reticle"><i></i></div>
+          <div class="dr-left">
+            <div><small>ALT</small><b id="dr-alt">0 m</b></div>
+            <div><small>HDG</small><b id="dr-hdg">000°</b></div>
+            <div><small>FROM YOU</small><b id="dr-dist">0 m</b></div>
+          </div>
+          <div class="dr-bat"><small>BATTERY</small><div class="bar"><i id="dr-bat"></i></div><b id="dr-bat-t">100%</b></div>
+          <div class="dr-hint">WASD fly · Shift fast · Space / C up-down · Aim at an advert + <kbd>J</kbd> to chat · <kbd>T</kbd> land</div>
+          <div class="dr-touch"><button id="dr-up" aria-label="Go up">▲</button><button id="dr-down" aria-label="Go down">▼</button><button id="dr-exit" aria-label="Land drone">✕</button></div>
+        </div>
         <div id="progress" class="progress" hidden><i></i><span></span></div>
         <div id="callout" class="callout"></div>
 
@@ -181,6 +201,7 @@
           <div class="options" id="death-options">
             <button class="opt" id="opt-gem"><div class="ico">💎</div><b>Life gem</b><span>Land back now now. E go use 1 gem. You get <em id="opt-gems">0</em>.</span><kbd>1</kbd></button>
             <button class="opt" id="opt-spirit"><div class="ico">👻</div><b>Spirit run</b><span>40 seconds as invisible spirit. Touch any gem wey dey shine for advert wall make you come back free.</span><kbd>2</kbd></button>
+            <button class="opt" id="opt-drone"><div class="ico">🛸</div><b>Fly drone</b><span>Look round the battle from sky while you dey decide. E no cost anything.</span><kbd>T</kbd></button>
             <button class="opt" id="opt-medevac"><div class="ico">🚁</div><b>Medevac</b><span>Wait 25 seconds for helicopter. Fee na ₦1,000.</span><kbd>3</kbd></button>
           </div>
           <div class="wait-round" id="death-wait" hidden>No respawn for this round. Watch your people; you go enter next round.</div>
@@ -209,11 +230,13 @@
           <div class="pause-body">
             <button class="btn primary" id="btn-resume">Continue fight</button>
             <button class="btn" id="btn-settings-game">⚙ Settings</button>
+            <button class="btn" id="btn-inbox-game">📨 Inbox <i class="badge" id="inbox-badge-game" hidden></i></button>
             <div class="keys">
               <div><kbd>WASD</kbd> waka · <kbd>Shift</kbd> run · <kbd>Ctrl</kbd> bend down · <kbd>Z</kbd> waka quiet · <kbd>Space</kbd> jump</div>
               <div><kbd>Mouse</kbd> shoot / aim · <kbd>R</kbd> reload · <kbd>1 2 3</kbd> weapons · <kbd>4</kbd> pick grenade · <kbd>G</kbd> throw</div>
               <div><kbd>B</kbd> buy · <kbd>E</kbd> revive / plant / defuse · <kbd>X</kbd> first aid · <kbd>5</kbd> drone · <kbd>6</kbd> artillery</div>
               <div><kbd>Tab</kbd> scores · <kbd>Y</kbd>/<kbd>U</kbd> chat · <kbd>V</kbd> quick talk · <kbd>Shift</kbd> (scoped) hold breath</div>
+              <div><kbd>H</kbd> chase cam · <kbd>T</kbd> scout drone · <kbd>J</kbd> chat with the business on the advert you dey look</div>
             </div>
             <button class="btn danger" id="btn-leave">Comot from battle</button>
           </div>
@@ -236,6 +259,8 @@
           <div class="t-top">
             <button class="tb sm" data-key="KeyV" aria-label="Quick talk"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
             <button class="tb sm" data-key="KeyB" aria-label="Buy">₦</button>
+            <button class="tb sm" data-key="KeyH" aria-label="Chase cam">🎥</button>
+            <button class="tb sm" data-key="KeyT" aria-label="Scout drone">🛸</button>
             <button class="tb sm" data-key="Tab" aria-label="Scores"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
             <button class="tb sm" data-key="Escape" aria-label="Menu"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
           </div>
@@ -298,6 +323,35 @@
       <div class="card sheet-card">
         <div class="menu-head"><h2>🏆 Top soldiers</h2><button class="x" data-close-sheet="top">✕</button></div>
         <table class="top-table" id="top-table"></table>
+      </div>
+    </div>
+
+    <div id="adchat" class="sheet" hidden>
+      <div class="card sheet-card adchat">
+        <div class="ac-head">
+          <img id="ac-img" alt="" />
+          <div><b id="ac-name"></b><small id="ac-sub"></small></div>
+          <button class="x" id="ac-close" aria-label="Close">✕</button>
+        </div>
+        <div id="ac-safe" class="ac-safe"></div>
+        <a id="ac-link" class="ac-link" target="_blank" rel="noopener" hidden>🔗 Visit their website</a>
+        <div id="ac-msgs" class="ac-msgs"></div>
+        <form id="ac-form" class="ac-form"><input id="ac-input" maxlength="400" placeholder="Type message to the business…" autocomplete="off" /><button class="btn primary">Send</button></form>
+        <p class="ac-note">The business sees your soldier name and wetin you write. No send password, PIN or bank details. Replies land for your 📨 Inbox.</p>
+      </div>
+    </div>
+
+    <div id="inbox" class="sheet" hidden>
+      <div class="card sheet-card">
+        <div class="menu-head"><h2>📨 Inbox</h2><button class="x" data-close-sheet="inbox">✕</button></div>
+        <div id="inbox-list" class="inbox-list"></div>
+      </div>
+    </div>
+
+    <div id="daily" class="sheet" hidden>
+      <div class="card sheet-card">
+        <div class="menu-head"><h2>🎁 Daily duty</h2><button class="x" data-close-sheet="daily">✕</button></div>
+        <div id="daily-body"></div>
       </div>
     </div>
 

@@ -98,7 +98,7 @@ export class BotBrain {
     let best = null;
     let bestD = Infinity;
     for (const o of m.players.values()) {
-      if (o.side === p.side || (o.status !== 'alive' && o.status !== 'downed')) continue;
+      if (o.side === p.side || (o.status !== 'alive' && o.status !== 'downed') || m.chatting?.(o)) continue;
       const dx = o.x - p.x;
       const dz = o.z - p.z;
       const dist = Math.hypot(dx, dz);

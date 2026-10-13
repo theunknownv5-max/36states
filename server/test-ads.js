@@ -248,11 +248,66 @@ try {
   check(pr.pricing?.daily.wall === 6000, 'admin can change prices');
   check((await call('GET', '/api/admin/overview')).code === 401, 'admin API needs the admin key');
 
+  section('Players chat with the business');
+  {
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+    const got = [];
+    const waitFor = (t, ms = 4000) =>
+      new Promise((res, rej) => {
+        const start = Date.now();
+        const iv = setInterval(() => {
+          const i = got.findIndex((m) => m.t === t);
+          if (i >= 0) {
+            clearInterval(iv);
+            res(got.splice(i, 1)[0]);
+          } else if (Date.now() - start > ms) {
+            clearInterval(iv);
+            rej(new Error(`no ${t}`));
+          }
+        }, 20);
+      });
+    ws.onmessage = (e) => got.push(JSON.parse(e.data));
+    await new Promise((r) => (ws.onopen = r));
+    ws.send(JSON.stringify({ t: 'hello', mode: 'guest', name: 'Sgt Tunde' }));
+    const wel = await waitFor('welcome');
+    check(wel.inboxUnread === 0 && wel.daily?.missions?.length === 3, 'welcome carries inbox count and three daily missions');
+    const slotAd = (await call('GET', '/api/ads?state=lagos')).slots[sky.id][0];
+    check(slotAd.chat === true, 'paid adverts are marked as chat-able for the game');
+    ws.send(JSON.stringify({ t: 'adChatOpen', adId: slotAd.adId }));
+    const open = await waitFor('adChat');
+    check(open.ok && open.ad.business === 'Mama Chidi Kitchen', 'player opens a chat from the billboard');
+    ws.send(JSON.stringify({ t: 'adMsg', adId: slotAd.adId, text: 'How much be one plate of jollof?' }));
+    const th = await waitFor('thread');
+    check(th.thread.msgs.length === 1 && th.thread.msgs[0].me, 'message saved to the conversation');
+    ws.send(JSON.stringify({ t: 'adMsg', adId: slotAd.adId, text: 'too fast' }));
+    check((await waitFor('adChatError')).error, 'players are rate-limited');
+    const ib = await call('GET', '/api/adv/inbox', undefined, auth);
+    check(ib.unread === 1 && ib.threads[0].player === 'Sgt Tunde' && !JSON.stringify(ib).includes(wel.token), 'business sees the soldier name only (no player token)');
+    const rep = await call('POST', `/api/adv/inbox/${ib.threads[0].id}/reply`, { text: 'N1,500 boss. Order: https://example.com/order' }, auth);
+    check(rep.thread?.msgs.length === 2, 'business replies from the portal');
+    const note = await waitFor('inboxNew');
+    check(note.unread === 1 && note.thread.msgs[1].text.includes('1,500') && !note.thread.msgs[1].me, 'reply pushed live to the player');
+    ws.send(JSON.stringify({ t: 'inbox' }));
+    const box = await waitFor('inbox');
+    check(box.threads.length === 1 && !JSON.stringify(box).includes('chidi@example.com'), "player's inbox lists it without the business's email");
+    await call('POST', `/api/adv/inbox/${ib.threads[0].id}/block`, {}, auth);
+    await new Promise((r) => setTimeout(r, 1300));
+    ws.send(JSON.stringify({ t: 'adMsg', threadId: ib.threads[0].id, text: 'hello?' }));
+    check((await waitFor('adChatError')).error.includes('no dey receive'), 'business can block a player');
+    ws.send(JSON.stringify({ t: 'dailyClaim' }));
+    const d1 = await waitFor('daily');
+    check(d1.claimed?.reward?.gems === 1 && d1.profile.gems === wel.profile.gems + 1, 'daily login reward: day 1 gives a gem');
+    ws.send(JSON.stringify({ t: 'dailyClaim' }));
+    check((await waitFor('daily')).claimed === null, 'daily reward only once per day');
+    ws.close();
+  }
+
   section('Survives a restart');
   await stopServer();
   await startServer();
   const me2 = await call('GET', '/api/adv/me', undefined, auth);
   check(me2.bookings?.length === me.bookings.length, 'accounts, sessions and bookings reloaded from Supabase');
+  check((await call('GET', '/api/adv/inbox', undefined, auth)).threads?.length === 1, 'conversations kept');
   feed = await call('GET', '/api/ads?state=lagos');
   check(!!feed.slots[sky.id], 'live advert still on its billboard after restart');
   check((await call('GET', '/api/adv/config')).pricing.daily.wall === 6000, 'prices kept');

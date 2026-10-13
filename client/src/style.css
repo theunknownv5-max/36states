@@ -2320,3 +2320,208 @@ label.sw input:checked + i::after {
     margin-right: 10px;
   }
 }
+
+/* ---------- scout drone cockpit ---------- */
+#drone-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  font-family: var(--body);
+  color: #d8ffe6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+#drone-hud .dr-scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+#drone-hud .dr-c {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border: 3px solid rgba(216, 255, 230, 0.85);
+}
+#drone-hud .tl { top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
+#drone-hud .tr { top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
+#drone-hud .bl { bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
+#drone-hud .br { bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
+#drone-hud .dr-top {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 13px;
+  white-space: nowrap;
+}
+#drone-hud .rec { color: #ff4f4f; animation: blink 1.2s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.2; } }
+#drone-hud .dr-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border: 2px solid rgba(216, 255, 230, 0.8);
+  border-radius: 50%;
+}
+#drone-hud .dr-reticle i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  background: #ff7a1a;
+  border-radius: 50%;
+}
+#drone-hud .dr-left {
+  position: absolute;
+  left: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 10px;
+}
+#drone-hud .dr-left small, #drone-hud .dr-bat small { display: block; font-size: 11px; letter-spacing: 0.2em; opacity: 0.75; }
+#drone-hud .dr-left b { font: 700 20px 'JetBrains Mono', ui-monospace, monospace; }
+#drone-hud .dr-bat {
+  position: absolute;
+  right: 34px;
+  top: 74px;
+  width: 170px;
+  text-align: right;
+}
+#drone-hud .dr-bat .bar { height: 8px; border: 1px solid rgba(216, 255, 230, 0.8); border-radius: 2px; margin: 4px 0; }
+#drone-hud .dr-bat .bar i { display: block; height: 100%; background: #4fe08a; transition: width 0.3s; }
+#drone-hud .dr-bat .bar i.low { background: #ff4f4f; }
+#drone-hud .dr-bat b { font: 700 14px 'JetBrains Mono', ui-monospace, monospace; }
+#drone-hud .dr-hint {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 6px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+#drone-hud .dr-touch { display: none; }
+body.touch #drone-hud .dr-hint { display: none; }
+body.touch #drone-hud .dr-touch {
+  position: absolute;
+  right: 22px;
+  bottom: 110px;
+  display: grid;
+  gap: 10px;
+  pointer-events: auto;
+}
+#drone-hud .dr-touch button {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 2px solid rgba(216, 255, 230, 0.7);
+  background: rgba(0, 0, 0, 0.4);
+  color: #d8ffe6;
+  font-size: 22px;
+}
+body.drone-on #crosshair,
+body.drone-on .weapon-box,
+body.drone-on #scope { display: none !important; }
+#touch.drone .t-fire,
+#touch.drone .t-fire2,
+#touch.drone .t-ads,
+#touch.drone .t-reload,
+#touch.drone .t-swap,
+#touch.drone .t-nade,
+#touch.drone .t-crouch,
+#touch.drone .t-jump,
+#touch.drone .t-use,
+#touch.drone .t-med { display: none !important; }
+
+/* ---------- chat with advertisers ---------- */
+.ad-prompt {
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  transform: translateX(-50%);
+  z-index: 7;
+  border: 1px solid rgba(255, 179, 71, 0.6);
+  background: rgba(20, 12, 4, 0.82);
+  color: #fff;
+  font: 700 16px var(--body);
+  padding: 9px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  animation: rise 0.2s;
+}
+.ad-prompt kbd { background: var(--pod); color: #160a00; border-radius: 4px; padding: 0 6px; margin-right: 6px; font: 700 13px var(--body); }
+.chatting-badge {
+  position: absolute;
+  top: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(79, 224, 138, 0.18);
+  border: 1px solid rgba(79, 224, 138, 0.5);
+  color: #bfffd5;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  z-index: 7;
+}
+.adchat { width: min(520px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.ac-head { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: center; }
+.ac-head img { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #000; }
+.ac-head b { display: block; font-size: 19px; }
+.ac-head small { color: var(--muted); }
+.ac-safe { background: rgba(79, 224, 138, 0.1); border: 1px solid rgba(79, 224, 138, 0.3); color: #bfffd5; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.ac-link { color: var(--pod-2); font-weight: 700; }
+.ac-msgs { min-height: 140px; max-height: 42vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 6px; background: rgba(0, 0, 0, 0.25); border-radius: 10px; }
+.ac-msgs .m { max-width: 82%; padding: 7px 10px; border-radius: 12px; font-size: 15px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+.ac-msgs .m small { display: block; opacity: 0.6; font-size: 11px; margin-top: 2px; }
+.ac-msgs .me { align-self: flex-end; background: rgba(255, 122, 26, 0.22); border-bottom-right-radius: 3px; }
+.ac-msgs .biz { align-self: flex-start; background: rgba(255, 255, 255, 0.08); border-bottom-left-radius: 3px; }
+.ac-msgs .empty { color: var(--muted); text-align: center; margin: auto; font-size: 14px; }
+.ac-form { display: flex; gap: 8px; }
+.ac-form input { flex: 1; min-width: 0; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: #0d0b09; color: var(--text); font: 600 16px var(--body); }
+.ac-note { margin: 0; color: var(--muted); font-size: 12px; }
+.badge { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: #ff4f4f; color: #fff; font: 700 11px var(--body); font-style: normal; text-align: center; vertical-align: 1px; }
+.inbox-list { display: grid; gap: 8px; }
+.inbox-list .th { display: grid; grid-template-columns: 72px 1fr auto; gap: 10px; align-items: center; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; color: var(--text); cursor: pointer; font: inherit; }
+.inbox-list .th img { width: 72px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 5px; background: #000; }
+.inbox-list .th b { display: block; }
+.inbox-list .th span { color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.inbox-list .th.unread { border-color: var(--pod); }
+.inbox-list .empty { color: var(--muted); text-align: center; padding: 20px; }
+
+/* ---------- daily duty ---------- */
+.daily-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 8px 0 14px; }
+.daily-days div { text-align: center; padding: 8px 2px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.daily-days div b { display: block; font-size: 16px; color: var(--text); }
+.daily-days .done { opacity: 0.5; }
+.daily-days .today { border-color: var(--pod); box-shadow: 0 0 0 1px var(--pod) inset; color: var(--pod-2); }
+.missions { display: grid; gap: 8px; }
+.mission { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.mission .pbar { grid-column: 1 / -1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+.mission .pbar i { display: block; height: 100%; background: var(--pod); }
+.mission small { color: var(--muted); }
+.mission.claimed { opacity: 0.55; }
+@media (max-width: 1400px) {
+  .lobby-actions .icon-btn .lbl { display: none; }
+}
+/* No backdrop blur over the live 3D view: it is expensive on phones. */
+#adchat .card,
+#inbox .card,
+#daily .card { backdrop-filter: none; background: #13110f; }
+#adchat .card,
+#inbox .card,
+#daily .card { animation: none; }

@@ -45,7 +45,7 @@ export class AdWalls {
       const board = new THREE.Mesh(new THREE.PlaneGeometry(a.w - 0.2, a.h - 0.18), backMat);
       board.position.z = 0.012;
       face.add(board);
-      boards?.registerWall(a, mat, house);
+      boards?.registerWall(a, mat, house, panel);
       // Frame and two flood lamps.
       for (const [w, h, x, y] of [
         [a.w, 0.12, 0, a.h / 2 - 0.06],

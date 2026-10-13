@@ -129,6 +129,7 @@
           <div class="pgrid">
             <div><label>Sky billboard / day</label><input id="pSky" type="number" min="1" /></div>
             <div><label>LED screen / day</label><input id="pLed" type="number" min="1" /></div>
+            <div><label>Ground tile / day</label><input id="pGround" type="number" min="1" /></div>
             <div><label>Wall banner / day</label><input id="pWall" type="number" min="1" /></div>
             <div><label>Premium states ×</label><input id="pPrem" type="number" step="0.05" min="1" /></div>
             <div><label>Major states ×</label><input id="pMajor" type="number" step="0.05" min="1" /></div>
@@ -293,6 +294,7 @@
         $('pSky').value = p.daily.sky;
         $('pLed').value = p.daily.led;
         $('pWall').value = p.daily.wall;
+        $('pGround').value = p.daily.ground;
         $('pPrem').value = tier('Premium state').mult;
         $('pMajor').value = tier('Major state').mult;
         $('pExcl').value = p.exclusiveMult;
@@ -472,7 +474,7 @@
       $('priceBtn').onclick = async () => {
         const p = structuredClone(data.pricing);
         const v = (id) => Number($(id).value);
-        p.daily = { sky: v('pSky'), led: v('pLed'), wall: v('pWall') };
+        p.daily = { sky: v('pSky'), led: v('pLed'), ground: v('pGround'), wall: v('pWall') };
         for (const t of p.tiers) t.mult = t.name === 'Premium state' ? v('pPrem') : t.name === 'Major state' ? v('pMajor') : t.mult;
         p.exclusiveMult = v('pExcl');
         p.shares = v('pShares');

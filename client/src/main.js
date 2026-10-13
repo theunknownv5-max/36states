@@ -10,6 +10,7 @@ import { music } from './core/music.js';
 import { PRESETS, detectQuality, saveQuality } from './core/quality.js';
 import * as T from './core/textures.js';
 import { Game } from './game.js';
+import { InboxUI, toast } from './ui/chat.js';
 import { api, IS_APP } from './core/server.js';
 import { STATE_BY_ID } from '../../shared/states.js';
 import { FACTIONS, RESPAWN, GEMS, GAME, MODES, BOMB } from '../../shared/config.js';
@@ -278,6 +279,60 @@ function showAuth() {
 }
 
 // ---------- lobby ----------
+// ---------- daily duty: login calendar + missions ----------
+let dailyState = null;
+function setupDaily(d) {
+  dailyState = d;
+  dailyBadge();
+  $('btn-daily').onclick = () => {
+    renderDaily();
+    showSheet('daily');
+    net.send({ t: 'daily' });
+  };
+  net.on('daily', (m) => {
+    dailyState = m.daily;
+    if (m.profile) showProfile(m.profile);
+    if (m.claimed) {
+      const r = m.claimed.reward;
+      toast(`🎁 ${[r.gems ? `+${r.gems} 💎` : '', r.xp ? `+${r.xp} XP` : ''].filter(Boolean).join(' ')}${m.claimed.mission ? ` · ${m.claimed.mission}` : ` · Day ${m.claimed.streak} streak`}`);
+    }
+    dailyBadge();
+    if (!$('daily').hidden) renderDaily();
+  });
+  // Pop the calendar once a day when there is a reward waiting.
+  if (d?.login?.can && store.get('dailySeen', '') !== new Date().toDateString()) {
+    store.set('dailySeen', new Date().toDateString());
+    setTimeout(() => !inGame && $('btn-daily').click(), 900);
+  }
+}
+
+function dailyBadge() {
+  const n = dailyState?.badge || 0;
+  $('daily-badge').hidden = !n;
+  $('daily-badge').textContent = n;
+}
+
+function renderDaily() {
+  const d = dailyState;
+  if (!d) return;
+  const L = d.login;
+  const rw = (r) => [r.gems ? `${r.gems}💎` : '', r.xp ? `${r.xp} XP` : ''].filter(Boolean).join(' + ');
+  const hrs = Math.ceil(d.resetsIn / 3600000);
+  $('daily-body').innerHTML = `
+    <h4 style="margin:4px 0">Show face every day · streak <b style="color:var(--pod-2)">${L.streak}</b> day${L.streak === 1 ? '' : 's'}</h4>
+    <div class="daily-days">${L.rewards.map((r, i) => `<div class="${i < L.index || (!L.can && i === L.index) ? 'done' : ''} ${L.can && i === L.index ? 'today' : ''}"><small>Day ${i + 1}</small><b>${r.gems ? r.gems + '💎' : '⭐'}</b><small>${r.xp ? r.xp + ' XP' : r.gems === 5 ? 'BIG' : ''}</small></div>`).join('')}</div>
+    <button class="btn primary" id="daily-claim" ${L.can ? '' : 'disabled'}>${L.can ? `Collect day ${L.index + 1}: ${rw(L.rewards[L.index])}` : 'Collected today ✓ Come back tomorrow'}</button>
+    <h4 style="margin:16px 0 6px">Today's missions <small class="muted">· new ones in ${hrs} h</small></h4>
+    <div class="missions">${d.missions
+      .map((m) => {
+        const done = m.prog >= m.goal;
+        return `<div class="mission ${m.claimed ? 'claimed' : ''}"><div><b>${esc(m.title)}</b><br><small>${rw(m.reward)} · ${m.prog}/${m.goal}</small></div>${m.claimed ? '<small>✓ Collected</small>' : `<button class="btn ${done ? 'primary' : 'ghost'}" data-mission="${esc(m.id)}" ${done ? '' : 'disabled'}>${done ? 'Collect' : 'In progress'}</button>`}<div class="pbar"><i style="width:${Math.round((m.prog / m.goal) * 100)}%"></i></div></div>`;
+      })
+      .join('')}</div>`;
+  $('daily-claim').onclick = () => net.send({ t: 'dailyClaim' });
+  for (const b of document.querySelectorAll('[data-mission]')) b.onclick = () => net.send({ t: 'missionClaim', id: b.dataset.mission });
+}
+
 function showProfile(p) {
   if (!p) return;
   profile = p;
@@ -297,6 +352,7 @@ function showLobby() {
   $('lobby').hidden = false;
   music.play('menu');
   net.send({ t: 'lobby' });
+  if (dailyState) net.send({ t: 'daily' });
   clearInterval(lobbyTimer);
   lobbyTimer = setInterval(() => !inGame && net.send({ t: 'lobby' }), 4000);
   if (warmap?.selected) warmap.renderInfo();
@@ -314,6 +370,7 @@ function goFullscreen() {
 
 function join(msg) {
   audio.unlock();
+  music.unlock();
   goFullscreen();
   music.loadTrack();
   lastJoin = msg;
@@ -335,6 +392,7 @@ function startStage(stage) {
   join({ mode: 'stage', stage });
 }
 
+if (isTouch()) document.body.classList.add('touch');
 const input = new Input($('view'));
 input.sensitivity = settings.sensitivity;
 input.invertY = settings.invertY;
@@ -342,17 +400,21 @@ input.touchSens = settings.touchSens;
 audio.setVolume(settings.volume);
 audio.gunsOn = settings.gunsOn;
 
-// Pause all sound when the app or tab goes to the background.
+// Pause game sound when the app or tab goes to the background, and bring it back after
+// anything that stops it (calls, screen lock, Android/iOS "interrupted" audio).
 document.addEventListener('visibilitychange', () => {
   if (!audio.ctx) return;
   if (document.hidden) audio.ctx.suspend();
-  else audio.ctx.resume();
+  else audio.ctx.resume().catch(() => {});
 });
+for (const ev of ['pointerdown', 'touchend', 'keydown'])
+  window.addEventListener(ev, () => audio.ctx && audio.ctx.state !== 'running' && !document.hidden && audio.ctx.resume().catch(() => {}), { passive: true });
 
 (async () => {
   await preload();
   await boot.ready();
   audio.unlock();
+  music.unlock();
   music.setVolume(settings.music);
   music.setEnabled(settings.musicOn);
   music.play('menu');
@@ -373,9 +435,23 @@ document.addEventListener('visibilitychange', () => {
     onLeave: () => showLobby(),
     onNextStage: (i) => startStage(i)
   });
+  // Inbox (chats with businesses) and daily duty.
+  const inboxUI = new InboxUI(net);
+  inboxUI.setUnread(welcome.inboxUnread || 0);
+  inboxUI.onNotify = (text) => (inGame && game.running ? game.hud.toast(text, 'info', 3500) : toast(text));
+  game.onInbox = () => {
+    game.togglePause(false);
+    inboxUI.open();
+  };
+  inboxUI.onThreadClosed = () => {
+    if (inGame && game.running && !isTouch() && game.status === 'alive') game.input.lock();
+  };
+  $('btn-inbox').onclick = () => inboxUI.open();
+  setupDaily(welcome.daily);
   if (new URLSearchParams(location.search).has('debug')) {
     window.__game = game;
     window.__THREE = THREE;
+    window.__music = music;
     import('../../shared/map.js').then((m) => (window.__findPath = m.findPath));
   }
   net.on('lobby', (m) => {

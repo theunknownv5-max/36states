@@ -18,6 +18,14 @@ export const BOARD_TYPES = {
     minH: 720,
     viewRadius: 80
   },
+  ground: {
+    name: 'Ground Tile',
+    blurb: 'A giant artwork laid into the open ground (up to 16 × 9 m). Everyone flying the drone, spectating or on a rooftop looks straight down at it.',
+    ratio: [16, 9],
+    minW: 1920,
+    minH: 1080,
+    viewRadius: 140
+  },
   wall: {
     name: 'Wall Banner',
     blurb: 'Lit banner on a battlefield wall. Every banner holds a life gem, so players come close to it.',
@@ -49,6 +57,9 @@ export function boardsFor(map) {
   map.billboards
     .filter((b) => b.type === 'led')
     .forEach((b, i) => out.push({ id: b.id, type: 'led', code: `${code}-L${i + 1}`, x: b.x, z: b.z, label: `LED screen ${near(b.x, b.z)}` }));
+  map.billboards
+    .filter((b) => b.type === 'ground')
+    .forEach((b, i) => out.push({ id: b.id, type: 'ground', code: `${code}-G${i + 1}`, x: b.x, z: b.z, w: b.w, h: b.h, rot: b.rot, label: `Ground tile ${near(b.x, b.z)}, ${b.w} × ${b.h} m` }));
   map.adWalls.forEach((a, i) => out.push({ id: a.id, type: 'wall', code: `${code}-W${String(i + 1).padStart(2, '0')}`, x: a.x, z: a.z, label: `Wall banner ${near(a.x, a.z)}` }));
   return out;
 }
@@ -75,7 +86,7 @@ function describeSpot(map, x, z) {
 
 // ---------- pricing ----------
 export const DEFAULT_PRICING = {
-  daily: { sky: 25000, led: 12000, wall: 5000 }, // naira per day for one shared slot
+  daily: { sky: 25000, led: 12000, ground: 15000, wall: 5000 }, // naira per day for one shared slot
   tiers: [
     { name: 'Premium state', mult: 1.5, states: ['lagos', 'fct', 'rivers'] },
     { name: 'Major state', mult: 1.25, states: ['kano', 'oyo', 'kaduna', 'enugu', 'delta', 'anambra', 'edo', 'ogun', 'akwaibom'] }

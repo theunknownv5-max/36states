@@ -338,6 +338,39 @@ function tryGenerate(state, seed) {
     }
   }
 
+  // Ground ad tiles: big flat 16:9 artworks laid into open ground, read best from the
+  // drone and rooftops. Purely visual (no collision), never on sites, bases or water.
+  for (const [tw, th] of [
+    [16, 9],
+    [16, 9],
+    [12, 6.75]
+  ]) {
+    const n = billboards.filter((b) => b.type === 'ground').length;
+    if (n >= 3) break;
+    for (let tries = 0; tries < 120; tries++) {
+      // Long side runs north-south and the artwork reads upright for soldiers coming
+      // from their own base (top of the image points away from the nearer base).
+      const hw = th / 2;
+      const hd = tw / 2;
+      const x = range(brng, -62, 62);
+      const z = range(brng, -82, 82);
+      if (!free(x - hw, z - hd, x + hw, z + hd, 1)) continue;
+      if (billboards.some((b) => b.type === 'ground' && Math.hypot(b.x - x, b.z - z) < 40)) continue;
+      reserve(x - hw, z - hd, x + hw, z + hd, 0.5);
+      billboards.push({ id: `${state.id}:g${n}`, type: 'ground', x, z, w: tw, h: th, rot: x < 0 ? -Math.PI / 2 : Math.PI / 2, y: 0.035 });
+      break;
+    }
+  }
+  // Keep grass tufts off the tiles so the artwork stays clean.
+  const onTile = (x, z) =>
+    billboards.some((b) => {
+      if (b.type !== 'ground') return false;
+      const hw = (b.rot ? b.h : b.w) / 2 + 0.4;
+      const hd = (b.rot ? b.w : b.h) / 2 + 0.4;
+      return Math.abs(x - b.x) < hw && Math.abs(z - b.z) < hd;
+    });
+  for (let i = grass.length - 1; i >= 0; i--) if (onTile(grass[i].x, grass[i].z)) grass.splice(i, 1);
+
   const map = {
     billboards,
     drums,

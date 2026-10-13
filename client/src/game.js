@@ -23,6 +23,8 @@ import { audio } from './core/audio.js';
 import { music } from './core/music.js';
 import { isTouch } from './core/input.js';
 import { ModeClient } from './modes-client.js';
+import { CameraModes } from './camera-modes.js';
+import { AdChat } from './ad-chat.js';
 
 const WEAPON_IDS = Object.keys(WEAPONS); // same order as the server
 const $ = (id) => document.getElementById(id);
@@ -74,6 +76,10 @@ export class Game {
     this.arena = new Arena(this.renderer, scene, this.map, this.quality);
     this.ambience = new Ambience(scene, this.map, this.arena);
     this.boards = new Billboards(scene, this.map, this.renderer);
+    this.cams?.exitDrone();
+    this.cams = new CameraModes(this);
+    this.adChat ||= new AdChat(this);
+    this.adChat.reset();
     this.walls = new AdWalls(scene, this.map, this.boards);
     this.walls.setGems(info.gems);
     this.boards.load(info.state);
@@ -167,6 +173,8 @@ export class Game {
     this.modes.stop();
     this.ambience?.dispose();
     this.boards?.dispose();
+    this.cams?.exitDrone();
+    this.adChat?.close(true);
     this.running = false;
     cancelAnimationFrame(this.raf);
     for (const u of this.unsub) u();
@@ -438,6 +446,7 @@ export class Game {
   }
 
   onStatus(prev, now) {
+    this.cams?.onStatus(now);
     this.hud.showState(now, this.me, this.deathInfo || {});
     audio.spirit(now === 'spirit');
     audio.helicopter(now === 'medevac');
@@ -494,6 +503,8 @@ export class Game {
   }
 
   onHurt(m) {
+    this.cams?.onHurt();
+    this.adChat?.onHurt();
     music.excite(0.15);
     audio.hurt(m.dmg);
     this.fx.shake = Math.min(1, this.fx.shake + m.dmg / 60);
@@ -559,6 +570,16 @@ export class Game {
       if (q) return this.modes.sendQuick(+q[1] - 1);
     }
     if (code === 'KeyY' || code === 'KeyU') return this.openChat(code === 'KeyU');
+    if (code === 'KeyT') return this.cams.toggleDrone();
+    if (code === 'KeyH') return this.cams.toggleChase();
+    if (code === 'KeyJ') return this.adChat.openTarget();
+    if (this.cams.mode === 'drone') {
+      if (code === 'Mouse0') return this.adChat.openTarget();
+      if (code === 'WheelUp' || code === 'WheelDown') {
+        this.cams.drone.alt = Math.max(14, Math.min(75, this.cams.drone.alt + (code === 'WheelUp' ? 4 : -4)));
+        return;
+      }
+    }
     if (st === 'dead') {
       if (code === 'Digit1') this.respawn('gem');
       if (code === 'Digit2') this.respawn('spirit');
@@ -616,6 +637,9 @@ export class Game {
     $('opt-gem').onclick = () => this.respawn('gem');
     $('opt-spirit').onclick = () => this.respawn('spirit');
     $('opt-medevac').onclick = () => this.respawn('medevac');
+    $('opt-drone').onclick = () => this.cams.toggleDrone();
+    $('ad-prompt').onclick = () => this.adChat.openTarget();
+    $('btn-inbox-game').onclick = () => this.onInbox?.();
     $('btn-resume').onclick = () => this.togglePause(false);
     $('btn-leave').onclick = () => {
       this.net.send({ t: 'leave' });
@@ -797,8 +821,9 @@ export class Game {
     this.local.burst = now - this.local.lastFire < (60000 / w.rpm) * 1.6 ? this.local.burst + 1 : 0;
     this.local.lastFire = now;
     a.mag--;
-    const o = [this.camera.position.x, this.camera.position.y, this.camera.position.z];
-    let d = dirFromAngles(this.yaw + this.punch.y + (this.sway?.y || 0), this.pitch + this.punch.p + (this.sway?.p || 0));
+    const chase = this.cams.shot();
+    const o = chase ? chase.o : [this.camera.position.x, this.camera.position.y, this.camera.position.z];
+    let d = chase ? chase.d : dirFromAngles(this.yaw + this.punch.y + (this.sway?.y || 0), this.pitch + this.punch.p + (this.sway?.p || 0));
     if (!w.pellets) d = spreadDir(d, this.spreadNow(w, this.vel.length()));
     this.net.send({ t: 'fire', w: id, o: o.map((v) => +v.toFixed(3)), d: d.map((v) => +v.toFixed(4)), ts: Math.round(this.net.serverNow() - NET.interpDelayMs) });
     // Recoil: part is view punch that recovers, part climbs for good.
@@ -809,7 +834,7 @@ export class Game {
     this.vm.fire();
     audio.gunshot(w.sound, null, true);
     music.excite(0.02);
-    const muzzle = this.camera.localToWorld(new THREE.Vector3(0.12, -0.1, -0.6));
+    const muzzle = chase ? chase.muzzle : this.camera.localToWorld(new THREE.Vector3(0.12, -0.1, -0.6));
     this.fx.muzzle(muzzle, w.pellets ? 1.3 : 1);
     this.fx.shake = Math.min(1, this.fx.shake + (w.pellets || w.dmg > 50 ? 0.25 : 0.06));
     if (w.projectile) return;
@@ -947,14 +972,16 @@ export class Game {
     // Look.
     const look = this.input.takeLook();
     const zoom = this.zoom || 1;
-    if (st === 'alive' || st === 'spirit' || st === 'downed') {
+    if (this.cams.look(look, zoom)) {
+      /* flying the drone */
+    } else if (st === 'alive' || st === 'spirit' || st === 'downed') {
       this.yaw += look.yaw / zoom;
       this.pitch = clamp(this.pitch + look.pitch / zoom, -1.5, 1.5);
     }
     this.move(dt, now);
     this.cameraUpdate(dt, now, look);
     // Firing.
-    if (st === 'alive' && !this.anyMenu() && (this.input.locked || isTouch())) {
+    if (st === 'alive' && !this.anyMenu() && !this.cams.blocksFire() && !this.adChat.open && (this.input.locked || isTouch())) {
       if (this.artilleryAim) this.aimArtillery();
       else if (this.input.firing() && !this.sprinting) this.tryFire(now);
     }
@@ -997,7 +1024,9 @@ export class Game {
     // Audio listener.
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
-    audio.setListener(this.camera.position, fwd, up);
+    // Flying the drone you still hear what is around your soldier.
+    audio.setListener(this.cams.mode === 'drone' ? { x: this.body.x, y: this.body.y + this.eye, z: this.body.z } : this.camera.position, fwd, up);
+    this.adChat.update(dt);
     this.render();
   }
 
@@ -1030,9 +1059,10 @@ export class Game {
     const inp = this.input;
     const f = FACTIONS[this.faction].perks;
     const mv = st === 'alive' || st === 'spirit' ? inp.move() : { x: 0, y: 0 };
-    if ((this.anyMenu() && !this.menus.buy) || this.modes.frozen()) {
+    if ((this.anyMenu() && !this.menus.buy) || this.modes.frozen() || this.cams.blocksMovement() || this.adChat.open) {
       mv.x = mv.y = 0;
     }
+    const droning = this.cams.blocksMovement() || this.adChat.open;
     // Wish direction in world space.
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
@@ -1057,12 +1087,12 @@ export class Game {
       return;
     }
     // Crouch (hold Ctrl or C), can't stand up under a low roof.
-    const wantCrouch = inp.down('ControlLeft') || inp.down('ControlRight') || inp.down('KeyC') || inp.touch.crouch;
+    const wantCrouch = !droning && (inp.down('ControlLeft') || inp.down('ControlRight') || inp.down('KeyC') || inp.touch.crouch);
     if (wantCrouch) b.crouch = true;
     else if (b.crouch && !insideAnyBox(this.map.index, b.x, b.y, b.z, false)) b.crouch = false;
     const forward = mv.y > 0.3;
     const wantSprint = (inp.down('ShiftLeft') || inp.down('ShiftRight') || inp.touch.sprint) && forward && !b.crouch;
-    this.adsOn = inp.aiming() && !this.anyMenu() && !w.melee;
+    this.adsOn = inp.aiming() && !this.anyMenu() && !w.melee && !droning;
     this.sprinting = wantSprint && this.stamina > 0.2 && !this.adsOn && !this.local.reloadUntil;
     if (this.sprinting) this.stamina = Math.max(0, this.stamina - dt);
     else this.stamina = Math.min(PLAYER.stamina, this.stamina + dt * 0.8);
@@ -1078,7 +1108,7 @@ export class Game {
     const k = 1 - Math.exp(-accel * dt);
     this.vel.x += (wx * speed - this.vel.x) * k;
     this.vel.y += (wz * speed - this.vel.y) * k;
-    const jump = inp.down('Space') && b.onGround && !b.crouch;
+    const jump = !droning && inp.down('Space') && b.onGround && !b.crouch;
     const wasGround = b.onGround;
     const vyBefore = b.vy;
     const before = { x: b.x, z: b.z };
@@ -1117,7 +1147,6 @@ export class Game {
       cam.fov = fov;
       cam.updateProjectionMatrix();
     }
-    this.hud.scope(!!scoped && this.zoom > 2.5);
     // Sniper scope sway; hold Shift to steady your breath for a few seconds.
     const scopedIn = !!scoped && this.zoom > 2.5;
     this.breath ??= 4;
@@ -1126,7 +1155,9 @@ export class Game {
     this.swayT = (this.swayT || 0) + dt;
     const amp = scopedIn ? (holding ? 0.0003 : this.breath <= 0.05 ? 0.007 : 0.0035) * (this.body.crouch ? 0.6 : 1) : 0;
     this.sway = { y: Math.sin(this.swayT * 0.9) * amp + Math.sin(this.swayT * 2.3) * amp * 0.3, p: Math.sin(this.swayT * 1.3 + 1) * amp * 0.8 };
-    this.vm.visible = st === 'alive' && !(scoped && this.zoom > 2.5);
+    this.vm.visible = st === 'alive' && !(scoped && this.zoom > 2.5) && !this.cams.thirdPerson() && this.cams.mode !== 'drone';
+    this.hud.scope(!!scoped && this.zoom > 2.5 && this.cams.mode !== 'drone');
+    if (this.cams.apply(dt, now)) return;
     if (st === 'dead' || st === 'medevac') {
       // Death cam: orbit your body; medevac rises into the sky.
       const t = now / 1000;
@@ -1211,9 +1242,14 @@ export class Game {
     }
     // Your own body for the death cam.
     const own = this.ownSoldier;
-    own.visible = this.status === 'dead' || this.status === 'medevac';
-    if (own.visible) own.update(dt, { x: this.body.x, y: this.body.y, z: this.body.z, yaw: this.yaw, pitch: 0, flags: 256, w: this.weapon() || 'p9' }, this.arena.time);
-    else own.root.visible = false;
+    const dead = this.status === 'dead' || this.status === 'medevac';
+    const shown = (this.cams.thirdPerson() || this.cams.mode === 'drone') && (this.status === 'alive' || this.status === 'downed');
+    own.visible = dead || shown;
+    if (dead) own.update(dt, { x: this.body.x, y: this.body.y, z: this.body.z, yaw: this.yaw, pitch: 0, flags: 256, w: this.weapon() || 'p9' }, this.arena.time);
+    else if (shown) {
+      const flags = (this.body.crouch ? 1 : 0) | (this.status === 'downed' ? 2 : 0) | (this.sprinting ? 128 : 0);
+      own.update(dt, { x: this.body.x, y: this.body.y, z: this.body.z, yaw: this.yaw, pitch: this.pitch, flags, w: this.weapon() || 'p9', hp: this.me?.health ?? 100 }, this.arena.time);
+    } else own.root.visible = false;
   }
 
   // ---------- HUD ----------
@@ -1287,16 +1323,18 @@ export class Game {
 
   // Show only the touch buttons that make sense right now.
   syncTouch(st, m) {
-    const show = !this.ended && !this.menus.buy && !this.menus.pause && !this.menus.score && (st === 'alive' || st === 'spirit' || st === 'downed');
-    const combat = st === 'alive';
+    const drone = this.cams?.mode === 'drone';
+    const show = !this.ended && !this.menus.buy && !this.menus.pause && !this.menus.score && !this.adChat?.open && (drone || st === 'alive' || st === 'spirit' || st === 'downed');
+    const combat = st === 'alive' && !drone;
     const use = combat && (!!this.downedMate() || !!this.modes.availableAction());
     const med = combat && m.medkit > 0 && m.health < 100;
-    const key = `${show}${combat}${use}${med}`;
+    const key = `${show}${combat}${use}${med}${drone}`;
     if (key === this.touchKey) return;
     this.touchKey = key;
     const t = $('touch');
     t.hidden = !show;
     t.classList.toggle('combat-off', !combat);
+    t.classList.toggle('drone', drone);
     t.querySelector('.t-use').hidden = !use;
     t.querySelector('.t-med').hidden = !med;
     if (!show || !combat) this.input.resetTouch(t);

@@ -32,6 +32,7 @@ export class Billboards {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.panels = new Map(); // board id -> { id, type, code, mats, faces, list, shown, fade }
+    this.pickables = []; // advert faces, for "aim at an advert to chat with the business"
     this.textures = new Map(); // url -> Promise<Texture>
     this.rotateMs = 12000;
     this.codes = new Map(boardsFor(map).map((b) => [b.id, b.code]));
@@ -93,8 +94,52 @@ export class Billboards {
           this.group.add(pole);
         }
         this.addPanel(b, yaw, steel, null);
-      }
+      } else if (b.type === 'ground') this.addGroundTile(b);
     }
+  }
+
+  // A giant artwork set into a concrete pad, with painted borders: reads like a real
+  // floor graphic, sits flush with the ground and has no collision.
+  addGroundTile(b) {
+    const g = new THREE.Group();
+    g.position.set(b.x, 0, b.z);
+    g.rotation.y = b.rot || 0;
+    const conc = T.concreteTexture();
+    const slabMat = new THREE.MeshStandardMaterial({ map: conc.map, normalMap: conc.normalMap, color: '#b9b4aa', roughness: 0.9 });
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(b.w + 1.4, 0.05, b.h + 1.4), slabMat);
+    slab.position.y = 0.005;
+    slab.receiveShadow = true;
+    g.add(slab);
+    const code = this.codes.get(b.id) || b.id;
+    const house = T.advertiseHereTexture(code, BOARD_TYPES.ground.name, this.host);
+    // Lit by the sun (so soldiers cast shadows across it) with a little glow to stay readable.
+    const mat = new THREE.MeshStandardMaterial({ map: house, emissive: '#ffffff', emissiveMap: house, emissiveIntensity: 0.35, roughness: 0.8, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    mat.onBeforeCompile = lightFog(new THREE.MeshBasicMaterial()).onBeforeCompile;
+    mat.customProgramCacheKey = () => 'groundad';
+    const art = new THREE.Mesh(new THREE.PlaneGeometry(b.w, b.h).rotateX(-Math.PI / 2), mat);
+    art.position.y = 0.034;
+    art.receiveShadow = true;
+    art.userData.boardId = b.id;
+    this.pickables.push(art);
+    g.add(art);
+    // Painted white border and corner marks.
+    const paint = new THREE.MeshStandardMaterial({ color: '#f2efe6', roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    const t = 0.22;
+    for (const [w, h, x, z] of [
+      [b.w + 0.9, t, 0, -(b.h / 2 + 0.35)],
+      [b.w + 0.9, t, 0, b.h / 2 + 0.35],
+      [t, b.h + 0.9, -(b.w / 2 + 0.35), 0],
+      [t, b.h + 0.9, b.w / 2 + 0.35, 0]
+    ]) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2), paint);
+      m.position.set(x, 0.036, z);
+      m.receiveShadow = true;
+      g.add(m);
+    }
+    this.group.add(g);
+    // The material keeps its emissive map in step with the advert on show.
+    mat.userData.ground = true;
+    this.panels.set(b.id, { id: b.id, type: 'ground', mats: [mat], house, faces: [{ x: b.x, y: 0.05, z: b.z, ground: true }], list: [], shown: -1, fade: 1 });
   }
 
   // Frame, backing and the advert face(s) for a skyline board or LED screen.
@@ -115,12 +160,16 @@ export class Billboards {
     const mats = [];
     const front = new THREE.Mesh(geo, panelMaterial(house, bright));
     front.position.z = 0.02;
+    front.userData.boardId = b.id;
+    this.pickables.push(front);
     g.add(front);
     mats.push(front.material);
     if (b.twoSided) {
       const rear = new THREE.Mesh(geo, panelMaterial(house, bright));
       rear.position.z = -depth - 0.02;
       rear.rotation.y = Math.PI;
+      rear.userData.boardId = b.id;
+      this.pickables.push(rear);
       g.add(rear);
       mats.push(rear.material);
     }
@@ -151,7 +200,11 @@ export class Billboards {
   }
 
   // AdWalls hands over its wall banners so all adverts share loading, rotation and views.
-  registerWall(a, material, house) {
+  registerWall(a, material, house, mesh) {
+    if (mesh) {
+      mesh.userData.boardId = a.id;
+      this.pickables.push(mesh);
+    }
     this.panels.set(a.id, {
       id: a.id,
       type: 'wall',
@@ -229,6 +282,7 @@ export class Billboards {
           const tex = idx >= 0 ? p.list[idx].tex : p.house;
           for (const m of p.mats) {
             m.map = tex;
+            if (m.userData.ground) m.emissiveMap = tex;
             m.needsUpdate = true;
           }
         }
@@ -236,7 +290,7 @@ export class Billboards {
       if (p.fade < 1) {
         p.fade = Math.min(1, p.fade + dt * 3);
         const k = Math.abs(p.fade - 0.5) * 2;
-        const base = p.type === 'led' ? 1 : 0.92;
+        const base = p.type === 'led' || p.type === 'ground' ? 1 : 0.92;
         for (const m of p.mats) m.color.setScalar(base * (0.15 + 0.85 * k));
       }
     }
@@ -253,7 +307,14 @@ export class Billboards {
       const seen = panel.faces.some((f) => {
         const dx = f.x - p.x;
         const dz = f.z - p.z;
-        if (Math.hypot(dx, dz) > radius) return false;
+        const d = Math.hypot(dx, dz);
+        if (d > radius) return false;
+        if (f.ground) {
+          // Floor art counts when seen from above (drone, rooftop) or close up.
+          if (p.y / Math.max(1, d) < 0.18) return false;
+          if (!frustum.containsPoint(pt.set(f.x, f.y, f.z))) return false;
+          return !lineBlocked(index, p.x, p.y, p.z, f.x, f.y + 0.2, f.z, smokes);
+        }
         if (dx * f.nx + dz * f.nz > 0) return false; // looking at the back
         if (!frustum.containsPoint(pt.set(f.x, f.y, f.z))) return false;
         return !lineBlocked(index, p.x, p.y, p.z, f.x + f.nx * 0.3, f.y, f.z + f.nz * 0.3, smokes);

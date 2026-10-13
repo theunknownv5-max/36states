@@ -14,6 +14,8 @@ import { AdManager, lagosToday } from './ads.js';
 import { JsonStore, SUPABASE } from './store.js';
 import { media } from './media.js';
 import { Advertisers } from './advertisers.js';
+import { Inbox } from './inbox.js';
+import { Daily } from './daily.js';
 import * as paystack from './paystack.js';
 import { boardsFor, BOARD_TYPES, tierFor } from '../shared/billboards.js';
 
@@ -41,16 +43,24 @@ for (const s of STATES) {
 await media.init();
 const ads = new AdManager(catalogue);
 const advertisers = new Advertisers();
+const inbox = new Inbox();
+const tokenConns = new Map(); // player token -> Set of live connections (for reply notifications)
 const store = new JsonStore('players.json', { profiles: {}, accounts: {} });
 await ads.load();
 await advertisers.load();
+await inbox.load();
 await store.load();
 const saveProfile = () => store.markDirty();
+const daily = new Daily(saveProfile);
+const threadView = (th) => inbox.playerView(th, (f) => media.url(f));
+function notifyPlayer(token, msg) {
+  for (const c of tokenConns.get(token) || []) if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg));
+}
 
 const matches = new Map(); // "mode:state" (or "stage:<player>") -> Match
 function matchFor(stateId, mode = 'conquest', key = `${mode}:${stateId}`, opts = {}) {
   if (!matches.has(key)) {
-    const m = new Match(stateId, { ads, saveProfile }, mode, opts);
+    const m = new Match(stateId, { ads, saveProfile, daily }, mode, opts);
     m.key = key;
     matches.set(key, m);
   }
@@ -236,6 +246,21 @@ async function advRoute(req, res, route, url) {
     return json(res, 200, { account: advertisers.public(acc), bookings: mine.map((a) => ads.publicBooking(a)) });
   }
   if (route === 'me' && req.method === 'PATCH') return json(res, 200, { account: advertisers.update(acc, await readBody(req, 64 * 1024)) });
+  if (route === 'inbox' && req.method === 'GET') {
+    const list = inbox.forBusiness(acc.id).map((t) => inbox.businessView(t));
+    return json(res, 200, { threads: list, unread: list.reduce((n, t) => n + t.unread, 0) });
+  }
+  const ib = /^inbox\/([a-z0-9-]+)\/(reply|read|block|unblock)$/.exec(route);
+  if (ib && req.method === 'POST') {
+    let th;
+    if (ib[2] === 'reply') {
+      th = inbox.fromBusiness(acc.id, ib[1], (await readBody(req, 64 * 1024)).text);
+      notifyPlayer(th.player, { t: 'inboxNew', thread: threadView(th), unread: inbox.unreadFor(th.player) });
+    } else if (ib[2] === 'read') th = inbox.readBy(ib[1], 'business', acc.id);
+    else th = inbox.block(acc.id, ib[1], ib[2] === 'block');
+    if (!th) return json(res, 404, { error: 'Conversation not found' });
+    return json(res, 200, { thread: inbox.businessView(th) });
+  }
   if (route === 'bookings' && req.method === 'POST') {
     if (!paystack.paystackReady()) return json(res, 503, { error: 'Payments are not switched on yet. Please try again later.' });
     const ad = await ads.createBooking(acc, await readBody(req));
@@ -428,7 +453,11 @@ wss.on('connection', (ws) => {
       if (r.error) return send({ t: 'authError', error: r.error });
       conn.profile = store.data.profiles[r.token] || (store.data.profiles[r.token] = newProfile(r.token, r.name));
       saveProfile();
-      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby() });
+      if (conn.token) tokenConns.get(conn.token)?.delete(conn);
+      conn.token = r.token;
+      if (!tokenConns.has(r.token)) tokenConns.set(r.token, new Set());
+      tokenConns.get(r.token).add(conn);
+      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile) });
     }
     if (!conn.profile) return;
     if (msg.t === 'lobby') return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile) });
@@ -461,6 +490,56 @@ wss.on('connection', (ws) => {
       match.syncMe(r.player);
       return;
     }
+    // ---------- chat with businesses on the billboards ----------
+    if (msg.t === 'adChatOpen') {
+      const ad = ads.ads.find((a) => a.id === msg.adId && a.kind === 'paid' && a.advertiserId && ads.isLive(a));
+      if (!ad) return send({ t: 'adChat', ok: false, reason: 'This advert no get chat.' });
+      let r = { ok: true, paused: false };
+      if (conn.match && conn.player) r = conn.match.setChat(conn.player, true);
+      if (!r.ok) return send({ t: 'adChat', ok: false, reason: r.reason });
+      const th = inbox.find(ad.advertiserId, conn.profile.token);
+      if (th) inbox.readBy(th.id, 'player', conn.profile.token);
+      return send({ t: 'adChat', ok: true, paused: !!r.paused, until: r.until || 0, ad: { id: ad.id, business: ad.advertiser, image: media.url(ad.file), link: ad.link || null }, thread: th ? threadView(th) : null });
+    }
+    if (msg.t === 'adChatClose') {
+      if (conn.match && conn.player) conn.match.setChat(conn.player, false);
+      return;
+    }
+    if (msg.t === 'adMsg') {
+      try {
+        let ad;
+        if (msg.threadId) {
+          const th = inbox.threads[msg.threadId];
+          if (!th || th.player !== conn.profile.token) throw new Error('Conversation not found');
+          ad = { advertiserId: th.advertiserId, advertiser: th.business, id: th.adId, boardCode: th.boardCode, file: th.image, link: th.link };
+        } else {
+          ad = ads.ads.find((a) => a.id === msg.adId && a.kind === 'paid' && a.advertiserId);
+          if (!ad) throw new Error('This advert no get chat.');
+        }
+        const th = inbox.fromPlayer({ token: conn.profile.token, name: conn.profile.name }, ad, msg.text);
+        return send({ t: 'thread', thread: threadView(th) });
+      } catch (e) {
+        return send({ t: 'adChatError', error: e.message });
+      }
+    }
+    if (msg.t === 'inbox') {
+      const list = inbox.forPlayer(conn.profile.token).map(threadView);
+      return send({ t: 'inbox', threads: list, unread: inbox.unreadFor(conn.profile.token) });
+    }
+    if (msg.t === 'threadRead') {
+      inbox.readBy(String(msg.id || ''), 'player', conn.profile.token);
+      return send({ t: 'inboxUnread', unread: inbox.unreadFor(conn.profile.token) });
+    }
+    // ---------- daily rewards and missions ----------
+    if (msg.t === 'daily') return send({ t: 'daily', daily: daily.view(conn.profile), profile: profilePublic(conn.profile) });
+    if (msg.t === 'dailyClaim') {
+      const r = daily.claimLogin(conn.profile);
+      return send({ t: 'daily', daily: daily.view(conn.profile), profile: profilePublic(conn.profile), claimed: r });
+    }
+    if (msg.t === 'missionClaim') {
+      const r = daily.claimMission(conn.profile, String(msg.id || ''));
+      return send({ t: 'daily', daily: daily.view(conn.profile), profile: profilePublic(conn.profile), claimed: r });
+    }
     if (msg.t === 'leave') {
       if (conn.match) conn.match.removePlayer(conn.player.id);
       conn.match = conn.player = null;
@@ -475,6 +554,7 @@ wss.on('connection', (ws) => {
     }
   });
   ws.on('close', () => {
+    if (conn.token) tokenConns.get(conn.token)?.delete(conn);
     if (conn.match && conn.player) conn.match.removePlayer(conn.player.id);
   });
 });
@@ -502,13 +582,14 @@ setInterval(() => {
   store.save();
   ads.store.save();
   advertisers.store.save();
+  inbox.store.save();
 }, 15000);
 // Unique-viewer lists are bigger and change often: save them less frequently.
 setInterval(() => ads.uniqueStore.save(), 120000);
 setInterval(() => ads.housekeeping().catch((e) => console.error('ad housekeeping', e.message)), 60000);
 
 async function shutdown() {
-  await Promise.all([store.save(true), ads.store.save(true), ads.uniqueStore.save(true), advertisers.store.save(true)]);
+  await Promise.all([store.save(true), ads.store.save(true), ads.uniqueStore.save(true), advertisers.store.save(true), inbox.store.save(true)]);
   process.exit(0);
 }
 process.on('SIGINT', shutdown);

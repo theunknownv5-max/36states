@@ -34,7 +34,7 @@ ADMIN_KEY=your-secret npm start    # serves the game, the WebSocket and /admin o
 | `PUBLIC_URL` | request host | Address Paystack sends advertisers back to |
 | `VITE_SERVER_URL` | same host | Set at build time if the game server lives on another domain (e.g. `wss://api.example.com/ws`) |
 
-To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. Two suites run: 64 game checks (including Team Deathmatch, Plant & Defuse and Campaign Stages), and 43 ad portal checks. The portal checks run the real server against stand-in Paystack and Supabase servers: book, pay, webhook, approve, reject with refund, and restart.
+To run the simulation tests, use `npm test`. It plays bot battles in every state and checks hits, revives, gems, respawns, explosives, artillery and ad analytics. Two suites run: 72 game checks (including Team Deathmatch, Plant & Defuse and Campaign Stages), and 56 ad portal checks. The portal checks run the real server against stand-in Paystack and Supabase servers: book, pay, webhook, approve, reject with refund, and restart, plus player chat with businesses, blocking and daily rewards.
 
 ---
 
@@ -48,6 +48,27 @@ To run the simulation tests, use `npm test`. It plays bot battles in every state
 | **Campaign Stages** | A solo story of 12 stages across Nigeria, from *Wahala for Marina* (Lagos) to *Aso Rock Final Stand* (FCT). You and 2 bot allies clear waves of enemies with limited lives. You earn up to 3 stars per stage, and the first clear of each stage pays 1 gem. Each clear unlocks the next stage. |
 
 Press **V** (or the chat button on phones) for Pidgin quick chat.
+
+## Camera views
+
+- **Chase cam (H, or 🎥 on phones):** third person over your shoulder, and you still fight normally. Shots leave from your soldier's eyes toward whatever is under the crosshair, so aim and the server's hit checks stay honest. Sniper scopes switch to first person while you aim. The camera moves in when there is a wall behind you.
+- **Scout drone (T, or 🛸):**
+  - You fly a camera drone over the battlefield, with a cockpit display: recording light, altitude, heading, distance from your body, and battery.
+  - Controls: WASD or the stick to fly, Shift for speed, Space/C (▲/▼ on phones) or the mouse wheel to change height.
+  - Your soldier stays where you left them and can be shot. Taking damage cuts the drone signal.
+  - The battery lasts 30 s and then recharges. It is unlimited while your side's recon drone killstreak is up, and while you are dead and waiting to come back (the death screen has a **Fly drone** option).
+
+## Talk to the businesses on the billboards
+
+1. Aim your crosshair (or the drone reticle) at any paid advert. A **💬 Chat with …** button appears. Press **J** or tap it.
+2. While you chat you are protected: nobody can hurt you, bots ignore you, and you can't shoot. Walking away or 2 minutes passing ends the chat. You can't start one right after being shot or while carrying the bomb. In a solo campaign stage the battle pauses.
+3. The business reads and replies in the ad portal (**/advertise → Messages**). The reply arrives live in your game, and the **📨 Inbox** (lobby and pause menu) keeps every conversation.
+4. Privacy: players see only the business name; businesses see only the soldier name. A business can block a player. Messages are limited in length and how fast you can send them.
+
+## Daily duty
+
+- **🎁 Daily login calendar:** 7 days of rewards: gems, XP, and 5 gems on day 7. Miss a day and the streak starts again.
+- **Three daily missions** that change every day (Nigerian time), for example: kill 10 enemies, land 3 headshots, pick up 2 life gems, win a battle, revive 2 teammates, or capture 2 sites. You get a toast when one is done; collect the reward in 🎁 Daily.
 
 ## How a battle works
 
@@ -123,6 +144,7 @@ Advertisers book and pay by themselves at **`/advertise`**. You only approve the
 | --- | --- | --- | --- |
 | **Sky Billboard** (4 per state) | 28 m billboards on skyline towers or highway unipoles just outside the walls, seen from most of the map | 16:9, at least 1920×1080 | ₦25,000 |
 | **LED Road Screen** (2 per state) | Double-sided screens on poles in the middle of the fighting | 16:9, at least 1280×720 | ₦12,000 |
+| **Ground Tile** (up to 3 per state) | Giant floor artworks (up to 16 × 9 m) set into open ground. Made for the drone, spectators and rooftops. No collision, so they never change the fight. | 16:9, at least 1920×1080 | ₦15,000 |
 | **Wall Banner** (about 12 per state) | The lit walls that hold life gems | 2:1, at least 1200×600 | ₦5,000 |
 
 **Price** = daily price × state tier × days.
@@ -220,8 +242,10 @@ Any key you provide replaces the synthesised version. Only use recordings you ha
 
 ## Music
 
-- **Battle theme:** the official POD track (`client/public/audio/pod-theme.ogg`, with an `.m4a` copy for iPhones). It starts when a battle starts and loops without a gap.
-- **Menu theme:** composed live in code, with talking drum, shekere, congas, kalimba, pads and bass.
+- **Battle theme:** the official POD track (`client/public/audio/pod-theme.ogg`, plus an `.m4a` copy for iPhones).
+- **Menu theme:** `client/public/audio/pod-menu.*`, an Afro-cinematic loop with talking drum, shekere, congas and kalimba. It was composed in code and recorded to a file, so nothing is generated while you play.
+- **How it plays:** music runs on the device's own media player, separate from the game's sound effects. Heavy gunfire or a busy phone can't make it crackle, stutter or stop. Each theme loops by crossfading two players, so there is no gap. A watchdog restarts it after calls, screen lock or the app going to the background. If a device can't play `.ogg` it switches to `.m4a`.
+- **Sound effects on phones:** a slightly larger audio buffer, cheaper 3D panning, a shorter reverb, and a limit on how many sounds play at once (far-away ones are skipped first).
 - **Victory and defeat** stingers at the end of each match.
 
 In **Settings** (in the lobby and in the in-game menu) players can turn background music on or off, turn gun sounds on or off, and set music and sound-effect volume separately.
@@ -253,6 +277,8 @@ The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, 
 | 4 then G | Pick a grenade, then throw it |
 | B | Buy (at your base or just after deploying) |
 | E | Revive a downed teammate; plant or defuse the bomb (hold) |
+| H / T | Chase cam on/off / scout drone |
+| J | Chat with the business on the advert you are aiming at |
 | V, then 1–6 | Quick chat |
 | Shift (while scoped) | Hold your breath to steady the sniper scope |
 | X | First aid kit |
@@ -282,6 +308,9 @@ client/            browser game (Vite)
   index.html
   src/main.js      boot → sign in → war map → battle
   src/game.js      the battle: local fighter, remote fighters, every server event
+  src/camera-modes.js  chase cam and scout drone
+  src/ad-chat.js   aim at an advert to chat with the business
+  src/ui/chat.js   chat window and Inbox
   src/modes-client.js  mode HUD: bomb, rounds, waves, quick chat
   src/world/       billboards (skyline towers, LED screens, HD ad loading and rotation), arena (terrain, buildings, sky, water), ambience (clouds, smoke columns, birds, flyovers), props (trees, landmarks, machinery), markers (ad walls, gems, sites)
   src/characters/  jointed soldiers in faction uniforms
@@ -294,6 +323,8 @@ server/
   modes.js         game mode rules (Hold Ground, Gbas Gbos, Plant & Defuse, Campaign)
   bots.js          bot AI (A* pathing, aiming, strafing, grenades, killstreaks)
   ads.js           billboards, bookings, rotation and privacy-safe analytics
+  inbox.js         player ↔ business conversations
+  daily.js         daily login rewards and missions
   advertisers.js   advertiser accounts for the portal
   paystack.js      Paystack payments, verification, refunds, webhook signatures
   media.js         advert images (Supabase Storage or local files)

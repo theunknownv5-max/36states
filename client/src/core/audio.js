@@ -54,8 +54,19 @@ export class AudioEngine {
       this.enabled = false;
       return;
     }
-    const ctx = new AC();
+    // Phones: a slightly larger audio buffer and cheaper 3D panning, so heavy gunfights
+    // never overload the audio thread (that is what made sound crackle and stutter).
+    this.mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
+    let ctx;
+    try {
+      ctx = new AC({ latencyHint: this.mobile ? 'balanced' : 'interactive' });
+    } catch {
+      ctx = new AC();
+    }
     this.ctx = ctx;
+    this.hrtf = !this.mobile;
+    this.voices = [];
+    this.maxVoices = this.mobile ? 22 : 48;
     this.master = ctx.createGain();
     this.master.gain.value = this.volume;
     // Gentle bus compression keeps gunfights loud without clipping.
@@ -76,7 +87,7 @@ export class AudioEngine {
     this.ui.connect(this.master);
     // Reverb send (outdoor slap / urban canyons).
     this.reverb = ctx.createConvolver();
-    this.reverb.buffer = this.impulse(2.4, 2.6);
+    this.reverb.buffer = this.impulse(this.mobile ? 1.3 : 2.4, 2.6);
     this.reverbSend = ctx.createGain();
     this.reverbSend.gain.value = 0.32;
     this.reverbSend.connect(this.reverb).connect(this.master);
@@ -181,8 +192,16 @@ export class AudioEngine {
     const input = ctx.createGain();
     let dist = 0;
     let when = ctx.currentTime + 0.005;
+    // Voice budget: when too many sounds are playing, quietly skip far-away ones
+    // (an unconnected chain costs nothing to render).
+    const now = ctx.currentTime;
+    if (this.voices.length > 64) this.voices = this.voices.filter((t) => t > now);
+    const busy = this.voices.reduce((n, t) => n + (t > now ? 1 : 0), 0);
+    const far = pos ? Math.hypot(pos.x - this.listener.x, pos.y - this.listener.y, pos.z - this.listener.z) : 0;
+    if (busy >= this.maxVoices && far > 12) return { input, when, dist: far, skipped: true };
+    this.voices.push(now + 1.5);
     if (pos) {
-      dist = Math.hypot(pos.x - this.listener.x, pos.y - this.listener.y, pos.z - this.listener.z);
+      dist = far;
       when += Math.min(1.2, dist / SPEED_OF_SOUND);
       // Air absorbs high frequencies over distance.
       const air = ctx.createBiquadFilter();
