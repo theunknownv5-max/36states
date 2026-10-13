@@ -354,6 +354,97 @@
   }
  },
  "props": {
+  "metal_trash_can": {
+   "name": "Metal Trash Can",
+   "keywords": [
+    "metal trash can"
+   ],
+   "file": "metal_trash_can_1k.gltf",
+   "authors": [
+    "GurJas Studios"
+   ],
+   "mb": 4.8
+  },
+  "dry_branches_medium_01": {
+   "name": "Dry Branches Medium 01",
+   "keywords": [
+    "dry branches medium 01"
+   ],
+   "file": "dry_branches_medium_01_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 3.1
+  },
+  "quiver_tree_02": {
+   "name": "Quiver Tree 02",
+   "keywords": [
+    "quiver tree 02"
+   ],
+   "file": "quiver_tree_02_1k.gltf",
+   "authors": [
+    "Dario Barresi",
+    "Rico Cilliers"
+   ],
+   "mb": 4.3
+  },
+  "pachira_aquatica_01": {
+   "name": "Pachira Aquatica 01",
+   "keywords": [
+    "pachira aquatica 01"
+   ],
+   "file": "pachira_aquatica_01_1k.gltf",
+   "authors": [
+    "Rob Tuytel",
+    "Rico Cilliers"
+   ],
+   "mb": 4.9
+  },
+  "fern_02": {
+   "name": "Fern 02",
+   "keywords": [
+    "fern 02"
+   ],
+   "file": "fern_02_1k.gltf",
+   "authors": [
+    "Rob Tuytel",
+    "Rico Cilliers"
+   ],
+   "mb": 1.1
+  },
+  "shrub_03": {
+   "name": "Shrub 03",
+   "keywords": [
+    "shrub 03"
+   ],
+   "file": "shrub_03_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 1.6
+  },
+  "shrub_02": {
+   "name": "Shrub 02",
+   "keywords": [
+    "shrub 02"
+   ],
+   "file": "shrub_02_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 1.9
+  },
+  "shrub_01": {
+   "name": "Shrub 01",
+   "keywords": [
+    "shrub 01"
+   ],
+   "file": "shrub_01_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 6.6
+  },
   "Barrel_01": {
    "name": "Barrel_01",
    "keywords": [
@@ -365,29 +456,16 @@
    ],
    "mb": 0.7
   },
-  "cannon_01": {
-   "name": "Cannon 01",
+  "Barrel_02": {
+   "name": "Barrel 02",
    "keywords": [
     "barrel"
    ],
-   "file": "cannon_01_1k.gltf",
+   "file": "Barrel_02_1k.gltf",
    "authors": [
-    "Yann Kervran",
-    "James Ray Cock"
+    "Jorge Camacho"
    ],
-   "mb": 3.3
-  },
-  "treasure_chest": {
-   "name": "Treasure Chest",
-   "keywords": [
-    "crate",
-    "wooden box"
-   ],
-   "file": "treasure_chest_1k.gltf",
-   "authors": [
-    "Rico Cilliers"
-   ],
-   "mb": 5.2
+   "mb": 0.4
   },
   "wooden_crate_01": {
    "name": "Wooden Crate 01",
@@ -401,18 +479,30 @@
    ],
    "mb": 2.2
   },
-  "small_oil_can_01": {
-   "name": "Small Oil Can 01",
+  "CheeseBox_01": {
+   "name": "CheeseBox_01",
+   "keywords": [
+    "crate",
+    "wooden box"
+   ],
+   "file": "CheeseBox_01_1k.gltf",
+   "authors": [
+    "Gabriel Radi\u0107"
+   ],
+   "mb": 0.5
+  },
+  "metal_jerrycan": {
+   "name": "Metal Jerrycan",
    "keywords": [
     "jerrycan",
     "jerry can",
     "fuel can"
    ],
-   "file": "small_oil_can_01_1k.gltf",
+   "file": "metal_jerrycan_1k.gltf",
    "authors": [
-    "Raven van de Werken"
+    "Sean Buckley"
    ],
-   "mb": 0.9
+   "mb": 2.9
   },
   "rock_moss_set_02": {
    "name": "Rock Moss Set 02",
@@ -463,18 +553,6 @@
    ],
    "mb": 4.9
   },
-  "street_rat": {
-   "name": "Street Rat",
-   "keywords": [
-    "tree",
-    "palm"
-   ],
-   "file": "street_rat_1k.gltf",
-   "authors": [
-    "Sean Buckley"
-   ],
-   "mb": 3.4
-  },
   "outdoor_table_chair_set_01": {
    "name": "Outdoor Table Chair Set 01",
    "keywords": [
@@ -513,6 +591,18 @@
    ],
    "mb": 18.9
   },
+  "street_lamp_01": {
+   "name": "Street Lamp 01",
+   "keywords": [
+    "tree",
+    "palm"
+   ],
+   "file": "street_lamp_01_1k.gltf",
+   "authors": [
+    "Josh Dean"
+   ],
+   "mb": 2.1
+  },
   "grass_medium_01": {
    "name": "Grass Medium 01",
    "keywords": [
@@ -528,20 +618,6 @@
    ],
    "mb": 2.9
   },
-  "potted_plant_02": {
-   "name": "Potted Plant 02",
-   "keywords": [
-    "shrub",
-    "bush",
-    "fern",
-    "plant"
-   ],
-   "file": "potted_plant_02_1k.gltf",
-   "authors": [
-    "Rico Cilliers"
-   ],
-   "mb": 2.5
-  },
   "grass_bermuda_01": {
    "name": "Grass Bermuda 01",
    "keywords": [
@@ -556,19 +632,34 @@
    ],
    "mb": 1.4
   },
-  "potted_plant_04": {
-   "name": "Potted Plant 04",
+  "celandine_01": {
+   "name": "Celandine 01",
    "keywords": [
     "shrub",
     "bush",
     "fern",
     "plant"
    ],
-   "file": "potted_plant_04_1k.gltf",
+   "file": "celandine_01_1k.gltf",
    "authors": [
-    "James Ray Cock"
+    "Rob Tuytel",
+    "Rico Cilliers"
    ],
-   "mb": 2.0
+   "mb": 1.5
+  },
+  "potted_plant_01": {
+   "name": "Potted Plant 01",
+   "keywords": [
+    "shrub",
+    "bush",
+    "fern",
+    "plant"
+   ],
+   "file": "potted_plant_01_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 6.0
   },
   "grass_medium_02": {
    "name": "Grass Medium 02",
@@ -580,17 +671,6 @@
     "Rico Cilliers"
    ],
    "mb": 0.8
-  },
-  "flower_heliophila": {
-   "name": "Flower Heliophila",
-   "keywords": [
-    "grass"
-   ],
-   "file": "flower_heliophila_1k.gltf",
-   "authors": [
-    "Jenelle van Heerden"
-   ],
-   "mb": 3.7
   },
   "modular_chainlink_fence": {
    "name": "Modular Chainlink Fence",
@@ -604,29 +684,18 @@
    ],
    "mb": 7.0
   },
-  "gate_latch_01": {
-   "name": "Gate Latch 01",
-   "keywords": [
-    "fence"
-   ],
-   "file": "gate_latch_01_1k.gltf",
-   "authors": [
-    "Desktoy"
-   ],
-   "mb": 2.0
-  },
-  "CoffeeCart_01": {
-   "name": "Coffee Cart 01",
+  "old_tyre": {
+   "name": "Old Tyre",
    "keywords": [
     "tire",
     "tyre",
     "wheel"
    ],
-   "file": "CoffeeCart_01_1k.gltf",
+   "file": "old_tyre_1k.gltf",
    "authors": [
-    "Joe Seabuhr"
+    "MP"
    ],
-   "mb": 1.8
+   "mb": 2.1
   },
   "wooden_picnic_table": {
    "name": "Wooden Picnic Table",
@@ -639,17 +708,17 @@
    ],
    "mb": 4.1
   },
-  "sofa_02": {
-   "name": "Sofa 02",
+  "sofa_03": {
+   "name": "Sofa 03",
    "keywords": [
     "plastic chair",
     "chair"
    ],
-   "file": "sofa_02_1k.gltf",
+   "file": "sofa_03_1k.gltf",
    "authors": [
-    "Kirill Sannikov"
+    "Fran Calvente"
    ],
-   "mb": 0.4
+   "mb": 0.6
   },
   "wooden_table_02": {
    "name": "Wooden Table 02",
@@ -662,29 +731,29 @@
    ],
    "mb": 0.5
   },
-  "Lantern_01": {
-   "name": "Lantern 01",
+  "modern_ceiling_lamp_01": {
+   "name": "Modern Ceiling Lamp 01",
    "keywords": [
     "street lamp",
     "lamp post",
     "lamp"
    ],
-   "file": "Lantern_01_1k.gltf",
+   "file": "modern_ceiling_lamp_01_1k.gltf",
    "authors": [
-    "Rajil Jose Macatangay"
+    "James Ray Cock"
    ],
-   "mb": 1.4
+   "mb": 0.4
   },
-  "Ottoman_01": {
-   "name": "Ottoman 01",
+  "WetFloorSign_01": {
+   "name": "Wet Floor Sign 01",
    "keywords": [
     "sign"
    ],
-   "file": "Ottoman_01_1k.gltf",
+   "file": "WetFloorSign_01_1k.gltf",
    "authors": [
-    "Caspian Fortune"
+    "Fran Calvente"
    ],
-   "mb": 0.6
+   "mb": 0.3
   },
   "concrete_road_barrier": {
    "name": "Concrete Road Barrier",
@@ -768,54 +837,55 @@
    ],
    "mb": 2.7
   },
-  "GothicCabinet_01": {
-   "name": "Gothic Cabinet 01",
+  "vintage_wooden_drawer_01": {
+   "name": "Vintage Wooden Drawer 01",
    "keywords": [
     "trash",
     "bin"
    ],
-   "file": "GothicCabinet_01_1k.gltf",
+   "file": "vintage_wooden_drawer_01_1k.gltf",
    "authors": [
-    "Kirill Sannikov"
+    "James Ray Cock"
    ],
-   "mb": 1.0
+   "mb": 2.0
   },
-  "Camera_01": {
-   "name": "Camera 01",
+  "sand_rocks_small_01": {
+   "name": "Sand Rocks Small 01",
    "keywords": [
     "log",
     "stump"
    ],
-   "file": "Camera_01_1k.gltf",
-   "authors": [
-    "Rajil Jose Macatangay"
-   ],
-   "mb": 2.3
-  },
-  "cassette_player": {
-   "name": "Cassette Player",
-   "keywords": [
-    "log",
-    "stump"
-   ],
-   "file": "cassette_player_1k.gltf",
-   "authors": [
-    "Oday Abuzaeed"
-   ],
-   "mb": 0.9
-  },
-  "fancy_picture_frame_01": {
-   "name": "Fancy Picture Frame 01",
-   "keywords": [
-    "ruin",
-    "wall"
-   ],
-   "file": "fancy_picture_frame_01_1k.gltf",
+   "file": "sand_rocks_small_01_1k.gltf",
    "authors": [
     "Rob Tuytel",
     "Rico Cilliers"
    ],
-   "mb": 0.7
+   "mb": 22.7
+  },
+  "namaqualand_boulder_03": {
+   "name": "Namaqualand Boulder 03",
+   "keywords": [
+    "log",
+    "stump"
+   ],
+   "file": "namaqualand_boulder_03_1k.gltf",
+   "authors": [
+    "Jenelle van Heerden",
+    "Dario Barresi"
+   ],
+   "mb": 3.6
+  },
+  "modular_fort_01": {
+   "name": "Modular Fort 01",
+   "keywords": [
+    "ruin",
+    "wall"
+   ],
+   "file": "modular_fort_01_1k.gltf",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "mb": 10.1
   }
  }
 }
