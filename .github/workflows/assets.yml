@@ -1,0 +1,44 @@
+# Downloads the native game's realistic art (Poly Haven, CC0) and commits it into native/assets/.
+# Runs when native/tools/fetch_assets.py changes, or by hand from the Actions tab.
+name: Fetch native art
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/tools/fetch_assets.py'
+      - '.github/workflows/assets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download the art
+        run: python3 native/tools/fetch_assets.py
+
+      - name: Commit it
+        run: |
+          set -e
+          git config user.name "pod-assets-bot"
+          git config user.email "pod-assets-bot@users.noreply.github.com"
+          git add native/assets
+          if git diff --cached --quiet; then
+            echo "Nothing new."
+            exit 0
+          fi
+          du -sh native/assets
+          git commit -m "Native: CC0 art from Poly Haven (materials, skies, props)"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && break
+            sleep 5
+          done
