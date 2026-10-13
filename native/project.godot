@@ -1,0 +1,49 @@
+; Proof of Duty, the native Android game (Godot 4).
+; The lite app (Capacitor, web) and this one play on the same game server.
+
+config_version=5
+
+[application]
+
+config/name="Proof of Duty"
+config/description="Nigerian tactical shooter across the 36 states. Developed by Tcee."
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3", "Mobile")
+boot_splash/bg_color=Color(0.0196, 0.0157, 0.0157, 1)
+boot_splash/show_image=false
+config/icon="res://icon.png"
+
+[autoload]
+
+Cfg="*res://core/cfg.gd"
+Net="*res://core/net.gd"
+Sfx="*res://core/sfx.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+window/energy_saving/keep_screen_on=true
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=false
+pointing/emulate_mouse_from_touch=false
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+rendering_device/fallback_to_opengl3=true
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=1
+lights_and_shadows/directional_shadow/size=2048
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=1
+environment/defaults/default_clear_color=Color(0.02, 0.016, 0.016, 1)

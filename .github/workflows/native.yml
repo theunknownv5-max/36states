@@ -1,0 +1,141 @@
+# Builds the native Android game (Godot 4, in native/) and publishes it on the repo's
+# Releases page as "Proof of Duty (native)". The lite app (Capacitor) has its own workflow.
+# Both apps play on the same game server.
+name: Native Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/**'
+      - '.github/workflows/native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: '4.3'
+  GODOT_DIR: '4.3.stable'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      # Same permanent signing key as the lite app.
+      POD_KS_PASS: ${{ secrets.POD_KS_PASS || 'f32136dc909ac9d2675bd9ab04fb135e' }}
+      GAME_SERVER: ${{ vars.GAME_SERVER || 'https://three6states.onrender.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Godot and its export templates
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-android-v1
+
+      - name: Download Godot
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p ~/godot/templates
+          cd ~/godot
+          curl -sSL -o g.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q g.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot && rm g.zip
+          curl -sSL -o t.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q -j t.tpz templates/android_release.apk templates/android_debug.apk templates/version.txt -d templates
+          rm t.tpz
+          ls -la templates
+
+      - name: Set up Godot for Android export
+        run: |
+          set -e
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_DIR}
+          cp ~/godot/templates/* ~/.local/share/godot/export_templates/${GODOT_DIR}/
+          keytool -genkeypair -v -keystore ~/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" > /dev/null 2>&1
+          mkdir -p ~/.config/godot
+          for f in editor_settings-4.tres editor_settings-4.3.tres; do
+            cat > ~/.config/godot/$f <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+            sed -i 's/^          //' ~/.config/godot/$f
+          done
+          cat ~/.config/godot/editor_settings-4.3.tres
+
+      - name: Version, build number and server
+        working-directory: native
+        run: |
+          set -e
+          echo "${{ github.run_number }}" > build.txt
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          sed -i "s|const SERVER := \".*\"|const SERVER := \"${GAME_SERVER}\"|" core/cfg.gd
+          grep -n "version/code" export_presets.cfg
+          grep -n "const SERVER" core/cfg.gd
+
+      - name: Import the project
+        working-directory: native
+        run: timeout 600 ~/godot/godot --headless --import 2>&1 | tail -20
+
+      - name: Check the scripts
+        working-directory: native
+        run: |
+          timeout 120 ~/godot/godot --headless --quit-after 60 2>&1 | tee check.log | tail -30
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script" check.log; then exit 1; fi
+
+      - name: Export the APK
+        working-directory: native
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/android-res/pod-release.p12
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: pod
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ env.POD_KS_PASS }}
+        run: |
+          set -e
+          mkdir -p build
+          timeout 900 ~/godot/godot --headless --export-release "Android" build/proof-of-duty.apk 2>&1 | tail -40
+          ls -la build
+          test -s build/proof-of-duty.apk
+
+      - name: Check the APK installs (signature and integrity)
+        working-directory: native
+        run: |
+          set -e
+          AS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          "$AS/zipalign" -c -v 4 build/proof-of-duty.apk > /dev/null
+          "$AS/apksigner" verify --verbose --print-certs build/proof-of-duty.apk
+          "$AS/aapt2" dump badging build/proof-of-duty.apk | grep -E "^(package|sdkVersion|targetSdkVersion|application-label)"
+          cp build/proof-of-duty.apk ../proof-of-duty-native.apk
+          echo "APK_SHA256=$(sha256sum ../proof-of-duty-native.apk | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "APK_MB=$(du -m ../proof-of-duty-native.apk | cut -f1)" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-of-duty-native-apk
+          path: proof-of-duty-native.apk
+
+      - name: Publish to Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: native-${{ github.run_number }}
+          name: Proof of Duty V0.1 native (Android build ${{ github.run_number }})
+          body: |
+            **Proof of Duty V0.1, the native Android game** · developed by Tcee 🇳🇬
+            1. Tap **proof-of-duty-native.apk** below (about ${{ env.APK_MB }} MB), not "Source code".
+            2. Open it from your Downloads and allow "Install unknown apps" if asked.
+            It installs next to the lite app, and both play on the same server with the same account.
+            Needs Android 7 or newer.
+            SHA-256: `${{ env.APK_SHA256 }}`
+            Server: ${{ env.GAME_SERVER }}
+          files: proof-of-duty-native.apk
