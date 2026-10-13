@@ -527,6 +527,152 @@ section('Real players: no-bot rooms, friends, crews, rivals');
   check(T.name === '[LGL] Ada', `crew tag before the name in battle (${T.name})`);
 }
 
+section('Vehicles: drive, run over, shoot through, APC, C4, burning houses, ambulance');
+{
+  const { VEHICLES, WRECK, HOUSES, C4: C4c, AMBULANCE, forward, footprint } = await import('../shared/vehicles.js');
+  const { insideAnyBox: insideBox, query: q, moveBox: mvBox } = await import('../shared/physics.js');
+  const st = STATES.find((s) => {
+    const mp = generateMap(s.id);
+    return mp.vehicles.some((v) => v.type === 'apc') && mp.houses.some((h) => h.kind !== 'stone');
+  }).id;
+  const mm = new Match(st, hooks, 'tdm');
+  const wsP = fakeWs();
+  const wsQ = fakeWs();
+  const P = mm.addHuman(wsP, 'police', profile('Driver')).player;
+  const Q = mm.addHuman(wsQ, 'bandit', profile('Shooter')).player;
+  for (const p of [...mm.players.values()]) if (!p.human) mm.players.delete(p.id);
+  fakeNow += 5000;
+  P.protectUntil = Q.protectUntil = 0;
+  const types = new Set(mm.map.vehicles.map((v) => v.type));
+  check(mm.map.vehicles.length >= 6 && types.size >= 3, `vehicles of different kinds on the map (${[...types].join(', ')})`);
+  check(mm.info(P).world.v.length === mm.map.vehicles.length, 'joining players get every vehicle');
+  // A big open patch of ground to test on.
+  let open = null;
+  for (let x = -70; x <= 70 && !open; x += 2)
+    for (let z = -80; z <= 80 && !open; z += 2) if (!q(mm.map.index, x - 12, z - 11, x + 12, z + 11).filter((i) => { const b = mm.map.boxes[i]; return b.y1 > 0.3 && b.x1 > x - 12 && b.x0 < x + 12 && b.z1 > z - 11 && b.z0 < z + 11; }).length) open = { x, z };
+  check(!!open, 'found open ground for the test');
+  const park = (v, x, z, yaw = 0) => {
+    Object.assign(v, { x, z, yaw, speed: 0 });
+    const fp = footprint(v.type, x, z, yaw);
+    mvBox(mm.map.index, v.box, fp.x0, fp.z0, fp.x1, fp.z1);
+  };
+  const car = mm.world.vehicles.find((v) => ['sedan', 'suv', 'pickup', 'danfo', 'lorry'].includes(v.type));
+  park(car, open.x, open.z, 0);
+  Object.assign(P, { x: open.x + 2.5, y: 0, z: open.z, status: 'alive', health: 100, armor: 0 });
+  mm.handle(P, { t: 'veh', a: 'enter', i: car.i });
+  check(P.veh === car.i && car.driver === P.id, `player gets into the ${VEHICLES[car.type].name}`);
+  check(wsQ.log.some((x) => x.t === 'vseat' && x.id === P.id), 'everyone sees who is driving');
+  // Drive one metre forward: accepted, and the collision box moves with it.
+  fakeNow += 100;
+  const [fx, fz] = forward(0);
+  mm.handle(P, { t: 'st', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, v: [open.x + fx, open.z + fz, 0, 10] });
+  const box = mm.map.boxes[car.box];
+  check(Math.abs(car.z - (open.z + fz)) < 0.01 && Math.abs((box.z0 + box.z1) / 2 - car.z) < 0.01, 'driving moves the vehicle and its collision box');
+  check(P.x === car.x && P.z === car.z, 'the driver rides along');
+  fakeNow += 100;
+  mm.handle(P, { t: 'st', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, v: [car.x + 60, car.z, 0, 10] });
+  check(car.x === open.x && wsP.log.some((x) => x.t === 'vcorrect'), 'teleporting a car is refused');
+  // Run someone over.
+  Object.assign(Q, { x: car.x, y: 0, z: car.z - VEHICLES[car.type].L / 2 + 0.3, status: 'alive', health: 100, armor: 40 });
+  run(mm, 0.1);
+  check(Q.health < 100, `running someone over hurts them (${Q.health.toFixed(0)} left)`);
+  // Bullets: the car takes damage and the driver can be hit through the door.
+  Object.assign(Q, { x: car.x + 9, z: car.z, health: 100, status: 'alive' });
+  P.health = 100;
+  P.armor = 0;
+  const hp0 = car.hp;
+  fakeNow += 1000;
+  Q.slot = 'secondary';
+  const o = [Q.x, Q.y + PLAYER.eye, Q.z];
+  mm.handle(Q, { t: 'fire', w: Q.weapons.secondary, o, d: [P.x - o[0], P.y + 0.8 - o[1], P.z - o[2]], ts: fakeNow });
+  check(car.hp < hp0, `bullets dent the car (${hp0} → ${car.hp.toFixed(0)})`);
+  check(P.health < 100, 'the driver is hit through the door');
+  // Get out: standing beside the car, not inside it.
+  mm.handle(P, { t: 'veh', a: 'exit' });
+  check(P.veh == null && car.driver == null && !insideBox(mm.map.index, P.x, 0, P.z), 'getting out puts you beside the vehicle');
+  // A rocket wrecks a car: engine fire, then it blows and burns down to a charred shell.
+  mm.explode(car.x, 1, car.z, WEAPONS.rpg.blast, WEAPONS.rpg.dmg, Q, 'rpg');
+  run(mm, 4);
+  check(car.state >= 2, 'a rocket hit sets the car burning');
+  check(wsP.log.some((x) => x.t === 'vstate' && x.i === car.i && x.s === 2), 'everyone sees it blow up');
+  run(mm, WRECK.burnSecs + 1);
+  check(car.state === 3, 'the wreck burns out to a charred shell');
+  // The armoured carrier: bullets can't touch you, explosives wear it down.
+  const apc = mm.world.vehicles.find((v) => v.type === 'apc');
+  park(apc, open.x - 8, open.z + 6, 0);
+  mm.spawn(P);
+  Object.assign(P, { x: apc.x + 3, y: 0, z: apc.z, protectUntil: 0 });
+  mm.handle(P, { t: 'veh', a: 'enter', i: apc.i });
+  check(P.veh === apc.i, 'player climbs into the armoured carrier');
+  P.health = 100;
+  const apcHp = apc.hp;
+  Object.assign(Q, { x: apc.x + 10, z: apc.z, status: 'alive', health: 100 });
+  for (let k = 0; k < 5; k++) {
+    fakeNow += 1000;
+    const o2 = [Q.x, Q.y + PLAYER.eye, Q.z];
+    mm.handle(Q, { t: 'fire', w: Q.weapons.secondary, o: o2, d: [P.x - o2[0], 2.6 - o2[1], P.z - o2[2]], ts: fakeNow });
+  }
+  check(P.health === 100 && apc.hp === apcHp, 'no bullet can touch you or the APC');
+  // Shooting out of the APC works.
+  fakeNow += 1000;
+  P.slot = 'secondary';
+  const before = Q.health;
+  const o3 = [apc.x, VEHICLES.apc.eye, apc.z];
+  mm.handle(P, { t: 'fire', w: P.weapons.secondary, o: o3, d: [Q.x - o3[0], Q.y + 1.5 - o3[1], Q.z - o3[2]], ts: fakeNow });
+  check(Q.health < before, 'you can shoot from inside the APC');
+  mm.explode(apc.x + 2, 1, apc.z, WEAPONS.rpg.blast, WEAPONS.rpg.dmg, Q, 'rpg');
+  check(apc.hp < apcHp && P.health === 100, 'a rocket damages the APC but not the soldier inside');
+  for (let k = 0; k < 8 && apc.state < 2; k++) mm.explode(apc.x + 2, 1, apc.z, WEAPONS.rpg.blast, WEAPONS.rpg.dmg, Q, 'rpg');
+  run(mm, 3);
+  check(apc.state >= 2 && P.veh == null, 'enough rockets destroy the APC and throw the soldier out');
+  // C4 on a car, set off from a distance.
+  const car2 = mm.world.vehicles.find((v) => v.state === 0 && v !== car && v.type !== 'apc');
+  park(car2, open.x + 8, open.z - 6, Math.PI / 2);
+  Object.assign(Q, { x: car2.x, z: car2.z + VEHICLES[car2.type].W / 2 + 1, status: 'alive', health: 100, c4: 2 });
+  mm.handle(Q, { t: 'c4', a: 'plant', pos: [car2.x, 1.0, car2.z], veh: car2.i });
+  check(mm.world.charges.length === 1 && mm.world.charges[0].veh === car2.i && Q.c4 === 1, 'C4 sticks to the car');
+  Object.assign(Q, { x: car2.x + 30 });
+  mm.handle(Q, { t: 'c4', a: 'plant', pos: [Q.x + 20, 0.1, Q.z] });
+  check(mm.world.charges.length === 1, 'you must be close to plant C4');
+  mm.handle(Q, { t: 'c4', a: 'det' });
+  run(mm, 1);
+  check(car2.state >= 2 && !mm.world.charges.length, 'pressing the detonator blows the car');
+  // A house burns down.
+  const hi = mm.map.houses.findIndex((h) => h.kind !== 'stone');
+  const Hh = mm.map.houses[hi];
+  Object.assign(Q, { x: Hh.x, z: Hh.z, y: 0, c4: 1, status: 'alive', health: 100 });
+  mm.handle(Q, { t: 'c4', a: 'plant', pos: [Hh.x, 0.05, Hh.z] });
+  Object.assign(Q, { x: Hh.x + 40 });
+  Object.assign(P, { x: Hh.x + 0.5, z: Hh.z + 0.5, y: 0, status: 'alive', health: 100, veh: null, protectUntil: 0 });
+  mm.spawn(P);
+  Object.assign(P, { x: Hh.x + 0.5, z: Hh.z + 0.5, protectUntil: 0 });
+  P.status = 'alive';
+  P.health = 100;
+  mm.handle(Q, { t: 'c4', a: 'det' });
+  run(mm, 0.5);
+  const hs = mm.world.houses[hi];
+  check(hs.state === 2 && mm.map.boxes[Hh.roof].y1 < 0, 'C4 sets the house on fire and the roof caves in');
+  check(P.burnUntil > fakeNow || P.status !== 'alive', 'someone inside a burning house catches fire');
+  run(mm, HOUSES.burnSecs + 1);
+  check(hs.state === 3 && wsQ.log.some((x) => x.t === 'house' && x.s === 3), 'it burns down to a charred shell');
+  // The ambulance: costs money, can't be spammed, heals you if you wait for it.
+  mm.spawn(Q);
+  Object.assign(Q, { protectUntil: 0, health: 45, money: 5000 });
+  mm.handle(Q, { t: 'amb' });
+  check(Q.money === 5000 - AMBULANCE.fee && mm.world.ambulances.length === 1, `calling the ambulance costs ₦${AMBULANCE.fee}`);
+  mm.handle(Q, { t: 'amb' });
+  check(Q.money === 5000 - AMBULANCE.fee && mm.world.ambulances.length === 1, 'only one ambulance at a time');
+  run(mm, AMBULANCE.maxMs / 1000 + 0.5);
+  check(wsQ.log.some((x) => x.t === 'ambHeal') && Q.health === PLAYER.maxHealth, 'paramedics patch you up to full health');
+  Q.health = 40;
+  const m0 = Q.money;
+  mm.handle(Q, { t: 'amb' });
+  check(Q.money === m0, 'cooldown: no second ambulance straight away');
+  // New round: everything is back.
+  mm.reset();
+  check(mm.world.vehicles.every((v) => v.state === 0 && !v.driver) && mm.world.houses.every((h) => h.state === 0) && mm.map.boxes[Hh.roof].y1 > 0, 'a new round restores every vehicle and house');
+}
+
 section('Every state loads');
 for (const s of STATES) {
   for (const mode of ['conquest', 'tdm', 'bomb']) {

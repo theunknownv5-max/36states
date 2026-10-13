@@ -8,6 +8,8 @@ import { inWater } from '../../../shared/map.js';
 import { query } from '../../../shared/physics.js';
 import * as T from '../core/textures.js';
 import { buildProps } from './props.js';
+import { buildVehicle, charVehicle, charMaterial, weatherVehicle } from './vehicle-models.js';
+import { VEHICLES } from '../../../shared/vehicles.js';
 
 // ---------- geometry builder: boxes merged per material, UVs in world metres ----------
 class BoxBuilder {
@@ -357,31 +359,48 @@ export class Arena {
       const h = Math.abs(Math.sin(cx * 3.1 + cz * 7.7) * 9871.3) % 1;
       return rgb(PLASTER_TINTS[Math.floor(h * PLASTER_TINTS.length)]);
     };
+    const houseB = new Map();
+    const houseBuilder = (b) => {
+      if (!houseB.has(b.house)) houseB.set(b.house, { walls: new BoxBuilder(), roof: new BoxBuilder() });
+      const hb = houseB.get(b.house);
+      return b.roof ? hb.roof : hb.walls;
+    };
     for (const b of map.boxes) {
       if (b.hidden) continue;
       const k = b.kind;
-      if (b.prop === 'drum' || b.prop === 'wreck' || k === 'adwall') continue; // custom meshes
-      if (k === 'perimeter') B.add('perimeter', b, 4, [0.85, 0.84, 0.8]);
-      else if (k === 'concrete') B.add(b.tower ? 'facade' : 'concrete', b, b.tower ? 12 : 3, b.tower ? [1, 1, 1] : [0.95, 0.94, 0.92]);
-      else if (k === 'sandbag') B.add('sandbag', b, 1.8);
-      else if (k === 'crate') B.add('crate', b, 'fit', b.prop === 'logs' ? [0.8, 0.7, 0.6] : [1, 1, 1]);
-      else if (k === 'mud' || k === 'mudthick') B.add('mud', b, 3, k === 'mudthick' ? [1.05, 0.92, 0.85] : [1, 1, 1]);
-      else if (k === 'plaster') B.add('plaster', b, 3, b.roof ? [0.8, 0.8, 0.78] : plasterTint(b));
-      else if (k === 'plank' || k === 'bridge' || k === 'stall') B.add('plank', b, 2.5, k === 'stall' ? [1.1, 0.95, 0.8] : [1, 1, 1]);
-      else if (k === 'stone') B.add('stone', b, 3);
-      else if (k === 'zinc') B.add('zinc', b, 3);
-      else if (k === 'container') B.add('container', b, 2.5, rgb(CONTAINER_TINTS[Math.floor(tintFor(b) * CONTAINER_TINTS.length)]));
-      else if (k === 'metal' || k === 'pipe' || k === 'tank') B.add('metal', b, 2);
-      else if (k === 'ruin') B.add(this.map.biome === 'sahel' ? 'mud' : 'concrete', b, 3, [0.5, 0.46, 0.41]);
-      else if (k === 'rubble') B.add('concrete', b, 1.5, [0.55, 0.52, 0.48]);
-      else if (k === 'warehouse') B.add('zinc', b, 3, [0.72, 0.78, 0.82]);
+      // Houses that can burn get their own meshes (walls, roof) so each can char on its own.
+      const HB = b.house !== undefined ? houseBuilder(b) : B;
+      if (b.prop === 'drum' || b.prop === 'wreck' || k === 'adwall' || k === 'vehicle') continue; // custom meshes
+      if (k === 'perimeter') HB.add('perimeter', b, 4, [0.85, 0.84, 0.8]);
+      else if (k === 'concrete') HB.add(b.tower ? 'facade' : 'concrete', b, b.tower ? 12 : 3, b.tower ? [1, 1, 1] : [0.95, 0.94, 0.92]);
+      else if (k === 'sandbag') HB.add('sandbag', b, 1.8);
+      else if (k === 'crate') HB.add('crate', b, 'fit', b.prop === 'logs' ? [0.8, 0.7, 0.6] : [1, 1, 1]);
+      else if (k === 'mud' || k === 'mudthick') HB.add('mud', b, 3, k === 'mudthick' ? [1.05, 0.92, 0.85] : [1, 1, 1]);
+      else if (k === 'plaster') HB.add('plaster', b, 3, b.roof ? [0.8, 0.8, 0.78] : plasterTint(b));
+      else if (k === 'plank' || k === 'bridge' || k === 'stall') HB.add('plank', b, 2.5, k === 'stall' ? [1.1, 0.95, 0.8] : [1, 1, 1]);
+      else if (k === 'stone') HB.add('stone', b, 3);
+      else if (k === 'zinc') HB.add('zinc', b, 3);
+      else if (k === 'container') HB.add('container', b, 2.5, rgb(CONTAINER_TINTS[Math.floor(tintFor(b) * CONTAINER_TINTS.length)]));
+      else if (k === 'metal' || k === 'pipe' || k === 'tank') HB.add('metal', b, 2);
+      else if (k === 'ruin') HB.add(this.map.biome === 'sahel' ? 'mud' : 'concrete', b, 3, [0.5, 0.46, 0.41]);
+      else if (k === 'rubble') HB.add('concrete', b, 1.5, [0.55, 0.52, 0.48]);
+      else if (k === 'warehouse') HB.add('zinc', b, 3, [0.72, 0.78, 0.82]);
       else if (k === 'wagon') {
         if (b.style === 'tanker' || b.style === 'loco') continue; // drawn as proper shapes
-        B.add('rust', b, 3, b.style === 'flat' ? [0.7, 0.62, 0.55] : [0.95, 0.75, 0.6]);
+        HB.add('rust', b, 3, b.style === 'flat' ? [0.7, 0.62, 0.55] : [0.95, 0.75, 0.6]);
       }
-      else B.add('concrete', b, 3);
+      else HB.add('concrete', b, 3);
     }
     B.build(mats, this.root);
+    this.houseParts = [];
+    for (const [hi, hb] of houseB) {
+      const walls = new THREE.Group();
+      const roof = new THREE.Group();
+      hb.walls.build(mats, walls);
+      hb.roof.build(mats, roof);
+      this.root.add(walls, roof);
+      this.houseParts[hi] = { walls, roof, props: this.houseParts[hi]?.props || [] };
+    }
 
     // Burnt-out cars and oil drums get proper shapes.
     const wrecks = map.boxes.filter((b) => b.prop === 'wreck');
@@ -390,49 +409,34 @@ export class Arena {
     this.buildDrums(drums);
   }
 
-  buildWrecks(list, mat) {
+  // Abandoned and burnt-out vehicles used as cover: every one different (saloon, jeep, Hilux,
+  // or danfo; burnt black, rusted through or faded and stripped).
+  buildWrecks(list, rust) {
     if (!list.length) return;
-    const parts = [];
-    const glass = new THREE.MeshStandardMaterial({ color: '#1a1c1e', roughness: 0.2, metalness: 0.6 });
-    const tyre = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.95 });
-    const body = new THREE.BoxGeometry(1, 1, 1);
-    const wheel = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 14).rotateZ(Math.PI / 2);
-    const bodyMesh = new THREE.InstancedMesh(body, mat, list.length * 2);
-    const glassMesh = new THREE.InstancedMesh(body, glass, list.length);
-    const wheelMesh = new THREE.InstancedMesh(wheel, tyre, list.length * 4);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const e = new THREE.Euler();
-    const s = new THREE.Vector3();
-    const p = new THREE.Vector3();
-    list.forEach((b, i) => {
+    const types = ['sedan', 'suv', 'pickup', 'sedan', 'danfo', 'suv', 'sedan', 'pickup'];
+    const faded = ['#7d7a70', '#6b5a48', '#8a8f86', '#5d6b74', '#9a8a6a', '#6a4a40', '#40484c'];
+    list.forEach((b) => {
       const cx = (b.x0 + b.x1) / 2;
       const cz = (b.z0 + b.z1) / 2;
-      const along = b.x1 - b.x0 > b.z1 - b.z0; // long axis
+      const h = Math.abs(Math.sin(cx * 12.9898 + cz * 78.233) * 43758.5453) % 1;
+      const h2 = Math.abs(Math.sin(cx * 3.17 + cz * 9.71) * 9631.7) % 1;
+      const type = types[Math.floor(h * types.length)];
+      const def = VEHICLES[type];
+      const along = b.x1 - b.x0 > b.z1 - b.z0;
       const L = along ? b.x1 - b.x0 : b.z1 - b.z0;
-      const W = along ? b.z1 - b.z0 : b.x1 - b.x0;
-      const tilt = (Math.sin(cx * 3 + cz) * 0.06);
-      e.set(0, along ? 0 : Math.PI / 2, tilt);
-      q.setFromEuler(e);
-      m.compose(p.set(cx, 0.55, cz), q, s.set(L, 0.65, W));
-      bodyMesh.setMatrixAt(i * 2, m);
-      const off = new THREE.Vector3(-L * 0.08, 0, 0).applyQuaternion(q);
-      m.compose(p.set(cx + off.x, 1.12, cz + off.z), q, s.set(L * 0.5, 0.55, W * 0.92));
-      bodyMesh.setMatrixAt(i * 2 + 1, m);
-      m.compose(p.set(cx + off.x, 1.12, cz + off.z), q, s.set(L * 0.52, 0.42, W * 0.95));
-      glassMesh.setMatrixAt(i, m);
-      let k = 0;
-      for (const fx of [-0.32, 0.32])
-        for (const fz of [-0.5, 0.5]) {
-          const o = new THREE.Vector3(fx * L, 0, fz * W).applyQuaternion(q);
-          m.compose(p.set(cx + o.x, 0.3, cz + o.z), q, s.set(1, 1, 1));
-          wheelMesh.setMatrixAt(i * 4 + k++, m);
-        }
+      const g = buildVehicle(type, faded[Math.floor(h2 * faded.length)]);
+      const s = L / def.L;
+      g.scale.set(s, Math.min(1, ((b.y1 - b.y0) / def.H) * 1.12), s);
+      if (h2 < 0.42) {
+        charVehicle(g, this.charMat ||= charMaterial());
+        g.position.y = -0.2;
+      } else weatherVehicle(g, h2 < 0.7 ? (this.wreckRust ||= Object.assign(rust.clone(), { vertexColors: false })) : null, h2);
+      for (const w of g.userData.wheels) w.spin.scale.y = 0.82; // flat tyres
+      g.position.set(cx, g.position.y, cz);
+      g.rotation.set((h - 0.5) * 0.06, (along ? Math.PI / 2 : 0) + (h2 > 0.5 ? Math.PI : 0) + (h - 0.5) * 0.1, (h2 - 0.5) * 0.08);
+      g.traverse((o) => o.isMesh && (o.matrixAutoUpdate = false, o.updateMatrix()));
+      this.root.add(g);
     });
-    for (const im of [bodyMesh, glassMesh, wheelMesh]) {
-      im.castShadow = im.receiveShadow = true;
-      this.root.add(im);
-    }
   }
 
   // Fuel drums (red, explode when shot) and plastic water drums (blue, harmless).

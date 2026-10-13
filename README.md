@@ -85,6 +85,16 @@ Press **V** (or the chat button on phones) for Pidgin quick chat.
 - **Warehouses** with big loading doors and containers inside.
 - **Abandoned, burnt-out houses** with jagged shot-up walls, rubble and graffiti.
 
+## Vehicles, explosives and fire
+
+- **Every vehicle is different.** Saloon cars, jeeps, Hilux pickups, yellow danfo buses with black stripes, kekes, okadas and lorries, each with its own shape and colours, and the mix changes by region: danfos and kekes in Lagos, pickups and okadas up north. Burnt-out wrecks used as cover are varied too: charred black, rusted through, or faded and stripped.
+- **Get in and drive (E, or 🚗).** W/S throttle and reverse, A/D steer, Space brake, E to get out. The camera follows behind and you can still look around and shoot out of the window. Run people over at speed. Bullets go through car doors (with less damage), so a car is cover, not armour. On an okada or keke the rider is out in the open.
+- **The armoured carrier (APC)** is rare: only about half the battlefields hide one, somewhere in the middle. Inside it no bullet can touch you, and you fire the roof gun. Only explosives hurt it (about five RPG rockets, or two or three C4 charges). When it is destroyed you are thrown out, burnt.
+- **Blow things up.** Rockets, grenades, artillery and C4 damage vehicles and houses. A badly hit vehicle's engine catches fire and blows a few seconds later, then the wreck burns for about 25 seconds and is left as a black, charred shell that still works as cover. Explosions chain into nearby vehicles and fuel drums.
+- **C4 (₦900 in the armoury):** P sticks a charge on the wall, vehicle or ground you are looking at (stuck to a vehicle, it rides along), L sets off all of yours from anywhere. Up to four at once. Stand well back.
+- **Houses burn.** Enough explosives (one C4 inside a plaster house, two for stone) set a house on fire: the roof caves in, flames pour out of the door and windows under a column of black smoke, anyone inside catches fire, and after about 35 seconds it is a blackened charcoal shell. Everything is restored at the start of each round.
+- **Call an ambulance (K, or 🚑)** when you are hurt (at least 30 health missing). It costs ₦1,500 of battle money and you can only call one every 2 minutes. It drives in from your base with its siren on; stay where you are and the paramedics heal you to full and add some armour. If you are gone or dead when it arrives, half the fee comes back.
+
 ## Camera views
 
 - **Choose your view** in Settings: **Hands only** (first person, the default) or **Full body** (third person). Switch any time in battle with H, or 🎥 on phones.
@@ -330,7 +340,7 @@ Every push to `main` builds an Android APK with GitHub Actions (`.github/workflo
 
 The app connects to `https://three6states.onrender.com`. To point it at another server, add a repository variable `GAME_SERVER` under **Settings → Secrets and variables → Actions → Variables**.
 
-The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, with its own icon and splash screen (from `android-res/`). This is a debug-signed build for testing and sharing. Publishing on the Play Store needs a release signing key; ask and the workflow can be extended.
+The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, with its own icon and splash screen (from `android-res/`). Every build is signed with the same permanent key (`android-res/pod-release.p12`), so new versions install over old ones. Keep the repo private and never delete that file. The release name shows the build number ("Android build N"), which the admin panel uses to ask players on old builds to update.
 
 ## Controls
 
@@ -346,7 +356,10 @@ The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, 
 | 1 / 2 / 3, wheel, Q | Primary / pistol / machete; Q switches to the last weapon |
 | 4 then G | Pick a grenade, then throw it |
 | B | Buy (at your base or just after deploying) |
-| E | Revive a downed teammate; plant or defuse the bomb (hold) |
+| E | Revive a downed teammate; plant or defuse the bomb (hold); get in or out of a vehicle |
+| W / S, A / D, Space (driving) | Throttle / reverse, steer, brake |
+| P / L | Stick a C4 charge / set off your C4 |
+| K | Call an ambulance (costs battle money) |
 | H / T | Chase cam on/off / scout drone |
 | J | Chat with the business on the advert you are aiming at |
 | V, then 1–6 | Quick chat |
@@ -362,7 +375,7 @@ On phones and tablets the game switches to touch controls:
 - **Move:** a joystick appears wherever your left thumb lands. Push it to the top edge to sprint.
 - **Look:** drag anywhere on the right half.
 - **Fire:** the big button on the right, or the small one on the left. Both also steer your aim while held.
-- **Buttons:** aim (toggle), reload, jump, crouch (toggle), switch weapon and grenade. Revive and first-aid buttons appear only when you can use them.
+- **Buttons:** aim (toggle), reload, jump, crouch (toggle), switch weapon and grenade. Revive, first-aid, vehicle 🚗, C4 🧨 / 💥 and ambulance 🚑 buttons appear only when you can use them. While driving, the joystick drives (up/down throttle, left/right steer) and jump brakes.
 - **Top right:** buy, scores and menu.
 
 In the browser, the game goes full screen in landscape when you deploy. Players set touch look speed in Settings.
@@ -378,7 +391,9 @@ client/            browser game (Vite)
   index.html
   src/main.js      boot → sign in → war map → battle
   src/game.js      the battle: local fighter, remote fighters, every server event
-  src/camera-modes.js  chase cam and scout drone
+  src/camera-modes.js  chase cam, driving camera and scout drone
+  src/driving.js   driving a vehicle
+  src/world/vehicles.js, vehicle-models.js, houses.js   every vehicle model, fire and charred shells, C4, ambulance, burning houses
   src/ad-chat.js   aim at an advert to chat with the business
   src/ui/chat.js   chat window and Inbox
   src/modes-client.js  mode HUD: bomb, rounds, waves, quick chat
@@ -390,6 +405,7 @@ client/            browser game (Vite)
 server/
   index.js         HTTP, WebSocket, accounts, lobby, admin API
   match.js         authoritative battle simulation (20 Hz)
+  world-state.js   vehicles (driving, run-overs, damage), burning houses, C4, the ambulance
   modes.js         game mode rules (Hold Ground, Gbas Gbos, Plant & Defuse, Campaign)
   bots.js          bot AI (A* pathing, aiming, strafing, grenades, killstreaks)
   ads.js           billboards, bookings, rotation and privacy-safe analytics
@@ -407,7 +423,7 @@ server/
   test.js          simulation tests
   test-ads.js      ad portal end-to-end tests
   test-admin.js    admin panel and push end-to-end tests
-shared/            states, config, map generator and physics, used by both client and server
+shared/            states, config, map generator, physics and vehicles (driving physics, damage tuning), used by both client and server
 android-res/       app icon and splash screen for the Android build
 capacitor.config.json, .github/workflows/android.yml   Android app build
 ```

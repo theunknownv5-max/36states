@@ -2588,3 +2588,52 @@ body.drone-on #scope { display: none !important; }
 .lockout .card { max-width: 460px; text-align: center; padding: 24px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line); }
 .lockout h2 { font-family: var(--title); color: var(--pod-2); margin: 0 0 8px; }
 .lockout p { color: var(--text); }
+
+/* ---------- vehicles, C4, ambulance ---------- */
+.veh-prompt {
+  position: absolute;
+  left: 50%;
+  top: 67%;
+  transform: translateX(-50%);
+  z-index: 7;
+  border: 1px solid rgba(120, 200, 255, 0.6);
+  background: rgba(6, 14, 22, 0.84);
+  color: #fff;
+  font: 700 16px var(--body);
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.veh-prompt kbd { background: #2d6fd0; color: #fff; border-radius: 5px; padding: 0 6px; margin-right: 6px; font: 700 13px var(--body); }
+.veh-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: grid;
+  grid-template-columns: auto 160px auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(8, 10, 14, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: 600 15px var(--body);
+  pointer-events: none;
+}
+.veh-hud b { font-family: var(--title); letter-spacing: 0.04em; font-weight: 400; }
+.veh-hud small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; text-align: center; }
+.veh-hud #veh-speed { font: 700 18px 'JetBrains Mono', monospace; min-width: 84px; text-align: right; }
+.veh-bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.veh-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #4fe08a, #b6f06a); transition: width 0.2s; }
+.veh-bar i.low { background: linear-gradient(90deg, #ff4f4f, #ff9a3a); }
+body.touch .veh-hud small { display: none; }
+body.touch .veh-hud { bottom: auto; top: 58px; grid-template-columns: auto 110px auto; }
+.tb.t-veh { right: 60px; bottom: 270px; background: rgba(45, 111, 208, 0.45); font-size: 22px; }
+.tb.t-c4 { right: 272px; bottom: 96px; }
+.tb.t-det { right: 272px; bottom: 164px; background: rgba(255, 90, 40, 0.45); }
+.tb.t-amb { right: 272px; bottom: 236px; background: rgba(255, 255, 255, 0.28); }

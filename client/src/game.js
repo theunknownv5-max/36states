@@ -27,6 +27,10 @@ import { isTouch } from './core/input.js';
 import { ModeClient } from './modes-client.js';
 import { CameraModes } from './camera-modes.js';
 import { AdChat } from './ad-chat.js';
+import { Vehicles, Charges, Ambulances } from './world/vehicles.js';
+import { Houses } from './world/houses.js';
+import { Driving } from './driving.js';
+import { VEHICLES, C4, AMBULANCE } from '../../shared/vehicles.js';
 
 const WEAPON_IDS = Object.keys(WEAPONS); // same order as the server
 const $ = (id) => document.getElementById(id);
@@ -91,6 +95,14 @@ export class Game {
     this.siteMarkers = new SiteMarkers(scene, this.map);
     this.siteMarkers.apply(info.sites);
     this.fx = new Effects(scene);
+    // Vehicles, burning houses, C4 and ambulances.
+    this.vehicles = new Vehicles(scene, this.map, this.fx);
+    this.houses = new Houses(scene, this.map, this.arena, this.fx);
+    this.charges = new Charges(scene, this.vehicles);
+    this.ambulances = new Ambulances(scene);
+    this.driving ||= new Driving(this);
+    this.driving.stop();
+    this.applyWorld(info.world);
     this.vm = new ViewModel(scene);
     this.vm.scene.environment = scene.environment;
     this.vm.scene.environmentIntensity = 0.35;
@@ -186,6 +198,7 @@ export class Game {
     for (const u of this.unsub) u();
     this.unsub = [];
     removeEventListener('resize', this.onResize);
+    this.driving?.stop();
     audio.stopAmbience();
     audio.spirit(false);
     this.input.enabled = false;
@@ -353,6 +366,44 @@ export class Game {
       this.fx.burningWreck(m.x, m.z, DRUMS.fireSecs);
       audio.fire({ x: m.x, y: 0.8, z: m.z }, DRUMS.fireSecs);
     });
+    on('vseat', (m) => {
+      this.vehicles.seat(m.i, m.id);
+      if (m.id === this.myId) this.driving.start(this.vehicles.list[m.i]);
+      else if (this.driving.active && this.driving.v.i === m.i) this.driving.stop();
+      if (m.out === this.myId) this.driving.stop();
+    });
+    on('vcorrect', (m) => this.driving.correct(m));
+    on('vstate', (m) => {
+      this.vehicles.setState(m.i, m.s);
+      if (m.s === 2) {
+        const v = this.vehicles.list[m.i];
+        audio.fire({ x: v.x, y: 1, z: v.z }, 10);
+      }
+    });
+    on('house', (m) => {
+      this.houses.setState(m.i, m.s);
+      const H = this.map.houses[m.i];
+      if (m.s === 2 && H) {
+        audio.fire({ x: H.x, y: 1.5, z: H.z }, 14);
+        if (Math.hypot(H.x - this.body.x, H.z - this.body.z) < 60) this.hud.toast('🔥 House don catch fire!', 'info', 1800);
+      }
+    });
+    on('c4', (m) => {
+      if (m.a === 'plant') {
+        this.charges.plant(m, this.myId);
+        audio.c4({ x: m.pos[0], y: m.pos[1], z: m.pos[2] });
+      } else if (m.a === 'gone') this.charges.gone(m.id);
+      else if (m.a === 'det') audio.click();
+      this.hud.c4Planted = this.charges.mineCount();
+      if (this.me) this.hud.nades(this.me);
+    });
+    on('amb', (m) => this.ambulances.add(m));
+    on('ambHeal', (m) => {
+      if (m.pid !== this.myId) return;
+      audio.heal(null);
+      $('tint').className = 'healed';
+      setTimeout(() => $('tint').className === 'healed' && ($('tint').className = ''), 700);
+    });
     on('site', (m) => {
       if (m.neutral) this.hud.toast(`${m.label} no get owner again`, 'info');
       else {
@@ -412,12 +463,26 @@ export class Game {
       this.walls.setGems(m.gems);
       this.arena.restoreDrums();
       for (const i of m.drums || []) this.arena.killDrum(i);
+      this.driving.stop();
+      this.vehicles.reset();
+      this.houses.reset();
+      this.charges.clear();
+      this.ambulances.clear();
+      this.applyWorld(m.world);
       this.siteMarkers.apply(m.sites);
       this.score = m.score;
       this.msLeft = m.timeLimit - (m.serverTime - m.startedAt);
       this.leftAt = performance.now();
       this.hud.score(m.score, m.sites, this.msLeft);
     });
+  }
+
+  // Vehicles, burnt houses and live C4 for a player joining mid-battle (or a new round).
+  applyWorld(w) {
+    if (!w) return;
+    this.vehicles.apply(w);
+    this.houses.apply(w.h);
+    for (const [id, x, y, z, owner] of w.c || []) this.charges.plant({ id, pos: [x, y, z], veh: null, by: owner }, this.myId);
   }
 
   posOf(id) {
@@ -449,6 +514,7 @@ export class Game {
     }
     // Soldiers missing from the snapshot (enemy spirits) are hidden.
     for (const [id, s] of this.soldiers) s.visible = seen.has(id);
+    this.vehicles.onSnapshot(m.vh, m.ts, this.driving.active ? this.driving.v.i : -1);
     this.fx.projectiles(m.pr);
     this.fx.syncSmokes(m.sm);
     this.smokes = m.sm.map(([x, z, r]) => ({ x, z, r }));
@@ -629,6 +695,7 @@ export class Game {
     if (this.artilleryAim && code === 'Mouse0') return this.confirmArtillery();
     switch (code) {
       case 'KeyB':
+        if (this.driving.active) return this.hud.toast('Comot from the motor to buy.', 'bad', 1400);
         return this.toggleBuy(true);
       case 'KeyR':
         return this.reload();
@@ -653,9 +720,18 @@ export class Game {
       case 'KeyX':
         return this.medkit();
       case 'KeyE':
+        if (this.driving.active) return this.net.send({ t: 'veh', a: 'exit' });
         if (this.modes.useAction(true)) return;
-        return this.tryRevive();
+        if (this.downedMate()) return this.tryRevive();
+        return this.enterVehicle();
+      case 'KeyP':
+        return this.plantC4();
+      case 'KeyL':
+        return this.detonateC4();
+      case 'KeyK':
+        return this.net.send({ t: 'amb' });
       case 'KeyF':
+        if (this.driving.active) return;
         return this.quickPunch();
       case 'KeyN':
         return this.takePill();
@@ -675,6 +751,7 @@ export class Game {
     $('opt-medevac').onclick = () => this.respawn('medevac');
     $('opt-drone').onclick = () => this.cams.toggleDrone();
     $('ad-prompt').onclick = () => this.adChat.openTarget();
+    $('veh-prompt').onclick = () => (this.driving?.active ? this.net.send({ t: 'veh', a: 'exit' }) : this.enterVehicle());
     $('btn-inbox-game').onclick = () => this.onInbox?.();
     $('btn-resume').onclick = () => this.togglePause(false);
     $('btn-leave').onclick = () => {
@@ -878,7 +955,7 @@ export class Game {
     const pellets = w.pellets || 1;
     for (let i = 0; i < pellets; i++) {
       const dir = pellets > 1 ? spreadDir(d, w.spread) : d;
-      const hit = raycast(this.map.index, o[0], o[1], o[2], dir[0], dir[1], dir[2], w.range);
+      const hit = raycast(this.map.index, o[0], o[1], o[2], dir[0], dir[1], dir[2], w.range, this.driving.box);
       let t = hit.t;
       let body = null;
       for (const s of this.soldiers.values()) {
@@ -905,7 +982,7 @@ export class Game {
   surfaceOfBox(b) {
     if (!b) return 'concrete';
     if (['plank', 'bridge', 'crate', 'stall', 'trunk'].includes(b.kind)) return 'wood';
-    if (['metal', 'zinc', 'container', 'tank', 'pipe', 'wreck', 'drum', 'adwall'].includes(b.kind)) return 'metal';
+    if (['metal', 'zinc', 'container', 'tank', 'pipe', 'wreck', 'drum', 'adwall', 'vehicle'].includes(b.kind)) return 'metal';
     if (['mud', 'mudthick', 'sandbag'].includes(b.kind)) return 'dirt';
     return 'concrete';
   }
@@ -949,6 +1026,35 @@ export class Game {
   }
 
   // Quick punch with the free hand, any time (three in a row on one enemy = heavy blow).
+  enterVehicle() {
+    const v = this.vehicles.nearest(this.body.x, this.body.z);
+    if (v) this.net.send({ t: 'veh', a: 'enter', i: v.i });
+  }
+
+  // Stick a C4 charge on whatever you are looking at (a wall, a vehicle) or drop it at your feet.
+  plantC4() {
+    if (!(this.me?.c4 > 0)) return this.hud.toast('You no get C4. Buy am for the armoury (B).', 'bad', 1600);
+    if (this.driving.active) return this.hud.toast('Comot from the motor to plant C4.', 'bad', 1600);
+    const b = this.body;
+    const eye = [b.x, b.y + this.eye, b.z];
+    const d = dirFromAngles(this.yaw, this.pitch);
+    const hit = raycast(this.map.index, eye[0], eye[1], eye[2], d[0], d[1], d[2], C4.reach);
+    let pos;
+    let veh = null;
+    if (hit.box !== -1 && hit.t < C4.reach) {
+      const t = Math.max(0, hit.t - 0.05);
+      pos = [eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t];
+      const box = hit.box >= 0 ? this.map.boxes[hit.box] : null;
+      if (box?.veh !== undefined) veh = box.veh;
+    } else pos = [b.x - Math.sin(this.yaw) * 0.6, 0.06, b.z - Math.cos(this.yaw) * 0.6];
+    this.net.send({ t: 'c4', a: 'plant', pos: pos.map((v) => +v.toFixed(2)), veh });
+  }
+
+  detonateC4() {
+    if (!this.charges.mineCount()) return;
+    this.net.send({ t: 'c4', a: 'det' });
+  }
+
   quickPunch() {
     const now = performance.now();
     if (now - (this.local.lastPunch || 0) < 380) return;
@@ -1027,6 +1133,7 @@ export class Game {
     if (this.cams.look(look, zoom)) {
       /* flying the drone */
     } else if (st === 'alive' || st === 'spirit' || st === 'downed') {
+      if (look.yaw || look.pitch) this.lastLookAt = now;
       this.yaw += look.yaw / zoom;
       this.pitch = clamp(this.pitch + look.pitch / zoom, -1.5, 1.5);
     }
@@ -1051,7 +1158,7 @@ export class Game {
     if (this.sendT >= 1 / NET.sendHz) {
       this.sendT = 0;
       if (st === 'alive' || st === 'spirit') {
-        this.net.send({ t: 'st', x: +this.body.x.toFixed(2), y: +this.body.y.toFixed(2), z: +this.body.z.toFixed(2), yaw: +this.yaw.toFixed(3), pitch: +this.pitch.toFixed(3), c: this.body.crouch ? 1 : 0, a: this.adsOn ? 1 : 0, r: this.sprinting ? 1 : 0 });
+        this.net.send({ t: 'st', x: +this.body.x.toFixed(2), y: +this.body.y.toFixed(2), z: +this.body.z.toFixed(2), yaw: +this.yaw.toFixed(3), pitch: +this.pitch.toFixed(3), c: this.body.crouch ? 1 : 0, a: this.adsOn ? 1 : 0, r: this.sprinting ? 1 : 0, ...(this.driving.active ? { v: this.driving.stateMsg() } : {}) });
       }
     }
     // Advertiser views.
@@ -1070,6 +1177,7 @@ export class Game {
     this.boards.update(dt, sNow);
     this.places.update(dt, sNow);
     this.tileGems.update(dt, this.arena.time, sNow);
+    this.updateWarzone(dt, sNow);
     this.siteMarkers.update(dt, this.arena.time);
     this.fx.update(dt, this.camera);
     this.vm.update(dt, { speed: this.vel.length(), sprint: this.sprinting, ads: this.adsOn, crouch: this.body.crouch, onGround: this.body.onGround, look, landed: this.justLanded });
@@ -1082,6 +1190,35 @@ export class Game {
     audio.setListener(this.cams.mode === 'drone' ? { x: this.body.x, y: this.body.y + this.eye, z: this.body.z } : this.camera.position, fwd, up);
     this.adChat.update(dt);
     this.render();
+  }
+
+  updateWarzone(dt, sNow) {
+    const mine = this.driving.active ? this.driving.v.i : -1;
+    this.vehicles.update(dt, sNow, this.arena.time, mine);
+    this.houses.update(dt, this.arena.time);
+    this.charges.update(dt);
+    audio.sirens(this.ambulances.update(dt, sNow, this.arena.time));
+    // Engines of the nearest other moving vehicles.
+    const hums = [];
+    for (const v of this.vehicles.list) if (v.i !== mine && Math.abs(v.speed) > 0.8 && v.state < 2) hums.push({ id: v.i, x: v.x, z: v.z, speed: v.speed, d: Math.hypot(v.x - this.body.x, v.z - this.body.z) });
+    hums.sort((a, b) => a.d - b.d);
+    audio.hums(hums.filter((h) => h.d < 70));
+    // The camera swings round behind the vehicle when you are not looking around.
+    if (this.driving.active && Math.abs(this.driving.v.speed) > 3 && performance.now() - (this.lastLookAt || 0) > 1300) {
+      this.yaw = lerpAngle(this.yaw, this.driving.v.yaw, Math.min(1, dt * 1.6));
+      this.pitch += (-0.12 - this.pitch) * Math.min(1, dt * 1.2);
+    }
+    // Vehicle prompt and touch button.
+    const near = !this.driving.active && this.status === 'alive' ? this.vehicles.nearest(this.body.x, this.body.z) : null;
+    const key = near ? `in${near.i}` : this.driving.active ? 'out' : '';
+    if (key !== this.vehKey) {
+      this.vehKey = key;
+      const p = $('veh-prompt');
+      p.hidden = !near; // while driving the vehicle panel already says how to get out
+      p.innerHTML = near ? `<kbd>E</kbd> Enter ${VEHICLES[near.type].name}${VEHICLES[near.type].armored ? ' 🛡' : ''}` : this.driving.active ? '<kbd>E</kbd> Comot' : '';
+      const tb = $('touch')?.querySelector('.t-veh');
+      if (tb) tb.hidden = !key;
+    }
   }
 
   // Keep the game smooth: if frames are slow, render at a lower resolution
@@ -1109,6 +1246,10 @@ export class Game {
 
   move(dt, now) {
     const st = this.status;
+    if (this.driving.active) {
+      if (st === 'alive') this.driving.step(dt);
+      return;
+    }
     const b = this.body;
     const inp = this.input;
     const f = FACTIONS[this.faction].perks;
@@ -1189,7 +1330,8 @@ export class Game {
     const b = this.body;
     const st = this.status;
     const cam = this.camera;
-    const targetEye = st === 'downed' ? 0.45 : b.crouch ? PLAYER.crouchEye : PLAYER.eye;
+    const dv = this.driving.active ? VEHICLES[this.driving.v.type] : null;
+    const targetEye = dv ? dv.eye - dv.seatY : st === 'downed' ? 0.45 : b.crouch ? PLAYER.crouchEye : PLAYER.eye;
     this.eye += (targetEye - this.eye) * Math.min(1, dt * 12);
     // ADS zoom.
     const w = WEAPONS[this.weapon()];
@@ -1281,7 +1423,11 @@ export class Game {
         sol.last.z = s.z;
       }
       sol.state = s;
+      // Inside a car you can't see them through the tinted glass; on an okada or keke you can.
+      const ride = s.flags & 4096 ? this.vehicles.byDriver(id) : null;
+      if (ride) s.yaw = ride.yaw;
       sol.update(dt, s, this.arena.time);
+      if (ride && !ride.def.open) sol.root.visible = false;
       // Remote footsteps.
       if (!(s.flags & (2 | 4 | 256)) && s.y < 2.5) {
         const dist = Math.hypot(s.x - this.body.x, s.z - this.body.z);
@@ -1297,12 +1443,13 @@ export class Game {
     // Your own body for the death cam.
     const own = this.ownSoldier;
     const dead = this.status === 'dead' || this.status === 'medevac';
-    const shown = (this.cams.thirdPerson() || this.cams.mode === 'drone') && (this.status === 'alive' || this.status === 'downed');
+    const dv = this.driving.active ? VEHICLES[this.driving.v.type] : null;
+    const shown = (this.cams.thirdPerson() || this.cams.mode === 'drone') && (this.status === 'alive' || this.status === 'downed') && !(dv && !dv.open);
     own.visible = dead || shown;
     if (dead) own.update(dt, { x: this.body.x, y: this.body.y, z: this.body.z, yaw: this.yaw, pitch: 0, flags: 256, w: this.weapon() || 'p9' }, this.arena.time);
     else if (shown) {
-      const flags = (this.body.crouch ? 1 : 0) | (this.status === 'downed' ? 2 : 0) | (this.sprinting ? 128 : 0);
-      own.update(dt, { x: this.body.x, y: this.body.y, z: this.body.z, yaw: this.yaw, pitch: this.pitch, flags, w: this.weapon() || 'p9', hp: this.me?.health ?? 100 }, this.arena.time);
+      const flags = (this.body.crouch || dv ? 1 : 0) | (this.status === 'downed' ? 2 : 0) | (this.sprinting ? 128 : 0);
+      own.update(dt, { x: this.body.x, y: this.body.y, z: this.body.z, yaw: dv ? this.driving.v.yaw : this.yaw, pitch: this.pitch, flags, w: this.weapon() || 'p9', hp: this.me?.health ?? 100 }, this.arena.time);
     } else own.root.visible = false;
   }
 
@@ -1383,7 +1530,10 @@ export class Game {
     const use = combat && (!!this.downedMate() || !!this.modes.availableAction());
     const med = combat && m.medkit > 0 && m.health < 100;
     const pill = combat && m.bloodpill > 0 && m.health < 100;
-    const key = `${show}${combat}${use}${med}${drone}${pill}`;
+    const c4 = combat && m.c4 > 0 && !this.driving.active;
+    const det = (combat || st === 'downed') && this.charges.mineCount() > 0;
+    const amb = combat && m.health <= 70 && m.money >= AMBULANCE.fee && m.veh == null && this.net.serverNow() >= (m.ambReady || 0);
+    const key = `${show}${combat}${use}${med}${drone}${pill}${c4}${det}${amb}`;
     if (key === this.touchKey) return;
     this.touchKey = key;
     const t = $('touch');
@@ -1393,6 +1543,9 @@ export class Game {
     t.querySelector('.t-use').hidden = !use;
     t.querySelector('.t-med').hidden = !med;
     t.querySelector('.t-pill').hidden = !pill;
+    t.querySelector('.t-c4').hidden = !c4;
+    t.querySelector('.t-det').hidden = !det;
+    t.querySelector('.t-amb').hidden = !amb;
     if (!show || !combat) this.input.resetTouch(t);
   }
 

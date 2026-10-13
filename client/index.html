@@ -154,6 +154,13 @@
         <div id="toasts"></div>
         <div id="prompt" class="prompt" hidden></div>
         <button id="ad-prompt" class="ad-prompt" hidden></button>
+        <button id="veh-prompt" class="veh-prompt" hidden></button>
+        <div id="veh-hud" class="veh-hud" hidden>
+          <b id="veh-name">Car</b>
+          <div class="veh-bar"><i id="veh-hp"></i></div>
+          <span id="veh-speed">0 km/h</span>
+          <small>W/S drive · A/D turn · Space brake · E comot</small>
+        </div>
         <div id="chatting-badge" class="chatting-badge" hidden>📱 You dey chat · you dey safe</div>
 
         <!-- Scout drone cockpit -->
@@ -241,6 +248,7 @@
               <div><kbd>Tab</kbd> scores · <kbd>Y</kbd>/<kbd>U</kbd> chat · <kbd>V</kbd> quick talk · <kbd>Shift</kbd> (scoped) hold breath</div>
               <div><kbd>F</kbd> punch (3 in a row = heavy blow) · <kbd>3</kbd> machete · <kbd>N</kbd> blood pill</div>
               <div><kbd>H</kbd> chase cam · <kbd>T</kbd> scout drone · <kbd>J</kbd> chat with the business on the advert you dey look</div>
+              <div><kbd>E</kbd> enter / comot from motor · <kbd>P</kbd> stick C4 · <kbd>L</kbd> blow C4 · <kbd>K</kbd> call ambulance (₦)</div>
             </div>
             <button class="btn" id="btn-report">🚩 Report a player</button>
             <button class="btn danger" id="btn-leave">Comot from battle</button>
@@ -281,6 +289,10 @@
           <button class="tb t-med" data-key="KeyX" aria-label="First aid" hidden>🩹</button>
           <button class="tb t-pill" data-key="KeyN" aria-label="Blood pill" hidden>💊</button>
           <button class="tb t-punch" data-key="KeyF" aria-label="Punch">👊</button>
+          <button class="tb t-veh" data-key="KeyE" aria-label="Enter or leave vehicle" hidden>🚗</button>
+          <button class="tb t-c4" data-key="KeyP" aria-label="Plant C4" hidden>🧨</button>
+          <button class="tb t-det" data-key="KeyL" aria-label="Blow C4" hidden>💥</button>
+          <button class="tb t-amb" data-key="KeyK" aria-label="Call ambulance" hidden>🚑</button>
         </div>
         <div id="rotate"><div><div class="phone-ico"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10.5 18.5h3"/></svg></div><b>Turn your phone sideways</b><span>Proof of Duty na landscape game</span></div></div>
       </div>

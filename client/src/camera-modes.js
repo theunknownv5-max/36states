@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { raycast, dirFromAngles, hitSoldier } from '../../shared/physics.js';
 import { audio } from './core/audio.js';
 import { WEAPONS } from '../../shared/config.js';
+import { VEHICLES } from '../../shared/vehicles.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -105,6 +106,7 @@ export class CameraModes {
   // Chase cam is on (a sniper scope switches back to your own eyes while aiming).
   thirdPerson() {
     const g = this.g;
+    if (g.driving?.active) return g.status === 'alive';
     return this.mode === 'chase' && !(g.adsOn && WEAPONS[g.weapon()]?.zoom) && ['alive', 'downed'].includes(g.status);
   }
 
@@ -136,6 +138,7 @@ export class CameraModes {
       this.smooth = null;
       return false;
     }
+    if (g.driving?.active) return this.driveCam(dt, cam);
     const b = g.body;
     const eye = new THREE.Vector3(b.x, b.y + g.eye, b.z);
     const pitch = g.pitch + g.punch.p;
@@ -159,6 +162,30 @@ export class CameraModes {
     cam.rotation.set(pitch, yaw, 0);
     // Wall right behind you: fade your own body out instead of filling the screen with it.
     if (g.ownSoldier?.root) g.ownSoldier.root.visible = dist > 0.9;
+    return true;
+  }
+
+  // Behind and above the vehicle, looking where you look (so you can shoot out of it).
+  driveCam(dt, cam) {
+    const g = this.g;
+    const v = g.driving.v;
+    const d = VEHICLES[v.type];
+    const pitch = g.pitch + g.punch.p;
+    const yaw = g.yaw + g.punch.y;
+    const centre = new THREE.Vector3(v.x, d.H * 0.75 + 0.7, v.z);
+    const fwd = new THREE.Vector3(...dirFromAngles(yaw, pitch));
+    const back = d.L * 0.75 + (d.armored ? 3.8 : 3.3);
+    const want = centre.clone().addScaledVector(fwd, -back).add(new THREE.Vector3(0, 1.3 + d.H * 0.25, 0));
+    const dir = want.clone().sub(centre);
+    const len = dir.length();
+    dir.normalize();
+    const hit = raycast(g.map.index, centre.x, centre.y, centre.z, dir.x, dir.y, dir.z, len + 0.3, g.driving.box);
+    const dist = Math.max(1.2, Math.min(len, hit.t - 0.3));
+    const target = centre.clone().addScaledVector(dir, dist);
+    this.smooth ||= target.clone();
+    this.smooth.lerp(target, Math.min(1, dt * 10));
+    cam.position.copy(this.smooth);
+    cam.rotation.set(pitch, yaw, 0);
     return true;
   }
 
@@ -220,7 +247,7 @@ export class CameraModes {
     const o = [b.x, b.y + g.eye, b.z];
     const cam = g.camera.position;
     const cd = dirFromAngles(g.yaw + g.punch.y, g.pitch + g.punch.p);
-    const hit = raycast(g.map.index, cam.x, cam.y, cam.z, cd[0], cd[1], cd[2], 400);
+    const hit = raycast(g.map.index, cam.x, cam.y, cam.z, cd[0], cd[1], cd[2], 400, g.driving?.box ?? -1);
     let t = Math.min(hit.t, 400);
     // If an enemy is under the crosshair, aim at the enemy (not at the wall behind them):
     // otherwise the shot from your eyes would slip past the side of the target.

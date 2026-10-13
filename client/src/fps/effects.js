@@ -101,6 +101,13 @@ export class Effects {
     this.zones = [];
     this.fires = [];
     this.ringTex = T.ringTex();
+    // A fixed pool of fire lights: adding lights mid-battle would recompile every shader (a stutter).
+    this.fireLights = [0, 1].map(() => {
+      const l = new THREE.PointLight('#ff7a2a', 0, 16, 1.8);
+      scene.add(l);
+      return l;
+    });
+    this.lightUsers = new Map();
   }
 
   tracer(from, to, colour = '#ffd28a') {
@@ -195,12 +202,27 @@ export class Effects {
       g.add(sp);
       flames.push(sp);
     }
-    const light = new THREE.PointLight('#ff7a2a', 40, 14, 1.8);
-    light.position.y = 1.2;
-    g.add(light);
+    const light = this.takeFireLight(x, 1.2, z);
     this.scene.add(g);
     this.addDecal(this.scorchMat, new THREE.Vector3(x, 0.02, z), new THREE.Vector3(0, 1, 0), 4.5, 120);
-    this.fires.push({ g, flames, light, life: secs, max: secs });
+    const fire = { g, flames, light, life: secs, max: secs };
+    this.lightUsers.set(light, fire);
+    this.fires.push(fire);
+  }
+
+  // Borrow a light from the pool (the least recently taken one if all are busy).
+  takeFireLight(x, y, z, owner = null) {
+    let l = this.fireLights.find((q) => !this.lightUsers.has(q));
+    if (!l) l = this.fireLights[(this.lightRR = ((this.lightRR || 0) + 1) % this.fireLights.length)];
+    l.position.set(x, y, z);
+    l.intensity = 40;
+    this.lightUsers.set(l, owner || { pending: true });
+    return l;
+  }
+
+  releaseFireLight(l) {
+    l.intensity = 0;
+    this.lightUsers.delete(l);
   }
 
   flashbang(pos) {
@@ -348,10 +370,13 @@ export class Effects {
         sp.scale.set(1.6 * flick * k, 2.6 * flick * k, 1);
         sp.position.y = 0.9 * k + Math.sin(t * 3 + sp.userData.ph) * 0.1;
       });
-      f.light.intensity = (32 + Math.random() * 18) * k;
+      if (f.light && this.lightUsers.get(f.light) === f) f.light.intensity = (32 + Math.random() * 18) * k;
       if (Math.random() < dt * 8) this.dust.spawn(new THREE.Vector3(f.g.position.x, 1.6, f.g.position.z), { colour: '#2a2522', size: 1.2, life: 3, v: new THREE.Vector3((Math.random() - 0.5) * 0.5, 1.6, (Math.random() - 0.5) * 0.5), grow: 3, opacity: 0.6 * k });
       if (Math.random() < dt * 10) this.sparks.spawn(new THREE.Vector3(f.g.position.x, 0.8, f.g.position.z), { colour: '#ffb04a', size: 0.05, life: 1, v: new THREE.Vector3((Math.random() - 0.5) * 1.5, 2 + Math.random() * 2, (Math.random() - 0.5) * 1.5), g: -0.5 });
-      if (f.life <= 0) this.scene.remove(f.g);
+      if (f.life <= 0) {
+        this.scene.remove(f.g);
+        if (f.light && this.lightUsers.get(f.light) === f) this.releaseFireLight(f.light);
+      }
     }
     this.fires = this.fires.filter((f) => f.life > 0);
     this.shake *= Math.pow(0.02, dt);

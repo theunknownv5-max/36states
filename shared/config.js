@@ -103,7 +103,9 @@ export const GEAR = {
   flash: { name: 'Flashbang', price: 200, max: 2, fuse: 1.5, radius: 18 },
   medkit: { name: 'First aid kit', price: 400, max: 1, heal: 50, useTime: 3 },
   // Quick blood top-up you can take while moving: heals over a few seconds.
-  bloodpill: { name: 'Blood pill', price: 250, max: 3, heal: 35, secs: 2.5 }
+  bloodpill: { name: 'Blood pill', price: 250, max: 3, heal: 35, secs: 2.5 },
+  // Plastic explosive: stick it on a wall, car or the ground (P), set it off from anywhere (L).
+  c4: { name: 'C4 charge', price: 900, max: 2, explosive: true }
 };
 
 // Bare-hand punch (quick melee, any time). Three hits on the same enemy in a row land a heavy blow.

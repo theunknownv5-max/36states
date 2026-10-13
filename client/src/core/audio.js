@@ -681,6 +681,9 @@ export class AudioEngine {
     clearInterval(this.ambTimer);
     this.stopLoop('ambience', 1);
     for (const k of [...this.loops.keys()]) this.stopLoop(k, 0.3);
+    this.humPans?.clear();
+    this.sirenPans?.clear();
+    this.engineNodes = null;
   }
 
   // Looping positional sources: gas flares roar, waterfalls, pumpjacks.
@@ -723,6 +726,170 @@ export class AudioEngine {
       }
       return { gain, stop };
     });
+  }
+
+  // ---------- vehicles ----------
+  // Your own engine: two detuned saws through a lowpass plus a rumble; pitch follows speed.
+  engine(on, type = 'sedan') {
+    if (!on) {
+      this.engineNodes = null;
+      return this.stopLoop('engine', 0.5);
+    }
+    if (!this.ready() || this.loops.has('engine')) return;
+    const ctx = this.ctx;
+    const big = type === 'lorry' || type === 'apc' || type === 'danfo';
+    const small = type === 'okada' || type === 'keke';
+    this.engineBase = big ? 32 : small ? 62 : 44;
+    this.loop('engine', () => {
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(small ? 0.09 : 0.13, ctx.currentTime + 0.6);
+      gain.connect(this.sfx);
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = 500;
+      filt.Q.value = 2;
+      filt.connect(gain);
+      const oscs = [0, 7].map((det) => {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = this.engineBase;
+        o.detune.value = det;
+        o.connect(filt);
+        o.start();
+        return o;
+      });
+      const rumble = this.noiseLoop(gain, { buffer: this.brown, f: big ? 140 : 220, gain: big ? 0.9 : 0.5 });
+      this.engineNodes = { oscs, filt };
+      return { gain, stop: [...oscs, ...rumble] };
+    });
+    // A quick crank as it starts.
+    const o = this.out(null, { reverb: 0.05 });
+    this.noiseHit(o.input, o.when, { dur: 0.45, gain: 0.25, type: 'lowpass', f: 400, buffer: this.brown });
+  }
+
+  setEngine(load, throttle) {
+    const n = this.engineNodes;
+    if (!n || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Fake gears: revs climb, drop at each shift, climb again.
+    const gear = Math.min(4, Math.floor(load * 4));
+    const rev = load * 4 - gear;
+    const f = this.engineBase * (1 + rev * 1.6 + gear * 0.25 + throttle * 0.15);
+    for (const o of n.oscs) o.frequency.setTargetAtTime(f, t, 0.08);
+    n.filt.frequency.setTargetAtTime(380 + rev * 900 + throttle * 500, t, 0.1);
+  }
+
+  crash(impact) {
+    if (!this.ready()) return;
+    const o = this.out(null, { reverb: 0.2 });
+    const g = Math.min(1, impact / 18);
+    this.noiseHit(o.input, o.when, { dur: 0.35, gain: 0.8 * g, type: 'lowpass', f: 1800, f2: 300 });
+    this.noiseHit(o.input, o.when + 0.02, { dur: 0.25, gain: 0.4 * g, type: 'bandpass', f: 3200, q: 2 });
+    this.tone(o.input, o.when, { f: 90, f2: 40, dur: 0.3, gain: 0.5 * g });
+  }
+
+  // Other moving vehicles: up to two positional engine hums (the nearest ones).
+  hums(list) {
+    if (!this.ready()) return;
+    this.humPans ||= new Map();
+    const keep = new Set(list.slice(0, 2).map((v) => v.id));
+    for (const id of [...this.humPans.keys()])
+      if (!keep.has(id)) {
+        this.stopLoop(`hum${id}`, 0.6);
+        this.humPans.delete(id);
+      }
+    for (const v of list.slice(0, 2)) {
+      if (!this.humPans.has(v.id)) {
+        const ctx = this.ctx;
+        const pan = ctx.createPanner();
+        pan.panningModel = this.hrtf ? 'HRTF' : 'equalpower';
+        pan.distanceModel = 'inverse';
+        pan.refDistance = 6;
+        pan.rolloffFactor = 1.2;
+        pan.connect(this.sfx);
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        const filt = ctx.createBiquadFilter();
+        filt.type = 'lowpass';
+        filt.frequency.value = 420;
+        this.loop(`hum${v.id}`, () => {
+          const gain = ctx.createGain();
+          gain.gain.value = 0.1;
+          o.connect(filt).connect(gain).connect(pan);
+          o.start();
+          const rumble = this.noiseLoop(gain, { buffer: this.brown, f: 180, gain: 0.7 });
+          return { gain, stop: [o, ...rumble] };
+        });
+        this.humPans.set(v.id, { pan, o });
+      }
+      const h = this.humPans.get(v.id);
+      if (h.pan.positionX) {
+        h.pan.positionX.value = v.x;
+        h.pan.positionY.value = 0.8;
+        h.pan.positionZ.value = v.z;
+      } else h.pan.setPosition(v.x, 0.8, v.z);
+      h.o.frequency.setTargetAtTime(40 + Math.abs(v.speed) * 4.5, this.ctx.currentTime, 0.1);
+    }
+  }
+
+  // Ambulance siren (two-tone, Nigerian style), following the ambulance.
+  sirens(list) {
+    if (!this.ready()) return;
+    this.sirenPans ||= new Map();
+    const keep = new Set(list.filter((a) => a.siren).map((a) => a.id));
+    for (const id of [...this.sirenPans.keys()])
+      if (!keep.has(id)) {
+        this.stopLoop(`siren${id}`, 1);
+        this.sirenPans.delete(id);
+      }
+    for (const a of list) {
+      if (!a.siren) continue;
+      if (!this.sirenPans.has(a.id)) {
+        const ctx = this.ctx;
+        const pan = ctx.createPanner();
+        pan.panningModel = this.hrtf ? 'HRTF' : 'equalpower';
+        pan.distanceModel = 'inverse';
+        pan.refDistance = 14;
+        pan.rolloffFactor = 0.9;
+        pan.connect(this.sfx);
+        this.loop(`siren${a.id}`, () => {
+          const gain = ctx.createGain();
+          gain.gain.value = 0.09;
+          const o = ctx.createOscillator();
+          o.type = 'square';
+          o.frequency.value = 760;
+          const lfo = ctx.createOscillator();
+          lfo.type = 'square';
+          lfo.frequency.value = 1.3;
+          const depth = ctx.createGain();
+          depth.gain.value = 170;
+          lfo.connect(depth).connect(o.frequency);
+          const filt = ctx.createBiquadFilter();
+          filt.type = 'lowpass';
+          filt.frequency.value = 2400;
+          o.connect(filt).connect(gain).connect(pan);
+          o.start();
+          lfo.start();
+          return { gain, stop: [o, lfo] };
+        });
+        this.sirenPans.set(a.id, pan);
+      }
+      const pan = this.sirenPans.get(a.id);
+      if (pan.positionX) {
+        pan.positionX.value = a.x;
+        pan.positionY.value = 2;
+        pan.positionZ.value = a.z;
+      } else pan.setPosition(a.x, 2, a.z);
+    }
+  }
+
+  // C4 armed: two short high beeps.
+  c4(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 4, reverb: 0.1 });
+    this.tone(o.input, o.when, { f: 1900, dur: 0.06, gain: 0.25, type: 'square' });
+    this.tone(o.input, o.when + 0.12, { f: 1900, dur: 0.06, gain: 0.25, type: 'square' });
   }
 
   helicopter(on) {

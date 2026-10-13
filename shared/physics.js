@@ -23,6 +23,35 @@ export function buildIndex(boxes, half) {
   return { boxes, cells, half, key, stamp: new Uint32Array(boxes.length), frame: 1 };
 }
 
+// Move (or resize) one box and keep the grid index right: vehicles drive, so their
+// collision boxes move. Only the cells the box left or entered change.
+export function moveBox(index, i, x0, z0, x1, z1) {
+  const b = index.boxes[i];
+  const { half, cells, key } = index;
+  const span = (a0, a1) => [Math.floor((a0 + half) / CELL), Math.floor((a1 + half) / CELL)];
+  const [ox0, ox1] = span(b.x0, b.x1);
+  const [oz0, oz1] = span(b.z0, b.z1);
+  const [nx0, nx1] = span(x0, x1);
+  const [nz0, nz1] = span(z0, z1);
+  b.x0 = x0;
+  b.z0 = z0;
+  b.x1 = x1;
+  b.z1 = z1;
+  if (ox0 === nx0 && ox1 === nx1 && oz0 === nz0 && oz1 === nz1) return;
+  for (let cx = ox0; cx <= ox1; cx++)
+    for (let cz = oz0; cz <= oz1; cz++) {
+      const list = cells.get(key(cx, cz));
+      const j = list ? list.indexOf(i) : -1;
+      if (j >= 0) list.splice(j, 1);
+    }
+  for (let cx = nx0; cx <= nx1; cx++)
+    for (let cz = nz0; cz <= nz1; cz++) {
+      const k = key(cx, cz);
+      if (!cells.has(k)) cells.set(k, []);
+      cells.get(k).push(i);
+    }
+}
+
 // Indices of boxes overlapping an xz rectangle.
 export function query(index, x0, z0, x1, z1, out = []) {
   out.length = 0;
@@ -72,7 +101,8 @@ export function rayBox(ox, oy, oz, dx, dy, dz, b) {
 
 const tmpList = [];
 // First world hit along a ray (boxes + ground). d must be normalised.
-export function raycast(index, ox, oy, oz, dx, dy, dz, maxT) {
+// ignore: one box index to see through (the vehicle the shooter sits in).
+export function raycast(index, ox, oy, oz, dx, dy, dz, maxT, ignore = -1) {
   let best = maxT;
   let hitBox = -1;
   let exit = 0;
@@ -93,7 +123,7 @@ export function raycast(index, ox, oy, oz, dx, dy, dz, maxT) {
     const pz = oz + dz * t;
     query(index, px - CELL * 0.5, pz - CELL * 0.5, px + CELL * 0.5, pz + CELL * 0.5, tmpList);
     for (const i of tmpList) {
-      if (seen.has(i)) continue;
+      if (seen.has(i) || i === ignore) continue;
       seen.add(i);
       const r = rayBox(ox, oy, oz, dx, dy, dz, index.boxes[i]);
       if (r && r[0] < best) {
@@ -265,12 +295,13 @@ export function moveBody(body, wishX, wishZ, dt, index, half, jump = false) {
   return body;
 }
 
-export function insideAnyBox(index, x, y, z, crouch = false) {
+export function insideAnyBox(index, x, y, z, crouch = false, skip = null) {
   const r = PLAYER.radius * 0.8;
   const h = crouch ? PLAYER.crouchHeight : PLAYER.height;
   const list = query(index, x - r, z - r, x + r, z + r);
   return list.some((i) => {
     const b = index.boxes[i];
+    if (skip && skip(b)) return false;
     return x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1 && y + h - 0.1 > b.y0 && y + 0.1 < b.y1;
   });
 }

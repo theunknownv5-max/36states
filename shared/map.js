@@ -4,6 +4,7 @@ import { mulberry32, range, pick } from './rng.js';
 import { STATE_BY_ID, RESOURCES, BIOMES, stateSeed } from './states.js';
 import { buildIndex } from './physics.js';
 import { MATCH, DRUMS } from './config.js';
+import { VEHICLES, HOUSES, footprint } from './vehicles.js';
 
 export const HALF = 110; // map runs from -110 to 110 metres on x and z
 const NAV_CELL = 2;
@@ -15,6 +16,16 @@ const BIOME_RULES = {
   rainforest: { buildings: 15, wall: 'plaster', roof: 'zinc', trees: 150, treeTypes: ['palm', 'iroko', 'mango', 'plantain'], rocks: 6, grass: 520, cover: 65 },
   creeks: { buildings: 13, wall: 'plank', roof: 'zinc', trees: 95, treeTypes: ['palm', 'mangrove', 'plantain'], rocks: 2, grass: 420, cover: 60 },
   urban: { buildings: 24, wall: 'plaster', roof: 'flat', trees: 30, treeTypes: ['palm', 'almond'], rocks: 0, grass: 60, cover: 85 }
+};
+
+// Which vehicles turn up where (weights). Northern roads: pickups and okadas; Lagos: danfos and kekes.
+const VEHICLE_MIX = {
+  urban: { sedan: 5, danfo: 3, keke: 3, okada: 2, suv: 2, pickup: 1, lorry: 1 },
+  sahel: { pickup: 4, okada: 4, suv: 2, sedan: 1, lorry: 2 },
+  savanna: { okada: 4, pickup: 3, sedan: 2, keke: 1, suv: 1, lorry: 1 },
+  plateau: { sedan: 2, suv: 2, pickup: 3, okada: 3, lorry: 1 },
+  rainforest: { sedan: 3, keke: 3, okada: 3, danfo: 1, pickup: 1 },
+  creeks: { keke: 3, okada: 3, sedan: 2, pickup: 1, danfo: 1 }
 };
 
 const PEN_KINDS = new Set(['mud', 'plaster', 'plank', 'zinc', 'crate', 'drum', 'stall', 'wreck']);
@@ -243,6 +254,7 @@ function tryGenerate(state, seed) {
 
   // ---------- buildings ----------
   const buildings = [];
+  const houses = []; // homes that can be bombed and burnt down
   for (let n = 0, tries = 0; n < rules.buildings && tries < 400; tries++) {
     const w = range(rng, 7, state.biome === 'urban' ? 14 : 12);
     const d = range(rng, 6, 11);
@@ -255,7 +267,21 @@ function tryGenerate(state, seed) {
     const height = solid ? range(rng, 8, 18) : rules.wall === 'mud' ? 2.7 : 3.1;
     // About a third of the houses are abandoned ruins: no roof, shot-up broken walls, rubble.
     if (!solid && wrng() < 0.32) buildings.push(makeRuin(x, z, w, d, height + 0.3, rules, wrng, box, visuals));
-    else buildings.push(makeBuilding(x, z, w, d, height, solid, rules, rng, box, visuals));
+    else {
+      const b0 = boxes.length;
+      const v0 = visuals.length;
+      buildings.push(makeBuilding(x, z, w, d, height, solid, rules, rng, box, visuals));
+      if (!solid) {
+        const hi = houses.length;
+        let roof = -1;
+        for (let k = b0; k < boxes.length; k++) {
+          boxes[k].house = hi;
+          if (boxes[k].roof) roof = k;
+        }
+        for (let k = v0; k < visuals.length; k++) visuals[k].house = hi;
+        houses.push({ i: hi, x, z, w, d, h: height, kind: rules.wall, roof, hp: HOUSES.hp[rules.wall] || 600 });
+      }
+    }
     n++;
   }
 
@@ -441,7 +467,42 @@ function tryGenerate(state, seed) {
     });
   for (let i = grass.length - 1; i >= 0; i--) if (onTile(grass[i].x, grass[i].z)) grass.splice(i, 1);
 
+  // ---------- vehicles: parked cars, danfos, kekes, okadas, lorries and (rarely) an APC ----------
+  const vehicles = [];
+  const vrng = mulberry32(Math.imul(seed ^ 0x5ca7, 0x9e3779b1) >>> 0);
+  for (let k = 0; k < 3; k++) vrng(); // decorrelate nearby seeds
+  const mix = Object.entries(VEHICLE_MIX[state.biome] || VEHICLE_MIX.savanna);
+  const total = mix.reduce((n, [, w]) => n + w, 0);
+  const pickType = () => {
+    let r = vrng() * total;
+    for (const [t, w] of mix) if ((r -= w) <= 0) return t;
+    return mix[0][0];
+  };
+  const placeVehicle = (type, xr, zr) => {
+    const def = VEHICLES[type];
+    for (let tries = 0; tries < 160; tries++) {
+      const x = range(vrng, -xr, xr);
+      const z = range(vrng, -zr, zr);
+      const yaw = Math.floor(vrng() * 4) * (Math.PI / 2) + (vrng() - 0.5) * 0.16;
+      const fp = footprint(type, x, z, yaw);
+      if (!free(fp.x0, fp.z0, fp.x1, fp.z1, 1.2)) continue;
+      if (water.some((w) => fp.x1 > w.x0 - 1 && fp.x0 < w.x1 + 1 && fp.z1 > w.z0 - 1 && fp.z0 < w.z1 + 1)) continue;
+      reserve(fp.x0, fp.z0, fp.x1, fp.z1, 0.8);
+      const i = vehicles.length;
+      const b = box(fp.x0, 0, fp.z0, fp.x1, Math.min(2.6, def.H * 0.92), fp.z1, 'vehicle', { veh: i, pen: !def.armored });
+      vehicles.push({ i, type, x, z, yaw, colour: pick(vrng, def.colours), box: boxes.indexOf(b) });
+      return true;
+    }
+    return false;
+  };
+  // Armoured carriers are rare: only some battlefields hide one, somewhere in the middle.
+  if (vrng() < 0.42) placeVehicle('apc', 40, 70);
+  const wantCars = state.biome === 'urban' ? 12 : 9;
+  for (let n = 0, guard = 0; n < wantCars && guard < 40; guard++) if (placeVehicle(pickType(), 86, 98)) n++;
+
   const map = {
+    houses,
+    vehicles,
     billboards,
     drums,
     stateId: state.id,

@@ -139,6 +139,11 @@ export function buildProps(arena, rng) {
     return o;
   };
   arena.loops = []; // positional ambient sound sources (flares, waterfalls)
+  // Roof pieces of houses that can burn: kept so the fire can cave the roof in.
+  const roofAdd = (o, v) => {
+    add(o);
+    if (v.house !== undefined && arena.houseParts?.[v.house]) arena.houseParts[v.house].props.push(o);
+  };
   const leafTex = T.leafCard();
   const frondTex = T.frondCard();
   const bark = T.barkTexture();
@@ -787,16 +792,16 @@ export function buildProps(arena, rng) {
         ]) {
           const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.55, d), rim);
           m.position.set(v.x + x, h + 0.27, v.z + z);
-          add(m);
+          roofAdd(m, v);
         }
         if (hash3(v.x, v.z, 7) < 0.6) {
           // The black rooftop water tank found on half the roofs in Nigeria.
           const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.75, 1.4, 16), paint('#151515', { metalness: 0, roughness: 0.6 }));
           tank.position.set(v.x + v.w * 0.25, h + 1.1, v.z - v.d * 0.2);
-          add(tank);
+          roofAdd(tank, v);
           const stand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 1.6), steel);
           stand.position.set(v.x + v.w * 0.25, h + 0.2, v.z - v.d * 0.2);
-          add(stand);
+          roofAdd(stand, v);
         }
         break;
       }
@@ -840,7 +845,7 @@ export function buildProps(arena, rng) {
         }
         g.position.set(v.x, 0, v.z);
         if (!along) g.rotation.y = Math.PI / 2;
-        add(g);
+        roofAdd(g, v);
         break;
       }
       default:

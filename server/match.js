@@ -8,6 +8,8 @@ import { RESOURCES } from '../shared/states.js';
 import { mulberry32 } from '../shared/rng.js';
 import { BotBrain, botName, botLoadout } from './bots.js';
 import { createMode } from './modes.js';
+import { WorldState } from './world-state.js';
+import { VEHICLES, WRECK } from '../shared/vehicles.js';
 
 export const WEAPON_IDS = Object.keys(WEAPONS);
 const now = () => Date.now();
@@ -31,6 +33,8 @@ export class Match {
     this.tileGems = tileGemSpots(this.map).map((g) => ({ ...g, type: 'ruby', at: 0 }));
     this.rng = mulberry32((Date.now() & 0xffff) ^ 0x5eed);
     for (const g of this.tileGems) g.type = this.pickGemType();
+    // Vehicles, burning houses, C4 and the ambulance.
+    this.world = new WorldState(this);
     this.emptySince = now();
     this.reset();
   }
@@ -56,6 +60,7 @@ export class Match {
         b.y1 = b.oy1;
       }
     }
+    this.world.reset();
     this.drumHp = this.map.drums.map(() => DRUMS.health);
     this.drumsDead = [];
     this.drumQueue = [];
@@ -108,6 +113,8 @@ export class Match {
   removePlayer(id) {
     const p = this.players.get(id);
     if (!p) return;
+    if (p.veh != null) this.world.exit(p, true);
+    this.world.dropCharges(id);
     this.players.delete(id);
     if (p.human) this.hooks.saveProfile();
     this.balanceBots();
@@ -199,7 +206,11 @@ export class Match {
   }
 
   spawn(p, first = false, keepKit = false) {
-    const kit = keepKit ? { weapons: { ...p.weapons }, ammo: JSON.parse(JSON.stringify(p.ammo)), armor: p.armor, helmet: p.helmet, frag: p.frag, smoke: p.smoke, flash: p.flash, medkit: p.medkit, bloodpill: p.bloodpill, slot: p.slot } : null;
+    const kit = keepKit ? { weapons: { ...p.weapons }, ammo: JSON.parse(JSON.stringify(p.ammo)), armor: p.armor, helmet: p.helmet, frag: p.frag, smoke: p.smoke, flash: p.flash, medkit: p.medkit, bloodpill: p.bloodpill, c4: p.c4, slot: p.slot } : null;
+    if (p.veh != null) {
+      if (this.world.seatOf(p)?.driver === p.id) this.world.exit(p, true);
+      p.veh = null;
+    }
     const base = this.map.bases[p.side];
     // Pick the spawn point furthest from enemies.
     let best = base.spawns[0];
@@ -223,7 +234,7 @@ export class Match {
     this.giveWeapon(p, 'p9');
     p.ammo.knife = { mag: 0, reserve: 0 };
     p.slot = 'secondary';
-    p.frag = p.smoke = p.flash = p.medkit = 0;
+    p.frag = p.smoke = p.flash = p.medkit = p.c4 = 0;
     p.bloodpill = 0;
     p.pillUntil = 0;
     p.secondWindUsed = false;
@@ -292,6 +303,10 @@ export class Match {
       flash: p.flash,
       medkit: p.medkit,
       bloodpill: p.bloodpill || 0,
+      c4: p.c4 || 0,
+      veh: p.veh ?? null,
+      vhp: p.veh != null ? Math.max(0, Math.round((this.world.vehicles[p.veh].hp / VEHICLES[this.world.vehicles[p.veh].type].hp) * 100)) : 0,
+      ambReady: p.ambReady || 0,
       level: p.human ? rankFor(p.profile.xp).level : 1,
       rival: this.hooks.social?.rivalOf(p.profile)?.name || null,
       status: p.status,
@@ -329,6 +344,7 @@ export class Match {
       gems: this.gems,
       tileGems: this.tileGemView(),
       drums: this.drumsDead,
+      world: this.world.view(),
       discovery: this.discovery,
       roster: this.roster(),
       serverTime: now()
@@ -350,6 +366,7 @@ export class Match {
   // ---------- inputs from human players ----------
   handle(p, m) {
     if (this.mode.handle(p, m)) return;
+    if (this.world.handle(p, m)) return;
     switch (m.t) {
       case 'st':
         return this.onState(p, m);
@@ -408,6 +425,11 @@ export class Match {
     p.ads = !!m.a;
     p.sprint = !!m.r;
     if (p.status === 'downed' || p.status === 'dead' || p.status === 'medevac') return;
+    // Driving: the vehicle's pose comes in m.v and the server checks it.
+    if (p.veh != null) {
+      if (Array.isArray(m.v) && m.v.length >= 4 && m.v.slice(0, 4).every(Number.isFinite)) this.world.drive(p, m.v, t);
+      return;
+    }
     // Walking away ends a chat with a business.
     if (this.chatting(p) && p.chatAt && Math.hypot(m.x - p.chatAt.x, m.z - p.chatAt.z) > 1.5) this.endChat(p, 'moved');
     // Buy time at the start of a bomb round: nobody moves off the spawn.
@@ -423,7 +445,8 @@ export class Match {
       this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
       return;
     }
-    if (!spirit && insideAnyBox(this.map.index, m.x, m.y, m.z, p.crouch)) {
+    // (Vehicle boxes are skipped: a car rolling onto you must not pin you in place.)
+    if (!spirit && insideAnyBox(this.map.index, m.x, m.y, m.z, p.crouch, (b) => b.veh !== undefined)) {
       this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
       return;
     }
@@ -523,8 +546,13 @@ export class Match {
     if (t - p.lastFire < (60000 / w.rpm) * 0.85) return;
     if (!Array.isArray(m.o) || !Array.isArray(m.d) || ![...m.o, ...m.d].every(Number.isFinite)) return;
     // The shot must start near the shooter's eyes.
-    const eyeY = p.y + (p.crouch ? PLAYER.crouchEye : PLAYER.eye);
-    if (Math.hypot(m.o[0] - p.x, m.o[1] - eyeY, m.o[2] - p.z) > 1.6) return;
+    const vo = this.world.shotOrigin(p);
+    if (vo) {
+      if (Math.hypot(m.o[0] - vo[0], m.o[1] - vo[1], m.o[2] - vo[2]) > 2.6) return;
+    } else {
+      const eyeY = p.y + (p.crouch ? PLAYER.crouchEye : PLAYER.eye);
+      if (Math.hypot(m.o[0] - p.x, m.o[1] - eyeY, m.o[2] - p.z) > 1.6) return;
+    }
     p.lastFire = t;
     p.firedAt = t;
     p.shots++;
@@ -542,7 +570,9 @@ export class Match {
   hitscan(p, o, d, id, rewindT = now()) {
     const w = WEAPONS[id];
     const pellets = w.pellets || 1;
-    const targets = [...this.players.values()].filter((x) => x !== p && (x.status === 'alive' || x.status === 'downed'));
+    // Nobody can shoot someone sitting inside an armoured carrier.
+    const targets = [...this.players.values()].filter((x) => x !== p && (x.status === 'alive' || x.status === 'downed') && !this.world.armoredSeat(x));
+    const ignore = this.world.seatOf(p)?.box ?? -1; // shooting out of your own vehicle
     const ends = [];
     for (let k = 0; k < pellets; k++) {
       const dir = pellets > 1 ? spreadDir(d, w.spread, this.rng) : d;
@@ -552,23 +582,31 @@ export class Match {
       let travelled = 0;
       let mult = 1;
       let penetrations = 0;
+      let vpass = 0;
       let end = null;
       for (;;) {
         const remaining = w.range - travelled;
         if (remaining <= 0) break;
-        const wall = raycast(this.map.index, ox, oy, oz, dir[0], dir[1], dir[2], remaining);
+        const wall = raycast(this.map.index, ox, oy, oz, dir[0], dir[1], dir[2], remaining, ignore);
+        const box = wall.box >= 0 ? this.map.boxes[wall.box] : null;
+        const veh = this.world.vehicleOfBox(box);
+        const vdef = veh ? VEHICLES[veh.type] : null;
+        // Someone sitting in a car can be hit through the door or window.
+        const softCar = veh && !vdef.armored && veh.state < 2;
+        const reach = softCar ? wall.exitT : wall.t;
         // Smoke does not stop bullets, only sight.
         let best = null;
         for (const tgt of targets) {
           const pos = tgt.human ? this.positionAt(tgt, rewindT) : tgt;
           const h = hitSoldier(ox, oy, oz, dir[0], dir[1], dir[2], { x: pos.x, y: pos.y, z: pos.z, crouch: pos.crouch, downed: tgt.status === 'downed' });
-          if (h && h.t < wall.t && (!best || h.t < best.h.t)) best = { tgt, h };
+          if (h && h.t < reach && (!best || h.t < best.h.t)) best = { tgt, h };
         }
         if (best) {
           const dist = travelled + best.h.t;
           const [f0, f1] = w.falloff || [w.range, w.range];
           const fall = dist <= f0 ? 1 : dist >= f1 ? 0.55 : 1 - ((dist - f0) / (f1 - f0)) * 0.45;
           let dmg = w.dmg * fall * mult;
+          if (softCar && best.h.t > wall.t) dmg *= this.world.bulletHit(box, w.dmg * mult, p);
           if (best.h.zone === 'head') dmg *= w.head || 1;
           if (best.h.zone === 'leg') dmg *= w.legMult || 0.75;
           end = [ox + dir[0] * best.h.t, oy + dir[1] * best.h.t, oz + dir[2] * best.h.t];
@@ -581,9 +619,22 @@ export class Match {
           break;
         }
         end = [ox + dir[0] * wall.t, oy + dir[1] * wall.t, oz + dir[2] * wall.t];
-        // Thin walls (mud, plank, zinc, crates) can be shot through by powerful rounds.
-        const box = wall.box >= 0 ? this.map.boxes[wall.box] : null;
         if (box?.fuel) this.hitDrum(wall.box, w.dmg * mult, p);
+        // Vehicles: bullets dent cars and go through them; armour stops them cold.
+        if (veh) {
+          const carry = this.world.bulletHit(box, w.dmg * mult, p);
+          if (carry > 0 && vpass < 1) {
+            vpass++;
+            mult *= carry;
+            travelled += wall.exitT + 0.01;
+            ox = o[0] + dir[0] * travelled;
+            oy = o[1] + dir[1] * travelled;
+            oz = o[2] + dir[2] * travelled;
+            continue;
+          }
+          break;
+        }
+        // Thin walls (mud, plank, zinc, crates) can be shot through by powerful rounds.
         const thick = box ? wall.exitT - wall.t : Infinity;
         if (box && box.pen && thick < 0.55 && w.pen > 0 && penetrations < 1) {
           penetrations++;
@@ -657,6 +708,7 @@ export class Match {
     if (attacker && attacker !== v && attacker.side === v.side) return; // no friendly fire
     if (this.protectedNow(v) && attacker !== v) return;
     if (this.chatting(v) && attacker !== v) return;
+    if (this.world.armoredSeat(v) && attacker !== v) return; // safe inside the APC
     v.hurtAt = now();
     // Bots hit human players softer, so a fight is about skill and not getting melted.
     if (attacker && !attacker.human && v.human) {
@@ -706,6 +758,7 @@ export class Match {
   }
 
   down(v, attacker, weapon) {
+    if (v.veh != null) this.world.exit(v);
     v.status = 'downed';
     v.health = 0;
     v.downedAt = now();
@@ -718,6 +771,7 @@ export class Match {
   kill(v, killer, weapon, headshot = false) {
     if (v.status === 'dead' || v.status === 'spirit' || v.status === 'medevac') return;
     const t = now();
+    if (v.veh != null) this.world.exit(v, true);
     v.status = 'dead';
     v.health = 0;
     v.deadAt = t;
@@ -936,7 +990,7 @@ export class Match {
 
   launchRocket(p, o, d, id) {
     const w = WEAPONS[id];
-    this.projectiles.push({ id: randomUUID().slice(0, 6), kind: 'rocket', x: o[0] + d[0] * 0.8, y: o[1] + d[1] * 0.8, z: o[2] + d[2] * 0.8, vx: d[0] * w.rocketSpeed, vy: d[1] * w.rocketSpeed, vz: d[2] * w.rocketSpeed, owner: p.id, side: p.side, fuse: 6, weapon: id });
+    this.projectiles.push({ id: randomUUID().slice(0, 6), kind: 'rocket', x: o[0] + d[0] * 0.8, y: o[1] + d[1] * 0.8, z: o[2] + d[2] * 0.8, vx: d[0] * w.rocketSpeed, vy: d[1] * w.rocketSpeed, vz: d[2] * w.rocketSpeed, owner: p.id, side: p.side, fuse: 6, weapon: id, ignore: this.world.seatOf(p)?.box ?? -1 });
     this.broadcastNear(p, { t: 'shot', id: p.id, w: id, o, e: [null] }, 400);
   }
 
@@ -950,7 +1004,7 @@ export class Match {
         const sp = Math.hypot(pr.vx, pr.vy, pr.vz);
         const d = [pr.vx / sp, pr.vy / sp, pr.vz / sp];
         const len = sp * dt;
-        const wall = raycast(this.map.index, pr.x, pr.y, pr.z, d[0], d[1], d[2], len);
+        const wall = raycast(this.map.index, pr.x, pr.y, pr.z, d[0], d[1], d[2], len, pr.ignore ?? -1);
         let hitT = wall.t < len ? wall.t : Infinity;
         for (const o of this.players.values()) {
           if (o.id === pr.owner || o.status !== 'alive') continue;
@@ -1041,6 +1095,8 @@ export class Match {
       const d = Math.hypot((b.x0 + b.x1) / 2 - x, (b.z0 + b.z1) / 2 - z);
       if (d < radius * 0.85) this.hitDrum(bi, dmg * (1.2 - d / radius), owner);
     }
+    // Vehicles and houses caught in the blast.
+    this.world.onBlast(x, y, z, radius, dmg, owner, weapon);
   }
 
   // ---------- fuel drums ----------
@@ -1353,6 +1409,7 @@ export class Match {
     this.stepArtillery();
     this.smokes = this.smokes.filter((s) => s.until > t);
     this.stepDrums(dt);
+    this.world.tick(dt);
     if (this.mode.usesSites()) this.stepSites(dt);
     this.stepGems();
     this.stepTileGems(t);
@@ -1401,6 +1458,7 @@ export class Match {
     const t = now();
     const projectiles = this.projectiles.map((p) => [p.kind, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)]);
     const smokes = this.smokes.map((s) => [+s.x.toFixed(1), +s.z.toFixed(1), s.r]);
+    const vehicles = this.world.snapshot();
     for (const me of this.humans()) {
       const uav = this.uav[me.side] > t;
       const list = [];
@@ -1419,10 +1477,11 @@ export class Match {
           (o.status === 'dead' || o.status === 'medevac' ? 256 : 0) |
           (uav && o.side !== me.side ? 512 : 0) |
           (o.burnUntil > t ? 1024 : 0) |
-          (this.chatting(o) ? 2048 : 0);
+          (this.chatting(o) ? 2048 : 0) |
+          (o.veh != null ? 4096 : 0);
         list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
       }
-      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes });
+      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes, vh: vehicles });
     }
   }
 }
