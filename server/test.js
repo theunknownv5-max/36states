@@ -673,6 +673,88 @@ section('Vehicles: drive, run over, shoot through, APC, C4, burning houses, ambu
   check(mm.world.vehicles.every((v) => v.state === 0 && !v.driver) && mm.world.houses.every((h) => h.state === 0) && mm.map.boxes[Hh.roof].y1 > 0, 'a new round restores every vehicle and house');
 }
 
+section('Underground: domed hall, tunnel, catacomb, graves, relic guns');
+{
+  const { DIG, LOOT, UNDER } = await import('../shared/underworld.js');
+  const { moveBody: mb } = await import('../shared/physics.js');
+  let withTunnel = 0;
+  for (const s of STATES) if (generateMap(s.id).openings.length === 2) withTunnel++;
+  check(withTunnel >= STATES.length - 3, `almost every battlefield has the tunnel network (${withTunnel}/${STATES.length})`);
+  check(STATES.every((s) => generateMap(s.id).graves.some((g) => g.kind === 'grave')), 'every battlefield has a cemetery with graves');
+  const st = STATES.find((s) => generateMap(s.id).openings.length === 2).id;
+  const mm = new Match(st, hooks, 'tdm');
+  const ws = fakeWs();
+  const P = mm.addHuman(ws, 'army', profile('Digger')).player;
+  for (const p of [...mm.players.values()]) if (!p.human) mm.players.delete(p.id);
+  fakeNow += 5000;
+  // Walk down the dome stairs: the server accepts positions underground.
+  const sA = mm.map.openings[0];
+  const body = { x: (sA.x0 + sA.x1) / 2, y: 0, z: sA.z0 + 0.3, vy: 0, onGround: true, crouch: false };
+  const dir = mm.map.holes[1].z0 >= sA.z1 - 0.01 ? 1 : -1;
+  if (dir < 0) body.z = sA.z1 - 0.3;
+  Object.assign(P, { x: body.x, y: 0, z: body.z });
+  for (let k = 0; k < 60; k++) {
+    mb(body, 0, dir * 4, 0.05, mm.map.index, mm.map.half);
+    fakeNow += 50;
+    mm.handle(P, { t: 'st', x: body.x, y: body.y, z: body.z, yaw: 0, pitch: 0 });
+  }
+  check(body.y < -UNDER.depth + 0.2 && Math.abs(P.y - body.y) < 0.01, `walked down into the tunnel (y ${P.y.toFixed(2)})`);
+  // Dig a grave: hold for the full time, standing still.
+  const gi = mm.map.graves.findIndex((g) => g.kind === 'grave');
+  const G = mm.map.graves[gi];
+  mm.world.graves[gi].loot = 'goldak';
+  Object.assign(P, { x: G.x + 0.5, y: 0, z: G.z, status: 'alive' });
+  mm.handle(P, { t: 'dig', a: 'start', i: gi });
+  check(!!P.dig && ws.log.some((x) => x.t === 'dig' && x.i === gi && x.secs === DIG.graveSecs), 'digging starts next to the grave');
+  run(mm, DIG.graveSecs - 1);
+  check(!mm.world.graves[gi].dug, 'not done before the time');
+  run(mm, 1.2);
+  check(mm.world.graves[gi].dug && P.weapons.primary === 'goldak' && P.slot === 'primary', 'dug out the Golden AK');
+  check(ws.log.some((x) => x.t === 'grave' && x.i === gi && x.loot === 'goldak'), 'everyone sees the grave opened');
+  mm.handle(P, { t: 'dig', a: 'start', i: gi });
+  check(!P.dig, 'a dug grave stays empty for the round');
+  // Moving cancels digging.
+  const g2 = mm.map.graves.findIndex((g, k) => g.kind === 'grave' && k !== gi);
+  Object.assign(P, { x: mm.map.graves[g2].x, z: mm.map.graves[g2].z + 0.4 });
+  mm.handle(P, { t: 'dig', a: 'start', i: g2 });
+  run(mm, 1);
+  P.x += 2;
+  run(mm, 0.2);
+  check(!P.dig && !mm.world.graves[g2].dug, 'walking away stops the digging');
+  // A catacomb tomb: underground, faster, better loot.
+  const ti = mm.map.graves.findIndex((g) => g.kind === 'tomb');
+  const T = mm.map.graves[ti];
+  mm.world.graves[ti].loot = 'plate';
+  Object.assign(P, { x: T.x, y: T.y, z: T.z });
+  mm.handle(P, { t: 'dig', a: 'start', i: ti });
+  run(mm, DIG.tombSecs + 0.2);
+  check(P.armor === LOOT.plate.armor && P.helmet, 'opened a tomb: 200 armour plate');
+  // Relic guns can't be bought.
+  P.money = 16000;
+  mm.handle(P, { t: 'buy', item: 'barrett' });
+  check(P.weapons.primary !== 'barrett' && P.money === 16000, 'relic guns are not for sale');
+  // Thunder .50 bites into an armoured carrier.
+  const apcV = mm.world.vehicles.find((v) => v.type === 'apc');
+  if (apcV) {
+    const hp0 = apcV.hp;
+    mm.world.bulletHit(mm.map.boxes[apcV.box], WEAPONS.barrett.dmg, P, 'barrett');
+    mm.world.bulletHit(mm.map.boxes[apcV.box], WEAPONS.ak47.dmg, P, 'ak47');
+    check(apcV.hp === hp0 - WEAPONS.barrett.dmg * 0.35, 'only the Thunder .50 can dent the APC with bullets');
+  } else check(true, 'no APC on this map');
+  // Drum Launcher shells explode where they land.
+  mm.giveWeapon(P, 'gl');
+  P.slot = 'primary';
+  Object.assign(P, { x: 0, y: 0, z: 0 });
+  fakeNow += 2000;
+  const nBoom = ws.log.filter((x) => x.t === 'boom' && x.w === 'gl').length;
+  mm.handle(P, { t: 'fire', w: 'gl', o: [0, PLAYER.eye, 0], d: [0, 0.2, -1], ts: fakeNow });
+  run(mm, 4);
+  check(ws.log.filter((x) => x.t === 'boom' && x.w === 'gl').length === nBoom + 1, 'a Drum Launcher shell flies and explodes');
+  // A new round reburies everything.
+  mm.reset();
+  check(mm.world.graves.every((g) => !g.dug), 'graves are full again next round');
+}
+
 section('Every state loads');
 for (const s of STATES) {
   for (const mode of ['conquest', 'tdm', 'bomb']) {

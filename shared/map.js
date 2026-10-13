@@ -5,6 +5,7 @@ import { STATE_BY_ID, RESOURCES, BIOMES, stateSeed } from './states.js';
 import { buildIndex } from './physics.js';
 import { MATCH, DRUMS } from './config.js';
 import { VEHICLES, HOUSES, footprint } from './vehicles.js';
+import { buildUnderworld } from './underworld.js';
 
 export const HALF = 110; // map runs from -110 to 110 metres on x and z
 const NAV_CELL = 2;
@@ -252,6 +253,10 @@ function tryGenerate(state, seed) {
     }
   }
 
+  // ---------- cemetery, domed hall, tunnel and catacomb ----------
+  const urng = mulberry32(Math.imul(seed ^ 0x7031, 0x85ebca6b) >>> 0);
+  for (let k = 0; k < 3; k++) urng();
+  const under = buildUnderworld({ rng: urng, free, reserve, box, visuals, water, half: HALF });
   // ---------- buildings ----------
   const buildings = [];
   const houses = []; // homes that can be bombed and burnt down
@@ -467,6 +472,8 @@ function tryGenerate(state, seed) {
     });
   for (let i = grass.length - 1; i >= 0; i--) if (onTile(grass[i].x, grass[i].z)) grass.splice(i, 1);
 
+  for (let i = grass.length - 1; i >= 0; i--) if (under.openings.some((o) => grass[i].x > o.x0 - 0.5 && grass[i].x < o.x1 + 0.5 && grass[i].z > o.z0 - 0.5 && grass[i].z < o.z1 + 0.5)) grass.splice(i, 1);
+
   // ---------- vehicles: parked cars, danfos, kekes, okadas, lorries and (rarely) an APC ----------
   const vehicles = [];
   const vrng = mulberry32(Math.imul(seed ^ 0x5ca7, 0x9e3779b1) >>> 0);
@@ -501,6 +508,9 @@ function tryGenerate(state, seed) {
   for (let n = 0, guard = 0; n < wantCars && guard < 40; guard++) if (placeVehicle(pickType(), 86, 98)) n++;
 
   const map = {
+    graves: under.graves,
+    holes: under.holes,
+    openings: under.openings,
     houses,
     vehicles,
     billboards,
@@ -525,6 +535,7 @@ function tryGenerate(state, seed) {
     discoverySpots
   };
   map.index = buildIndex(boxes, HALF + 2);
+  map.index.holes = map.holes;
   map.nav = buildNav(map);
   map.connected = checkConnected(map);
   return map;
@@ -869,6 +880,11 @@ function buildNav(map) {
     const cz0 = Math.max(0, Math.floor((b.z0 - pad + HALF) / NAV_CELL));
     const cz1 = Math.min(n - 1, Math.floor((b.z1 + pad + HALF) / NAV_CELL));
     for (let cx = cx0; cx <= cx1; cx++) for (let cz = cz0; cz <= cz1; cz++) blocked[cz * n + cx] = 1;
+  }
+  // Bots keep out of stairwells (they don't go underground).
+  for (const o of map.openings || []) {
+    for (let cx = Math.max(0, Math.floor((o.x0 - 0.5 + HALF) / NAV_CELL)); cx <= Math.min(n - 1, Math.floor((o.x1 + 0.5 + HALF) / NAV_CELL)); cx++)
+      for (let cz = Math.max(0, Math.floor((o.z0 - 0.5 + HALF) / NAV_CELL)); cz <= Math.min(n - 1, Math.floor((o.z1 + 0.5 + HALF) / NAV_CELL)); cz++) blocked[cz * n + cx] = 1;
   }
   for (const w of map.water) {
     for (let cx = Math.max(0, Math.floor((w.x0 + HALF) / NAV_CELL)); cx <= Math.min(n - 1, Math.floor((w.x1 + HALF) / NAV_CELL)); cx++)

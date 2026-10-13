@@ -884,6 +884,32 @@ export class AudioEngine {
     }
   }
 
+  // A spade biting into earth (or stone scraping on stone for a tomb).
+  dig(pos, stone = false) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 4, reverb: stone ? 0.5 : 0.15 });
+    if (stone) this.noiseHit(o.input, o.when, { dur: 0.4, gain: 0.35, type: 'bandpass', f: 600, q: 1.5, buffer: this.brown });
+    else {
+      this.noiseHit(o.input, o.when, { dur: 0.09, gain: 0.5, type: 'bandpass', f: 2400, q: 1.2 });
+      this.noiseHit(o.input, o.when + 0.06, { dur: 0.22, gain: 0.45, type: 'lowpass', f: 700, buffer: this.brown });
+    }
+  }
+
+  // A heavy stone lid grinding aside.
+  tombOpen(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 5, reverb: 0.7 });
+    this.noiseHit(o.input, o.when, { dur: 1.3, gain: 0.6, type: 'lowpass', f: 380, attack: 0.2, buffer: this.brown });
+    this.tone(o.input, o.when + 1.2, { f: 70, f2: 40, dur: 0.4, gain: 0.5 });
+  }
+
+  // Found a relic: a bright rising chord.
+  relic() {
+    if (!this.ready()) return;
+    const o = this.out(null, { reverb: 0.6 });
+    [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(o.input, o.when + i * 0.08, { f, dur: 1.1 - i * 0.1, gain: 0.1, type: 'triangle' }));
+  }
+
   // C4 armed: two short high beeps.
   c4(pos) {
     if (!this.ready()) return;

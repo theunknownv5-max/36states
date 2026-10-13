@@ -80,6 +80,8 @@ function howToPlay() {
   <p><b>💎 Life gems.</b> Every advert wall get gem wey dey shine. Waka enter am: +1 life gem and small health. Once person take am, nobody fit take that one again for <b>${GEMS.cooldownMs / 60000} minutes</b>.</p>
   <p><b>If you fall</b>, your person get ${RESPAWN.downedMs / 1000} seconds to revive you. If you die, choose how you go come back:</p>
   <ul><li><b>Life gem</b> — use 1 gem, land back sharp sharp.</li><li><b>Spirit run</b> — ${RESPAWN.spiritMs / 1000} seconds as invisible spirit; touch any gem wey dey shine make you come back free.</li><li><b>Medevac</b> — wait ${RESPAWN.medevacMs / 1000} seconds, pay ₦${RESPAWN.medevacFee.toLocaleString()}.</li></ul>
+  <p><b>Motors and fire:</b> E to enter any car, danfo, keke or okada and drive am. Armoured carrier rare: bullet no fit touch you inside. RPG and C4 (P to stick, L to blow) fit burn motor and house down to charcoal. K call ambulance when you wound (₦1,500).</p>
+  <p><b>Underground and tombs:</b> Find the big dome: stairs inside go down to tunnel wey reach the catacomb under the cemetery. Hold E for grave or tomb to dig am out: Golden AK, Thunder .50, Drum Launcher, Ancestor's Dane Gun or heavy armour fit dey inside (or only bones 💀).</p>
   <p><b>Fuel drums:</b> red drum wey write PMS go burst if you shoot am. Anybody wey dey near go chop am.</p>
   <p><b>Controls:</b> WASD waka · Shift run · Ctrl bend down · Z waka quiet · Space jump · Mouse shoot/aim · R reload · 1/2/3 weapons · B buy · G grenade (4 to pick) · X first aid · E revive/plant/defuse · V quick talk · 5 drone · 6 artillery · Tab scores · Y/U chat · Esc menu. For phone, the buttons dey for screen.</p>`);
 }

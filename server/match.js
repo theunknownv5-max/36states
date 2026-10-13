@@ -114,6 +114,7 @@ export class Match {
     const p = this.players.get(id);
     if (!p) return;
     if (p.veh != null) this.world.exit(p, true);
+    this.world.stopDig(p, 'left');
     this.world.dropCharges(id);
     this.players.delete(id);
     if (p.human) this.hooks.saveProfile();
@@ -441,7 +442,7 @@ export class Match {
     const maxSpeed = spirit ? RESPAWN.spiritSpeed : PLAYER.run * (FACTIONS[p.faction].perks.speedMult || 1);
     const moved = Math.hypot(m.x - p.x, m.z - p.z);
     const lim = this.map.half - 1;
-    if (moved > maxSpeed * NET.speedTolerance * dt + 1.2 || Math.abs(m.x) > lim || Math.abs(m.z) > lim || m.y > 40 || m.y < -2) {
+    if (moved > maxSpeed * NET.speedTolerance * dt + 1.2 || Math.abs(m.x) > lim || Math.abs(m.z) > lim || m.y > 40 || m.y < -6) {
       this.send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });
       return;
     }
@@ -560,7 +561,7 @@ export class Match {
     p.protectUntil = 0; // shooting ends spawn protection
     const d = normalise(m.d);
     const rewind = Math.max(t - NET.maxRewindMs, Math.min(t, Number(m.ts) || t));
-    if (w.projectile === 'rocket') this.launchRocket(p, m.o, d, id);
+    if (w.projectile) this.launchRocket(p, m.o, d, id);
     else this.hitscan(p, m.o, d, id, rewind);
     if (a.mag === 0 && a.reserve > 0) this.startReload(p);
     this.syncMe(p);
@@ -606,7 +607,7 @@ export class Match {
           const [f0, f1] = w.falloff || [w.range, w.range];
           const fall = dist <= f0 ? 1 : dist >= f1 ? 0.55 : 1 - ((dist - f0) / (f1 - f0)) * 0.45;
           let dmg = w.dmg * fall * mult;
-          if (softCar && best.h.t > wall.t) dmg *= this.world.bulletHit(box, w.dmg * mult, p);
+          if (softCar && best.h.t > wall.t) dmg *= this.world.bulletHit(box, w.dmg * mult, p, id);
           if (best.h.zone === 'head') dmg *= w.head || 1;
           if (best.h.zone === 'leg') dmg *= w.legMult || 0.75;
           end = [ox + dir[0] * best.h.t, oy + dir[1] * best.h.t, oz + dir[2] * best.h.t];
@@ -622,7 +623,7 @@ export class Match {
         if (box?.fuel) this.hitDrum(wall.box, w.dmg * mult, p);
         // Vehicles: bullets dent cars and go through them; armour stops them cold.
         if (veh) {
-          const carry = this.world.bulletHit(box, w.dmg * mult, p);
+          const carry = this.world.bulletHit(box, w.dmg * mult, p, id);
           if (carry > 0 && vpass < 1) {
             vpass++;
             mult *= carry;
@@ -891,7 +892,7 @@ export class Match {
     const w = WEAPONS[item];
     const g = GEAR[item];
     if (!w && !g) return;
-    if (w && (w.melee || item === 'p9')) return;
+    if (w && (w.melee || item === 'p9' || w.loot)) return;
     if (w?.unlockLevel && rankFor(p.profile.xp).level < w.unlockLevel) return this.toast(p, `${w.name} go open when you reach rank level ${w.unlockLevel}.`, 'bad');
     if (p.money < price) return this.toast(p, 'Your money no reach.', 'bad');
     if (w) {
@@ -946,7 +947,7 @@ export class Match {
       if (g.at > t) return;
       for (const p of this.players.values()) {
         if (!p.human || p.status !== 'alive') continue;
-        if (Math.hypot(p.x - g.x, p.z - g.z) > TILE_GEMS.radius || p.y > 1.5) continue;
+        if (Math.hypot(p.x - g.x, p.z - g.z) > TILE_GEMS.radius || p.y > 1.5 || p.y < -1) continue;
         const def = TILE_GEMS.types[g.type];
         const needHeal = def.heal && p.health < PLAYER.maxHealth;
         const needArmor = def.armor && p.armor < 100;
@@ -1000,7 +1001,8 @@ export class Match {
       pr.fuse -= dt;
       const owner = this.players.get(pr.owner);
       if (pr.kind === 'rocket') {
-        pr.vy -= 2.5 * dt;
+        const RW = WEAPONS[pr.weapon] || WEAPONS.rpg;
+        pr.vy -= (RW.gravity ?? 2.5) * dt;
         const sp = Math.hypot(pr.vx, pr.vy, pr.vz);
         const d = [pr.vx / sp, pr.vy / sp, pr.vz / sp];
         const len = sp * dt;
@@ -1013,7 +1015,7 @@ export class Match {
         }
         if (hitT !== Infinity || pr.fuse <= 0) {
           const t = hitT === Infinity ? len : hitT;
-          this.explode(pr.x + d[0] * t, pr.y + d[1] * t, pr.z + d[2] * t, WEAPONS.rpg.blast, WEAPONS.rpg.dmg, owner, 'rpg');
+          this.explode(pr.x + d[0] * t, pr.y + d[1] * t, pr.z + d[2] * t, RW.blast, RW.dmg, owner, pr.weapon || 'rpg');
           continue;
         }
         pr.x += pr.vx * dt;
@@ -1240,7 +1242,7 @@ export class Match {
       let outPower = 0;
       for (const o of this.players.values()) {
         if (o.status !== 'alive' || o.y > 3) continue;
-        if (Math.hypot(o.x - s.x, o.z - s.z) > s.r) continue;
+        if (Math.hypot(o.x - s.x, o.z - s.z) > s.r || o.y < -1) continue; // not from the tunnel below
         const mult = FACTIONS[o.faction].perks.captureMult || 1;
         if (o.side === 'sec') secPower += mult;
         else outPower += mult;
@@ -1258,7 +1260,7 @@ export class Match {
       const newOwner = s.progress >= 1 ? 'sec' : s.progress <= -1 ? 'out' : null;
       if (newOwner && newOwner !== s.owner && before !== s.progress) {
         s.owner = newOwner;
-        const capturers = [...this.players.values()].filter((o) => o.side === newOwner && o.status === 'alive' && Math.hypot(o.x - s.x, o.z - s.z) <= s.r);
+        const capturers = [...this.players.values()].filter((o) => o.side === newOwner && o.status === 'alive' && Math.hypot(o.x - s.x, o.z - s.z) <= s.r && o.y > -1);
         for (const c of capturers) {
           c.money = Math.min(MONEY.max, c.money + MONEY.capture);
           c.points += 15;
@@ -1312,7 +1314,7 @@ export class Match {
         if (!p.human) continue;
         const spirit = p.status === 'spirit';
         if (p.status !== 'alive' && !spirit) continue;
-        if (Math.hypot(p.x - a.gem.x, p.z - a.gem.z) > GEMS.pickupRadius || p.y > a.gem.y + 1.5) continue;
+        if (Math.hypot(p.x - a.gem.x, p.z - a.gem.z) > GEMS.pickupRadius || p.y > a.gem.y + 1.5 || p.y < a.gem.y - 2.5) continue;
         // Collected: nobody can take this wall's gem for 2 minutes.
         this.gems[i] = t + GEMS.cooldownMs;
         this.broadcast({ t: 'gem', i, until: this.gems[i], by: p.name, spirit });

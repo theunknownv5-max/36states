@@ -95,6 +95,16 @@ Press **V** (or the chat button on phones) for Pidgin quick chat.
 - **Houses burn.** Enough explosives (one C4 inside a plaster house, two for stone) set a house on fire: the roof caves in, flames pour out of the door and windows under a column of black smoke, anyone inside catches fire, and after about 35 seconds it is a blackened charcoal shell. Everything is restored at the start of each round.
 - **Call an ambulance (K, or 🚑)** when you are hurt (at least 30 health missing). It costs ₦1,500 of battle money and you can only call one every 2 minutes. It drives in from your base with its siren on; stay where you are and the paramedics heal you to full and add some armour. If you are gone or dead when it arrives, half the fee comes back.
 
+## Underground, domes and tombs
+
+- **Every battlefield has a cemetery:** a low stone wall with a gate, rows of graves with headstones, and a white domed mausoleum.
+- **The domed hall** (green dome, gold finial) has a stairwell in the middle going down into an **underground tunnel**, lit by bulbs, that runs to a **catacomb** of stone tombs under the cemetery and comes back up inside the mausoleum. Bots don't go underground; a car rolling over the tunnel can't hurt you below.
+- **Dig for relics:** hold **E** at a grave (5 seconds) or a tomb (3.5 seconds). You must keep still, so someone has to watch your back. What's inside is decided at the start of each round:
+  - **Golden AK** (40-round, harder hitting AK), **Thunder .50** (anti-materiel rifle, 5x scope, the only gun whose bullets can dent an armoured carrier), **Drum Launcher** (six-shot grenade launcher), **Ancestor's Dane Gun** (12-pellet, two-shot).
+  - **Juggernaut plate** (200 armour) or **Warrior's charm armour** (150 armour and some health).
+  - Graves can also hold a ₦2,500 stash, a life gem, or only old bones. Tombs always hold a relic or armour.
+- Relic guns can't be bought, and you lose them when you die. Every grave is full again next round.
+
 ## Camera views
 
 - **Choose your view** in Settings: **Hands only** (first person, the default) or **Full body** (third person). Switch any time in battle with H, or 🎥 on phones.
@@ -360,6 +370,7 @@ The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, 
 | W / S, A / D, Space (driving) | Throttle / reverse, steer, brake |
 | P / L | Stick a C4 charge / set off your C4 |
 | K | Call an ambulance (costs battle money) |
+| E (hold) | Dig a grave / open a tomb |
 | H / T | Chase cam on/off / scout drone |
 | J | Chat with the business on the advert you are aiming at |
 | V, then 1–6 | Quick chat |
@@ -394,6 +405,7 @@ client/            browser game (Vite)
   src/camera-modes.js  chase cam, driving camera and scout drone
   src/driving.js   driving a vehicle
   src/world/vehicles.js, vehicle-models.js, houses.js   every vehicle model, fire and charred shells, C4, ambulance, burning houses
+  src/world/underworld.js   domed hall, cemetery, mausoleum, graves, catacomb tombs, tunnel lamps
   src/ad-chat.js   aim at an advert to chat with the business
   src/ui/chat.js   chat window and Inbox
   src/modes-client.js  mode HUD: bomb, rounds, waves, quick chat
@@ -405,7 +417,7 @@ client/            browser game (Vite)
 server/
   index.js         HTTP, WebSocket, accounts, lobby, admin API
   match.js         authoritative battle simulation (20 Hz)
-  world-state.js   vehicles (driving, run-overs, damage), burning houses, C4, the ambulance
+  world-state.js   vehicles (driving, run-overs, damage), burning houses, C4, the ambulance, digging graves and tombs
   modes.js         game mode rules (Hold Ground, Gbas Gbos, Plant & Defuse, Campaign)
   bots.js          bot AI (A* pathing, aiming, strafing, grenades, killstreaks)
   ads.js           billboards, bookings, rotation and privacy-safe analytics
@@ -423,7 +435,7 @@ server/
   test.js          simulation tests
   test-ads.js      ad portal end-to-end tests
   test-admin.js    admin panel and push end-to-end tests
-shared/            states, config, map generator, physics and vehicles (driving physics, damage tuning), used by both client and server
+shared/            states, config, map generator, physics, vehicles (driving physics, damage tuning) and the underworld (cemetery, tunnels, loot), used by both client and server
 android-res/       app icon and splash screen for the Android build
 capacitor.config.json, .github/workflows/android.yml   Android app build
 ```

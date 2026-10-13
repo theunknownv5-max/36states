@@ -3,6 +3,7 @@
 // rounded edges), tinted glass, real wheels, lights and bumpers. Forward is -z.
 // charVehicle() turns any of them into a burnt-out black shell.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VEHICLES } from '../../../shared/vehicles.js';
 
 const geoCache = new Map();
@@ -65,6 +66,7 @@ function wheel(g, x, z, r, w, steer = false) {
   rim.userData.tag = 'rim';
   hub.userData.tag = 'rim';
   spin.add(tyre, rim, hub);
+  pivot.userData.wheel = true;
   g.add(pivot);
   g.userData.wheels.push({ pivot, spin, r, steer });
 }
@@ -217,6 +219,7 @@ function apc(g, body) {
   part(turret, boxGeo(0.95, 0.42, 1.1), body, 0, 0.45, 0.05);
   part(turret, cached('mg', () => new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8).rotateX(Math.PI / 2)), M.plastic(), 0, 0.5, -1.15, 'plastic');
   part(turret, cached('mgBox', () => new THREE.BoxGeometry(0.22, 0.2, 0.5)), M.plastic(), 0, 0.5, -0.4, 'plastic');
+  turret.userData.live = true;
   g.add(turret);
   g.userData.turret = turret;
   part(g, cached('hatch', () => new THREE.CylinderGeometry(0.32, 0.32, 0.06, 14)), dark, 0, 2.18, 1.6);
@@ -248,6 +251,7 @@ function ambulance(g) {
   const redL = new THREE.MeshStandardMaterial({ color: '#ff1a1a', emissive: '#ff2a2a', emissiveIntensity: 1 });
   part(bar, boxGeo(0.6, 0.14, 0.3), redL, -0.33, 0, 0, 'light');
   part(bar, boxGeo(0.6, 0.14, 0.3), blue, 0.33, 0, 0, 'light');
+  bar.userData.live = true;
   g.add(bar);
   g.userData.beacons = [redL, blue];
   lights(g, W, L, 0.8);
@@ -257,13 +261,58 @@ function ambulance(g) {
 
 const BUILDERS = { sedan, suv, pickup, danfo, keke, okada, lorry, apc, ambulance };
 
-// A vehicle model: a Group with userData { wheels, type, turret? }.
+// A vehicle model: a Group with userData { wheels, type, turret?, wheelMerged }.
+// Static parts are merged into one mesh per material (a handful of draw calls per vehicle
+// instead of dozens). The wheels also exist merged; the separate spinning ones are shown
+// only while the vehicle moves (setWheelsLive).
 export function buildVehicle(type, colour) {
   const g = new THREE.Group();
   g.userData = { type, wheels: [] };
   const body = paint(colour || VEHICLES[type]?.colours?.[0] || '#cccccc');
   BUILDERS[type](g, body);
+  bake(g);
   return g;
+}
+
+function bake(g) {
+  g.updateMatrixWorld(true);
+  const buckets = new Map();
+  const remove = [];
+  const visit = (o, inWheel) => {
+    if (o.userData.live) return; // turret, light bar: keep as they are
+    const wheel = inWheel || !!o.userData.wheel;
+    if (o.isMesh) {
+      const key = `${o.material.uuid}|${o.userData.tag}|${wheel ? 'w' : ''}`;
+      let geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      if (geo.index) geo = geo.toNonIndexed();
+      for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+      if (!buckets.has(key)) buckets.set(key, { mat: o.material, tag: o.userData.tag, wheel, list: [] });
+      buckets.get(key).list.push(geo);
+      if (!wheel) remove.push(o);
+    }
+    for (const c of o.children) visit(c, wheel);
+  };
+  for (const c of [...g.children]) visit(c, false);
+  for (const o of remove) o.parent.remove(o);
+  g.userData.wheelMerged = [];
+  for (const b of buckets.values()) {
+    const merged = mergeGeometries(b.list, false);
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, b.mat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    m.userData.tag = b.tag;
+    g.add(m);
+    if (b.wheel) g.userData.wheelMerged.push(m);
+  }
+  setWheelsLive(g, false);
+}
+
+export function setWheelsLive(g, live) {
+  if (g.userData.wheelsLive === live) return;
+  g.userData.wheelsLive = live;
+  for (const w of g.userData.wheels) w.pivot.visible = live;
+  for (const m of g.userData.wheelMerged || []) m.visible = !live;
 }
 
 // ---------- burnt and rusted finishes ----------
@@ -350,6 +399,7 @@ export function charVehicle(g, char = charMaterial()) {
     if (tag === 'glass' || tag === 'light' || tag === 'tyre' || tag === 'seat') o.visible = false;
     else o.material = char;
   });
+  setWheelsLive(g, false);
   g.userData.charred = true;
   g.userData.char = char;
   const t = g.userData.turret;
@@ -361,7 +411,8 @@ export function charVehicle(g, char = charMaterial()) {
 export function weatherVehicle(g, rust, hash) {
   // No rust given: sun-faded matte paint instead.
   if (!rust) {
-    const c = g.children[0].material.color.getHexString();
+    const body = g.children.find((o) => o.isMesh && o.userData.tag === 'paint');
+    const c = body ? body.material.color.getHexString() : '888888';
     rust = mat(`faded${c}`, () => new THREE.MeshStandardMaterial({ color: `#${c}`, roughness: 0.88, metalness: 0.2 }));
   }
   g.traverse((o) => {

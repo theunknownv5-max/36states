@@ -158,7 +158,7 @@ class BombMode extends BaseMode {
   }
 
   siteAt(p) {
-    return this.sitesForBomb().find((s) => Math.hypot(p.x - s.x, p.z - s.z) <= s.r);
+    return this.sitesForBomb().find((s) => Math.hypot(p.x - s.x, p.z - s.z) <= s.r && p.y > -1);
   }
 
   startAction(p, kind) {

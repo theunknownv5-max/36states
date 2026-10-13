@@ -4,7 +4,8 @@
 import { VEHICLES, WRECK, HOUSES, C4, AMBULANCE, footprint, insideVehicle, vehicleBlocked, exitSpots, forward } from '../shared/vehicles.js';
 import { moveBox, insideAnyBox } from '../shared/physics.js';
 import { findPath, inWater } from '../shared/map.js';
-import { PLAYER } from '../shared/config.js';
+import { PLAYER, WEAPONS, MONEY } from '../shared/config.js';
+import { DIG, LOOT, GRAVE_LOOT, TOMB_LOOT, rollLoot } from '../shared/underworld.js';
 
 const now = () => Date.now();
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -46,6 +47,10 @@ export class WorldState {
     });
     this.charges = [];
     this.ambulances = [];
+    // Graves and tombs: what each one hides is decided at the start of the round.
+    const rnd = this.m.rng || Math.random;
+    this.graves = map.graves.map((g) => ({ i: g.i, dug: false, loot: rollLoot(g.kind === 'tomb' ? TOMB_LOOT : GRAVE_LOOT, rnd), digger: null }));
+    for (const p of this.m.players?.values() || []) p.dig = null;
   }
 
   // What a player joining mid-battle needs.
@@ -53,7 +58,8 @@ export class WorldState {
     return {
       v: this.vehicles.map((v) => [v.i, r2(v.x), r2(v.z), +v.yaw.toFixed(3), v.state, v.driver || 0]),
       h: this.houses.filter((h) => h.state !== OK).map((h) => [h.i, h.state]),
-      c: this.charges.map((c) => [c.id, ...this.chargePos(c).map(r2), c.owner])
+      c: this.charges.map((c) => [c.id, ...this.chargePos(c).map(r2), c.owner]),
+      g: this.graves.filter((g) => g.dug).map((g) => [g.i, g.loot])
     };
   }
 
@@ -92,7 +98,64 @@ export class WorldState {
       return true;
     }
     if (msg.t === 'amb') return this.callAmbulance(p), true;
+    if (msg.t === 'dig') {
+      if (msg.a === 'start') this.startDig(p, Number(msg.i));
+      else this.stopDig(p, 'stop');
+      return true;
+    }
     return false;
+  }
+
+  // ---------- digging graves and opening tombs ----------
+  startDig(p, i) {
+    const g = this.graves[i];
+    const G = this.map.graves[i];
+    if (!g || !p.human || g.dug || p.veh != null || !this.m.canAct(p)) return;
+    if (g.digger && g.digger !== p.id) return this.m.toast(p, 'Somebody dey dig this one already.', 'bad');
+    if (Math.hypot(p.x - G.x, p.z - G.z) > DIG.reach || Math.abs(p.y - G.y) > 1.3) return;
+    if (p.dig) this.stopDig(p, 'switch');
+    g.digger = p.id;
+    p.dig = { i, since: now(), x: p.x, z: p.z };
+    const secs = G.kind === 'tomb' ? DIG.tombSecs : DIG.graveSecs;
+    this.m.send(p, { t: 'dig', i, secs });
+    this.m.broadcastNear(p, { t: 'digging', id: p.id, i, on: true }, 45);
+  }
+
+  stopDig(p, reason) {
+    if (!p.dig) return;
+    const g = this.graves[p.dig.i];
+    if (g && g.digger === p.id) g.digger = null;
+    this.m.broadcastNear(p, { t: 'digging', id: p.id, i: p.dig.i, on: false }, 45);
+    p.dig = null;
+    this.m.send(p, { t: 'dig', i: -1, reason });
+  }
+
+  finishDig(p) {
+    const g = this.graves[p.dig.i];
+    const G = this.map.graves[p.dig.i];
+    p.dig = null;
+    g.dug = true;
+    g.digger = null;
+    const L = LOOT[g.loot];
+    if (L.kind === 'weapon') {
+      this.m.giveWeapon(p, g.loot);
+      p.slot = WEAPONS[g.loot].slot;
+      p.reloadUntil = 0;
+    } else if (L.kind === 'armor') {
+      p.armor = Math.max(p.armor || 0, L.armor);
+      p.helmet = true;
+      if (L.heal) p.health = Math.min(PLAYER.maxHealth, p.health + L.heal);
+    } else if (L.kind === 'money') p.money = Math.min(MONEY.max, p.money + DIG.money);
+    else if (L.kind === 'gems') p.profile.gems += 1;
+    this.m.broadcast({ t: 'grave', i: g.i, by: p.name, id: p.id, loot: g.loot });
+    this.m.send(p, { t: 'dig', i: -1, reason: 'done' });
+    if (L.kind === 'none') this.m.toast(p, `${G.kind === 'tomb' ? 'The tomb' : 'The grave'} empty. ${L.icon} Na only old bones dey inside.`, 'bad');
+    else {
+      this.m.toast(p, `${L.icon} You dig out: ${L.name}!${L.kind === 'weapon' ? ' Relic gun: you go lose am if you die.' : ''}`, 'streak');
+      this.m.addXP(p, DIG.xp);
+    }
+    this.m.mission?.(p, 'digs');
+    this.m.syncMe(p);
   }
 
   enter(p, i) {
@@ -174,12 +237,16 @@ export class WorldState {
 
   // ---------- damage ----------
   // A bullet hit vehicle box b. Returns how much of the bullet carries on (0 = stopped).
-  bulletHit(b, dmg, by) {
+  bulletHit(b, dmg, by, weapon) {
     const v = this.vehicleOfBox(b);
     if (!v) return 0;
     const d = VEHICLES[v.type];
     if (v.state >= BURNING) return 0;
-    if (d.armored) return 0; // sparks off the armour
+    if (d.armored) {
+      // Sparks off the armour; only the Thunder .50 relic bites into it.
+      if (WEAPONS[weapon]?.antiArmor) this.damageVehicle(v, dmg * 0.35, by, weapon);
+      return 0;
+    }
     this.damageVehicle(v, dmg * WRECK.bulletMult * (by && !by.human ? WRECK.botBulletMult : 1), by, 'bullet');
     return d.open ? 1 : WRECK.passMult;
   }
@@ -364,7 +431,7 @@ export class WorldState {
         } else if (Math.abs(v.speed) > WRECK.runOverMin) {
           // Running people over.
           for (const o of players.values()) {
-            if (o === p || o.veh != null || (o.status !== 'alive' && o.status !== 'downed') || o.y > 1.4) continue;
+            if (o === p || o.veh != null || (o.status !== 'alive' && o.status !== 'downed') || o.y > 1.4 || o.y < -1) continue;
             if (!insideVehicle(v.type, v.x, v.z, v.yaw, o.x, o.z, 0.35)) continue;
             if (t - (o.runOverAt || 0) < 700) continue;
             o.runOverAt = t;
@@ -393,7 +460,7 @@ export class WorldState {
       }
       // Anyone inside a burning house catches fire.
       for (const o of players.values()) {
-        if (o.status !== 'alive' || o.y > H.h) continue;
+        if (o.status !== 'alive' || o.y > H.h || o.y < -1) continue;
         if (Math.abs(o.x - H.x) < H.w / 2 && Math.abs(o.z - H.z) < H.d / 2) this.ignite(o, h.lastHit);
       }
     }
@@ -406,6 +473,16 @@ export class WorldState {
         this.m.broadcast({ t: 'c4', a: 'gone', id: c.id });
         this.m.explode(x, y, z, C4.blast, C4.dmg, players.get(c.owner) || null, 'c4');
       }
+    }
+    // Digging: keep still until it is done.
+    for (const p of players.values()) {
+      if (!p.dig) continue;
+      const G = this.map.graves[p.dig.i];
+      if (p.status !== 'alive' || p.veh != null || this.m.chatting(p) || Math.hypot(p.x - p.dig.x, p.z - p.dig.z) > 0.9) {
+        this.stopDig(p, 'moved');
+        continue;
+      }
+      if (t - p.dig.since >= (G.kind === 'tomb' ? DIG.tombSecs : DIG.graveSecs) * 1000) this.finishDig(p);
     }
     // Ambulances arriving.
     for (const a of this.ambulances) {
@@ -432,7 +509,7 @@ export class WorldState {
 
   scorch(x, z, r, secs, by) {
     for (const o of this.m.players.values()) {
-      if (o.status !== 'alive' || o.veh != null || o.y > 2.5) continue;
+      if (o.status !== 'alive' || o.veh != null || o.y > 2.5 || o.y < -1) continue;
       if (Math.hypot(o.x - x, o.z - z) < r) this.ignite(o, by, secs);
     }
   }

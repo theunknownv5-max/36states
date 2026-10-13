@@ -214,6 +214,7 @@ export class Arena {
         }
         geo.attributes.position.needsUpdate = true;
         rain.position.set(cam.position.x, 0, cam.position.z);
+        rain.visible = cam.position.y > -0.6; // no rain in the tunnel
       }
     });
   }
@@ -231,6 +232,7 @@ export class Arena {
     this.scene.add(pts);
     this.animated.push({
       update: (dt, t, cam) => {
+        pts.visible = cam.position.y > -0.6;
         pts.position.set(cam.position.x + Math.sin(t * 0.1) * 3, 0, cam.position.z + t * 0.4 - Math.floor((t * 0.4) / 50) * 50 - 25);
       }
     });
@@ -260,12 +262,23 @@ export class Arena {
     // so the ground never looks like one repeated tile.
     const patchTex = T.groundPatchTexture(map.biome).map;
     const mask = T.maskTexture();
+    // Stairwells going underground are cut out of the ground.
+    const opens = (map.openings || []).slice(0, 4).map((o) => new THREE.Vector4(o.x0, o.z0, o.x1, o.z1));
+    while (opens.length < 4) opens.push(new THREE.Vector4(1e5, 1e5, 1e5, 1e5));
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uPatch = { value: patchTex };
       sh.uniforms.uMask = { value: mask };
-      sh.fragmentShader = 'uniform sampler2D uPatch;\nuniform sampler2D uMask;\n' + sh.fragmentShader.replace(
+      sh.uniforms.uOpen = { value: opens };
+      sh.fragmentShader = 'uniform sampler2D uPatch;\nuniform sampler2D uMask;\nuniform vec4 uOpen[4];\n' + sh.fragmentShader.replace(
         '#include <map_fragment>',
-        `#ifdef USE_MAP
+        `{
+          vec2 wp = vMapUv * 9.0;
+          for (int k = 0; k < 4; k++) {
+            vec4 o = uOpen[k];
+            if (wp.x > o.x && wp.x < o.z && wp.y > o.y && wp.y < o.w) discard;
+          }
+        }
+        #ifdef USE_MAP
           vec4 sampledDiffuseColor = texture2D( map, vMapUv );
           vec3 patchCol = texture2D( uPatch, vMapUv * 1.31 + 0.17 ).rgb;
           float m = texture2D( uMask, vMapUv * 0.043 ).r;
@@ -370,7 +383,16 @@ export class Arena {
       const k = b.kind;
       // Houses that can burn get their own meshes (walls, roof) so each can char on its own.
       const HB = b.house !== undefined ? houseBuilder(b) : B;
-      if (b.prop === 'drum' || b.prop === 'wreck' || k === 'adwall' || k === 'vehicle') continue; // custom meshes
+      if (b.prop === 'drum' || b.prop === 'wreck' || k === 'adwall' || k === 'vehicle' || b.headstone || b.tomb) continue; // custom meshes
+      if (k === 'tunnel') {
+        // Tunnel ceilings sit just under the ground surface so they never flicker through it.
+        HB.add('stone', b.ceil ? { ...b, y1: -0.05 } : b, 2.5, b.floor ? [0.42, 0.4, 0.38] : [0.55, 0.52, 0.48]);
+        continue;
+      }
+      if (k === 'stairs') {
+        HB.add('stone', b, 1.2, [0.7, 0.67, 0.62]);
+        continue;
+      }
       if (k === 'perimeter') HB.add('perimeter', b, 4, [0.85, 0.84, 0.8]);
       else if (k === 'concrete') HB.add(b.tower ? 'facade' : 'concrete', b, b.tower ? 12 : 3, b.tower ? [1, 1, 1] : [0.95, 0.94, 0.92]);
       else if (k === 'sandbag') HB.add('sandbag', b, 1.8);
@@ -431,7 +453,7 @@ export class Arena {
         charVehicle(g, this.charMat ||= charMaterial());
         g.position.y = -0.2;
       } else weatherVehicle(g, h2 < 0.7 ? (this.wreckRust ||= Object.assign(rust.clone(), { vertexColors: false })) : null, h2);
-      for (const w of g.userData.wheels) w.spin.scale.y = 0.82; // flat tyres
+      for (const m of g.userData.wheelMerged) m.scale.y = 0.9; // flat tyres, sitting low
       g.position.set(cx, g.position.y, cz);
       g.rotation.set((h - 0.5) * 0.06, (along ? Math.PI / 2 : 0) + (h2 > 0.5 ? Math.PI : 0) + (h - 0.5) * 0.1, (h2 - 0.5) * 0.08);
       g.traverse((o) => o.isMesh && (o.matrixAutoUpdate = false, o.updateMatrix()));

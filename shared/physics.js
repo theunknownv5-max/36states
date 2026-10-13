@@ -23,6 +23,17 @@ export function buildIndex(boxes, half) {
   return { boxes, cells, half, key, stamp: new Uint32Array(boxes.length), frame: 1 };
 }
 
+// Openings in the ground (stairwells, tunnels): no ground plane there, you can go below 0.
+export function holeAt(index, x, z) {
+  const holes = index.holes;
+  if (!holes) return false;
+  for (let i = 0; i < holes.length; i++) {
+    const h = holes[i];
+    if (x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1) return true;
+  }
+  return false;
+}
+
 // Move (or resize) one box and keep the grid index right: vehicles drive, so their
 // collision boxes move. Only the cells the box left or entered change.
 export function moveBox(index, i, x0, z0, x1, z1) {
@@ -106,10 +117,10 @@ export function raycast(index, ox, oy, oz, dx, dy, dz, maxT, ignore = -1) {
   let best = maxT;
   let hitBox = -1;
   let exit = 0;
-  // Ground plane at y = 0.
+  // Ground plane at y = 0 (except over openings like stairwells).
   if (dy < -1e-6) {
     const tg = -oy / dy;
-    if (tg >= 0 && tg < best) {
+    if (tg >= 0 && tg < best && !holeAt(index, ox + dx * tg, oz + dz * tg)) {
       best = tg;
       hitBox = -2;
     }
@@ -268,7 +279,7 @@ export function moveBody(body, wishX, wishZ, dt, index, half, jump = false) {
   let ny = body.y + body.vy * dt;
   const hits = overlapping(body.x, ny, body.z);
   if (body.vy <= 0) {
-    let floor = 0;
+    let floor = holeAt(index, body.x, body.z) ? -60 : 0;
     for (const b of hits) if (b.y1 <= body.y + 0.05 + PLAYER.stepUp) floor = Math.max(floor, b.y1);
     // Also stand on a box directly below even if we are not overlapping it yet.
     query(index, body.x - r, body.z - r, body.x + r, body.z + r, list);

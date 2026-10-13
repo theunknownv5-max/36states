@@ -30,6 +30,8 @@ import { AdChat } from './ad-chat.js';
 import { Vehicles, Charges, Ambulances } from './world/vehicles.js';
 import { Houses } from './world/houses.js';
 import { Driving } from './driving.js';
+import { Underworld } from './world/underworld.js';
+import { DIG, LOOT } from '../../shared/underworld.js';
 import { VEHICLES, C4, AMBULANCE } from '../../shared/vehicles.js';
 
 const WEAPON_IDS = Object.keys(WEAPONS); // same order as the server
@@ -102,6 +104,9 @@ export class Game {
     this.ambulances = new Ambulances(scene);
     this.driving ||= new Driving(this);
     this.driving.stop();
+    this.underworld = new Underworld(scene, this.map, this.arena);
+    this.digging = null;
+    this.diggers = new Map();
     this.applyWorld(info.world);
     this.vm = new ViewModel(scene);
     this.vm.scene.environment = scene.environment;
@@ -398,6 +403,34 @@ export class Game {
       if (this.me) this.hud.nades(this.me);
     });
     on('amb', (m) => this.ambulances.add(m));
+    // Digging graves and opening tombs.
+    on('dig', (m) => {
+      if (m.i >= 0) this.digging = { i: m.i, start: performance.now(), secs: m.secs };
+      else {
+        if (this.digging && m.reason === 'moved') this.hud.toast('You move: digging don stop.', 'bad', 1400);
+        this.digging = null;
+      }
+    });
+    on('digging', (m) => {
+      if (m.on) this.diggers.set(m.id, m.i);
+      else this.diggers.delete(m.id);
+    });
+    on('grave', (m) => {
+      this.diggers.delete(m.id);
+      this.underworld.open(m.i, m.loot);
+      const G = this.map.graves[m.i];
+      const L = LOOT[m.loot];
+      if (G.kind === 'tomb') audio.tombOpen?.({ x: G.x, y: G.y + 0.8, z: G.z });
+      if (m.id === this.myId) {
+        if (L.kind !== 'none') {
+          audio.relic?.();
+          this.hud.callout(`${L.icon} ${L.name.toUpperCase()}`);
+          $('tint').className = 'healed';
+          setTimeout(() => $('tint').className === 'healed' && ($('tint').className = ''), 900);
+          for (let k = 0; k < 30; k++) this.fx.sparks.spawn(new THREE.Vector3(G.x, G.y + 0.8, G.z), { colour: '#ffd66a', size: 0.08, life: 1.2, v: new THREE.Vector3((Math.random() - 0.5) * 3, 2 + Math.random() * 3, (Math.random() - 0.5) * 3), g: 3 });
+        }
+      } else if (L.kind === 'weapon') this.hud.toast(`${m.by} don dig out ${L.icon} ${L.name}!`, 'info', 2600);
+    });
     on('ambHeal', (m) => {
       if (m.pid !== this.myId) return;
       audio.heal(null);
@@ -468,6 +501,9 @@ export class Game {
       this.houses.reset();
       this.charges.clear();
       this.ambulances.clear();
+      this.underworld.reset();
+      this.digging = null;
+      this.diggers.clear();
       this.applyWorld(m.world);
       this.siteMarkers.apply(m.sites);
       this.score = m.score;
@@ -483,6 +519,7 @@ export class Game {
     this.vehicles.apply(w);
     this.houses.apply(w.h);
     for (const [id, x, y, z, owner] of w.c || []) this.charges.plant({ id, pos: [x, y, z], veh: null, by: owner }, this.myId);
+    for (const [i, loot] of w.g || []) this.underworld.open(i, loot, true);
   }
 
   posOf(id) {
@@ -649,7 +686,10 @@ export class Game {
     if (!down) {
       if (code === 'Tab') this.toggleScore(false);
       if (code === 'Mouse0') this.local.trigger = true;
-      if (code === 'KeyE') this.modes.useAction(false);
+      if (code === 'KeyE') {
+        this.modes.useAction(false);
+        if (this.digging) this.net.send({ t: 'dig', a: 'stop' });
+      }
       return;
     }
     if (code === 'unlock') return;
@@ -723,7 +763,9 @@ export class Game {
         if (this.driving.active) return this.net.send({ t: 'veh', a: 'exit' });
         if (this.modes.useAction(true)) return;
         if (this.downedMate()) return this.tryRevive();
-        return this.enterVehicle();
+        if (this.vehicles.nearest(this.body.x, this.body.z)) return this.enterVehicle();
+        if (this.nearGrave) return this.net.send({ t: 'dig', a: 'start', i: this.nearGrave.g.i });
+        return;
       case 'KeyP':
         return this.plantC4();
       case 'KeyL':
@@ -1208,6 +1250,22 @@ export class Game {
       this.yaw = lerpAngle(this.yaw, this.driving.v.yaw, Math.min(1, dt * 1.6));
       this.pitch += (-0.12 - this.pitch) * Math.min(1, dt * 1.2);
     }
+    // Graves and tombs: which one you could dig, dirt flying where someone digs.
+    this.underworld.update(dt);
+    this.nearGrave = this.status === 'alive' && !this.driving.active ? this.underworld.near(this.body.x, this.body.y, this.body.z, DIG.reach) : null;
+    const digs = [...this.diggers.values()];
+    if (this.digging) digs.push(this.digging.i);
+    this.digT = (this.digT || 0) + dt;
+    if (digs.length && this.digT > 0.45) {
+      this.digT = 0;
+      for (const i of digs) {
+        const G = this.map.graves[i];
+        if (!G) continue;
+        const p = new THREE.Vector3(G.x, G.y + 0.3, G.z);
+        for (let k = 0; k < 6; k++) this.fx.dust.spawn(p, { colour: G.kind === 'tomb' ? '#9a948a' : '#6b4f35', size: 0.25, life: 0.9, v: new THREE.Vector3((Math.random() - 0.5) * 2, 2 + Math.random() * 1.5, (Math.random() - 0.5) * 2), g: 6, opacity: 0.9 });
+        audio.dig?.({ x: G.x, y: G.y + 0.5, z: G.z }, G.kind === 'tomb');
+      }
+    }
     // Vehicle prompt and touch button.
     const near = !this.driving.active && this.status === 'alive' ? this.vehicles.nearest(this.body.x, this.body.z) : null;
     const key = near ? `in${near.i}` : this.driving.active ? 'out' : '';
@@ -1474,6 +1532,11 @@ export class Game {
       else if (this.inBuyZone() && sNow < (m.buyUntil || 0)) prompt = `<kbd>${isTouch() ? '₦' : 'B'}</kbd> Buy weapon · ${Math.ceil((m.buyUntil - sNow) / 1000)}s`;
     }
     if (!prompt && st === 'alive') prompt = this.modes.prompt();
+    if (st === 'alive' && this.digging) {
+      const pct = Math.min(100, ((now - this.digging.start) / (this.digging.secs * 1000)) * 100);
+      const tomb = this.map.graves[this.digging.i]?.kind === 'tomb';
+      prompt = `${tomb ? 'Pushing the lid' : 'Digging'}… <span class="dig-bar"><i style="width:${pct.toFixed(0)}%"></i></span>`;
+    } else if (!prompt && st === 'alive' && this.nearGrave && !this.driving.active) prompt = `<kbd>E</kbd> Hold to ${this.nearGrave.g.kind === 'tomb' ? 'open the tomb' : 'dig the grave'}`;
     if (!this.artilleryAim) this.hud.prompt(prompt);
     if (isTouch()) this.syncTouch(st, m);
     // "Click to fight" whenever the mouse is free during play (desktop only).
@@ -1527,7 +1590,7 @@ export class Game {
     const drone = this.cams?.mode === 'drone';
     const show = !this.ended && !this.menus.buy && !this.menus.pause && !this.menus.score && !this.adChat?.open && (drone || st === 'alive' || st === 'spirit' || st === 'downed');
     const combat = st === 'alive' && !drone;
-    const use = combat && (!!this.downedMate() || !!this.modes.availableAction());
+    const use = combat && (!!this.downedMate() || !!this.modes.availableAction() || !!this.nearGrave || !!this.digging);
     const med = combat && m.medkit > 0 && m.health < 100;
     const pill = combat && m.bloodpill > 0 && m.health < 100;
     const c4 = combat && m.c4 > 0 && !this.driving.active;

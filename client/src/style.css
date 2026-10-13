@@ -2637,3 +2637,5 @@ body.touch .veh-hud { bottom: auto; top: 58px; grid-template-columns: auto 110px
 .tb.t-c4 { right: 272px; bottom: 96px; }
 .tb.t-det { right: 272px; bottom: 164px; background: rgba(255, 90, 40, 0.45); }
 .tb.t-amb { right: 272px; bottom: 236px; background: rgba(255, 255, 255, 0.28); }
+.dig-bar { display: inline-block; width: 120px; height: 8px; margin-left: 8px; vertical-align: middle; border-radius: 4px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+.dig-bar i { display: block; height: 100%; background: linear-gradient(90deg, #c9a24a, #ffe08a); }

@@ -16,7 +16,11 @@ function materials() {
     brass: new THREE.MeshStandardMaterial({ color: '#b5872c', roughness: 0.3, metalness: 1 }),
     glass: new THREE.MeshStandardMaterial({ color: '#0a1a22', roughness: 0.05, metalness: 0.9, emissive: '#0a2a30', emissiveIntensity: 0.3 }),
     blade: new THREE.MeshStandardMaterial({ color: '#b9bec2', roughness: 0.25, metalness: 0.95 }),
-    rocket: new THREE.MeshStandardMaterial({ color: '#4d5a2f', roughness: 0.6, metalness: 0.3 })
+    rocket: new THREE.MeshStandardMaterial({ color: '#4d5a2f', roughness: 0.6, metalness: 0.3 }),
+    gold: new THREE.MeshStandardMaterial({ color: '#d9a932', roughness: 0.22, metalness: 1, emissive: '#3a2a00', emissiveIntensity: 0.25 }),
+    goldDark: new THREE.MeshStandardMaterial({ color: '#8a6416', roughness: 0.3, metalness: 1 }),
+    bone: new THREE.MeshStandardMaterial({ color: '#e2d6b8', roughness: 0.6 }),
+    bead: new THREE.MeshStandardMaterial({ color: '#c0281c', roughness: 0.35, metalness: 0.2 })
   };
   return mats;
 }
@@ -184,6 +188,69 @@ function danegun() {
   return g;
 }
 
+// ---------- relics dug out of graves and tombs ----------
+// Golden AK: an AK dipped in gold, with darker gold furniture.
+function goldak() {
+  const M = materials();
+  const g = rifle({ furniture: 'wood', stock: 'wood', mag: 'curve', rec: 0.36, barrel: 0.32 });
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.material === M.steel || o.material === M.blued) o.material = M.gold;
+    else if (o.material === M.wood || o.material === M.darkwood) o.material = M.goldDark;
+  });
+  return g;
+}
+
+// Thunder .50: long, heavy anti-materiel rifle with a big scope, muzzle brake and bipod.
+function barrett() {
+  const M = materials();
+  const g = rifle({ furniture: 'poly', stock: 'poly', mag: 'box', rec: 0.5, barrel: 0.72, handguard: 0.32, scope: true, bipod: true });
+  const brake = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.045, 0.12), M.steel);
+  brake.position.copy(g.userData.muzzle).add(new THREE.Vector3(0, 0, 0.04));
+  g.add(brake);
+  g.userData.muzzle.z -= 0.08;
+  g.scale.setScalar(1.08);
+  g.userData.muzzle.multiplyScalar(1.08);
+  return g;
+}
+
+// Drum Launcher: six-shot revolving grenade launcher.
+function drumLauncher() {
+  const M = materials();
+  const g = new THREE.Group();
+  cyl(g, M.olive, 0.05, 0.05, 0.38, 0, 0.03, -0.42, 14); // barrel
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.2, 12), M.steel);
+  drum.rotation.x = Math.PI / 2;
+  drum.position.set(0, 0.0, -0.12);
+  g.add(drum);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    cyl(g, M.blued, 0.022, 0.022, 0.205, Math.cos(a) * 0.055, Math.sin(a) * 0.055, -0.12, 8);
+  }
+  box(g, M.poly, 0.036, 0.11, 0.045, 0, -0.09, 0.05, -0.3); // grip
+  box(g, M.poly, 0.03, 0.09, 0.04, 0, -0.07, -0.33, -0.2); // fore grip
+  box(g, M.olive, 0.05, 0.06, 0.26, 0, 0.0, 0.2); // stock
+  box(g, M.steel, 0.025, 0.05, 0.06, 0, 0.09, -0.2); // sight
+  g.userData = { muzzle: new THREE.Vector3(0, 0.03, -0.62), eject: null, mag: drum, sightY: 0.1, scope: false };
+  return g;
+}
+
+// Ancestor's Dane Gun: the old hunting gun, wrapped in beads and bone, brass bands.
+function ancestral() {
+  const M = materials();
+  const g = danegun();
+  for (const z of [-0.2, -0.42, -0.7]) cyl(g, M.brass, 0.02, 0.02, 0.03, 0, 0.035, z, 10);
+  for (let k = 0; k < 9; k++) {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 5), k % 3 === 0 ? M.bone : M.bead);
+    b.position.set(0.028, -0.03 + Math.sin(k) * 0.01, -0.05 - k * 0.025);
+    g.add(b);
+  }
+  const charm = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.07, 6), M.bone);
+  charm.position.set(0.03, -0.07, -0.1);
+  g.add(charm);
+  return g;
+}
+
 // Two guns, one per hand (dual wield). The right gun keeps the usual muzzle; the left one's
 // muzzle is muzzle2. Children: [right, left].
 function dual(make, spread) {
@@ -228,6 +295,14 @@ export function buildGun(id) {
       return rifle({ furniture: 'wood', stock: 'wood', mag: 'straight', magLen: 0.12, rec: 0.38, barrel: 0.55, handguard: 0.26, scope: true });
     case 'rpg':
       return rpg();
+    case 'goldak':
+      return goldak();
+    case 'barrett':
+      return barrett();
+    case 'gl':
+      return drumLauncher();
+    case 'ancestral':
+      return ancestral();
     case 'danegun':
       return danegun();
     case 'hawk':

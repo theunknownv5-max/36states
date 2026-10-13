@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { VEHICLES, WRECK, footprint, forward } from '../../../shared/vehicles.js';
 import { moveBox } from '../../../shared/physics.js';
 import { NET } from '../../../shared/config.js';
-import { buildVehicle, charVehicle, charMaterial } from './vehicle-models.js';
+import { buildVehicle, charVehicle, charMaterial, setWheelsLive } from './vehicle-models.js';
 import * as T from '../core/textures.js';
 
 const lerpAngle = (a, b, k) => {
@@ -146,8 +146,10 @@ export class Vehicles {
         v.steer += (Math.max(-1, Math.min(1, (-turn / Math.max(1.5, Math.abs(v.speed))) * 3)) - v.steer) * Math.min(1, dt * 6);
         if (sNow - v.seen > 1000) v.speed = 0;
       }
-      // Wheels roll and the front ones steer.
-      if (Math.abs(v.speed) > 0.05 && v.state < 2)
+      // Wheels roll and the front ones steer (the separate wheels only exist while moving).
+      const rolling = Math.abs(v.speed) > 0.05 && v.state < 2;
+      setWheelsLive(v.g, rolling);
+      if (rolling)
         for (const w of v.g.userData.wheels) {
           w.spin.rotation.x -= (v.speed * dt) / w.r;
           if (w.steer) w.pivot.rotation.y = v.steer * 0.45;
@@ -292,6 +294,7 @@ export class Ambulances {
       const yaw = Math.atan2(-tan.x, -tan.z) + (back ? Math.PI : 0);
       a.g.rotation.y = yaw;
       const moving = u > 0 && u < 1;
+      setWheelsLive(a.g, moving);
       for (const w of a.g.userData.wheels) if (moving) w.spin.rotation.x -= dt * 14;
       const [r, b] = a.g.userData.beacons;
       const on = Math.floor(t * 6) % 2 === 0;
