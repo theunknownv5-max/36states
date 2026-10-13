@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Proof of Duty · Advertiser Command</title>
+    <title>Proof of Duty · Super Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
     <style>
       :root {
@@ -86,13 +86,46 @@
       @media (max-width: 800px) { .review { grid-template-columns: 1fr; } }
       .review-l { background: rgba(79, 157, 255, 0.14); color: var(--blue); }
       .unpaid { background: rgba(232, 178, 58, 0.14); color: var(--gold); }
+      .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 24px; border-bottom: 1px solid var(--line); background: #0d110d; position: sticky; top: 64px; z-index: 4; }
+      .tabs button { background: transparent; color: var(--ink); border: 1px solid var(--line); text-transform: none; letter-spacing: 0; }
+      .tabs button.on { background: var(--gold); color: #171000; border-color: var(--gold); }
+      .tabs button[hidden] { display: none; }
+      @media (max-width: 640px) {
+        .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 8px 12px; top: 0; scrollbar-width: none; }
+        .tabs button { flex: 0 0 auto; white-space: nowrap; }
+        .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+        .kpi b { font-size: 22px; }
+      }
+      .cnt { font-style: normal; background: var(--red); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
+      textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: #0c0f0c; color: var(--ink); font: 600 15px 'Rajdhani'; }
+      .chart { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; height: 170px; align-items: end; }
+      .chart .col { display: flex; gap: 2px; align-items: end; height: 100%; position: relative; }
+      .chart .col i { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; }
+      .chart .col small { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font: 500 10px 'JetBrains Mono'; color: var(--muted); }
+      .legend { display: flex; gap: 14px; margin-top: 24px; font-size: 13px; color: var(--muted); }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+      .chatlog { max-height: 460px; overflow: auto; margin-top: 10px; font-size: 14px; }
+      .chatlog div { padding: 5px 0; border-bottom: 1px solid var(--line); }
+      .chatlog b { color: var(--gold); }
+      .tgroup { margin-top: 10px; }
+      .tgroup h3 { margin: 10px 0 6px; font: 700 13px 'Rajdhani'; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+      .tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+      .tgrid label { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); }
+      .tgrid small { color: var(--muted); }
+      .changed input { border-color: var(--gold); }
+      .rep { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+      .rep.closed { opacity: 0.5; }
+      .battle { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+      .battle h3 { margin: 0 0 6px; font: 700 17px 'Rajdhani'; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      tr.click { cursor: pointer; }
+      tr.click:hover { background: rgba(232, 178, 58, 0.05); }
       .pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
     </style>
   </head>
   <body>
     <div id="login" class="card">
       <div class="logo">PROOF OF <span>DUTY</span></div>
-      <p class="note">Advertiser command centre</p>
+      <p class="note">Super admin · players, battles, moderation, notifications, settings and ads</p>
       <label for="key">Admin key</label>
       <input id="key" type="password" placeholder="ADMIN_KEY from the server" />
       <div class="row" style="margin-top: 14px"><button id="loginBtn">Sign in</button></div>
@@ -101,11 +134,143 @@
 
     <div id="app" hidden>
       <header>
-        <div class="logo">PROOF OF <span>DUTY</span><small>Advertiser command</small></div>
-        <div class="row"><button class="ghost" id="csvBtn">Export report (CSV)</button><button class="ghost" id="logoutBtn">Sign out</button></div>
+        <div class="logo">PROOF OF <span>DUTY</span><small>Super admin</small></div>
+        <div class="row"><span class="note" id="whoami"></span><button class="ghost" id="csvBtn" data-tabonly="ads">Ad report (CSV)</button><button class="ghost" id="logoutBtn">Sign out</button></div>
       </header>
+      <nav class="tabs" id="tabs">
+        <button data-tab="dash" class="on">📊 Dashboard</button>
+        <button data-tab="players">👤 Players</button>
+        <button data-tab="battles">⚔ Live battles</button>
+        <button data-tab="mod">🛡 Moderation <i class="cnt" id="repCount" hidden></i></button>
+        <button data-tab="notify">🔔 Notifications</button>
+        <button data-tab="settings">⚙ Game settings</button>
+        <button data-tab="ads">🪧 Ads & billboards</button>
+        <button data-tab="team">👥 Team & audit</button>
+      </nav>
       <main>
-        <section class="card">
+        <!-- ===== Dashboard ===== -->
+        <section class="card" data-tab="dash">
+          <h2>Right now</h2>
+          <div class="kpis" id="dKpisTop"></div>
+          <div class="status" id="dStatus"></div>
+        </section>
+        <section class="card" data-tab="dash">
+          <h2>Last 14 days</h2>
+          <div class="chart" id="dChart"></div>
+          <div class="legend"><span><i style="background:#e8b23a"></i>Active players</span><span><i style="background:#4f9dff"></i>Battles joined</span><span><i style="background:#4fd18b"></i>New players</span></div>
+        </section>
+        <section class="two" data-tab="dash">
+          <div class="card"><h2>Today's top modes</h2><div class="bars" id="dModes"></div><h2 style="margin-top:14px">Today's top states</h2><div class="bars" id="dStates2"></div></div>
+          <div class="card"><h2>Players by rank</h2><div class="bars" id="dRanks"></div></div>
+        </section>
+
+        <!-- ===== Players ===== -->
+        <section class="card" data-tab="players">
+          <h2>Players</h2>
+          <div class="row"><input id="pQ" placeholder="Search name or player ID" style="max-width:280px" /><select id="pFilter" style="max-width:170px"><option value="">Everyone</option><option value="online">Online now</option><option value="accounts">With account</option><option value="banned">Banned</option><option value="muted">Muted</option></select><select id="pSort" style="max-width:170px"><option value="lastSeen">Last seen</option><option value="xp">XP</option><option value="kills">Kills</option><option value="gems">Gems</option><option value="created">Newest</option></select><button class="ghost" id="pCsv">Export CSV</button><span class="note" id="pTotal"></span></div>
+          <table style="margin-top:10px"><thead><tr><th></th><th>Soldier</th><th>Rank</th><th>XP</th><th>Gems</th><th>K / D</th><th>Last seen</th><th>Status</th></tr></thead><tbody id="pRows"></tbody></table>
+        </section>
+        <section class="card" data-tab="players" id="pDetail" hidden></section>
+
+        <!-- ===== Battles ===== -->
+        <section class="card" data-tab="battles">
+          <h2>Live battles</h2>
+          <div id="bList"></div>
+        </section>
+
+        <!-- ===== Moderation ===== -->
+        <section class="card" data-tab="mod">
+          <h2>Player reports</h2>
+          <div id="rList"></div>
+        </section>
+        <section class="card" data-tab="mod">
+          <h2>Battle chat</h2>
+          <div class="row"><input id="cQ" placeholder="Search words or names" style="max-width:300px" /></div>
+          <div id="cList" class="chatlog"></div>
+        </section>
+        <section class="card" data-tab="mod">
+          <h2>Chats between players and businesses</h2>
+          <div id="convList"></div>
+        </section>
+
+        <!-- ===== Notifications ===== -->
+        <section class="card" data-tab="notify">
+          <h2>Send a notification</h2>
+          <div class="grid">
+            <div><label>Title</label><input id="nTitle" maxlength="80" placeholder="e.g. Double XP weekend don land!" /></div>
+            <div><label>Link (optional)</label><input id="nUrl" placeholder="/ or https://…" /></div>
+          </div>
+          <label>Message</label><textarea id="nBody" maxlength="400" rows="3" placeholder="What you want to tell your soldiers"></textarea>
+          <div class="grid">
+            <div><label>Who</label><select id="nTarget"><option value="all">Everyone</option><option value="inactive">Players who have not played for a while</option><option value="player">One player (ID)</option></select></div>
+            <div id="nDaysWrap" hidden><label>Not played for (days)</label><input id="nDays" type="number" min="1" value="3" /></div>
+            <div id="nPidWrap" hidden><label>Player ID</label><input id="nPid" placeholder="12-letter ID from Players" /></div>
+          </div>
+          <div class="allrow"><input type="checkbox" id="nPush" checked /> <span>Phone/browser notification (for players who turned it on)</span></div>
+          <div class="allrow"><input type="checkbox" id="nInApp" checked /> <span>Show inside the game (lobby bell + pop-up for players online now)</span></div>
+          <div class="row"><button id="nSend">Send</button><span class="msg" id="nMsg"></span></div>
+          <p class="note" id="nDevices"></p>
+        </section>
+        <section class="two" data-tab="notify">
+          <div class="card">
+            <h2>Lobby announcement banner</h2>
+            <label>Text</label><input id="aText" maxlength="200" placeholder="e.g. New map update tonight 9pm" />
+            <div class="grid"><div><label>Style</label><select id="aKind"><option value="info">Info</option><option value="event">Event (gold)</option><option value="warn">Warning (red)</option></select></div><div><label>Hours (0 = until cleared)</label><input id="aHours" type="number" min="0" value="0" /></div></div>
+            <div class="row" style="margin-top:10px"><button id="aSave">Show banner</button><button class="ghost" id="aClear">Clear</button><span class="msg" id="aMsg"></span></div>
+          </div>
+          <div class="card">
+            <h2>Instant message to everyone online</h2>
+            <label>Text</label><input id="bText" maxlength="160" placeholder="Pops up in every lobby and battle right now" />
+            <div class="row" style="margin-top:10px"><button id="bSend">Broadcast now</button><span class="msg" id="bMsg"></span></div>
+          </div>
+        </section>
+        <section class="card" data-tab="notify">
+          <h2>Sent</h2>
+          <table><thead><tr><th>When</th><th>Title</th><th>Who</th><th>Pushed</th><th>In app</th><th>By</th></tr></thead><tbody id="nHist"></tbody></table>
+        </section>
+
+        <!-- ===== Settings ===== -->
+        <section class="two" data-tab="settings">
+          <div class="card">
+            <h2>Maintenance</h2>
+            <div class="allrow"><input type="checkbox" id="mOn" /> <span>Maintenance mode (sends everyone to the lobby; nobody can start a battle)</span></div>
+            <label>Message players see</label><input id="mMsg" maxlength="200" />
+            <div class="row" style="margin-top:10px"><button id="mSave">Save</button><span class="msg" id="mStat"></span></div>
+          </div>
+          <div class="card">
+            <h2>Event (double XP, cash bonanza)</h2>
+            <div class="grid"><div><label>Name</label><input id="eName" placeholder="e.g. Independence Weekend" /></div><div><label>XP ×</label><input id="eXp" type="number" min="1" max="5" step="0.5" value="2" /></div><div><label>Money ×</label><input id="eMoney" type="number" min="1" max="5" step="0.5" value="1" /></div><div><label>Hours</label><input id="eHours" type="number" min="0" value="48" /></div></div>
+            <div class="row" style="margin-top:10px"><button id="eStart">Start event</button><button class="ghost" id="eStop">Stop event</button><span class="msg" id="eStat"></span></div>
+          </div>
+        </section>
+        <section class="card" data-tab="settings">
+          <h2>App updates</h2>
+          <div class="grid"><div><label>Minimum Android build (0 = off)</label><input id="uMin" type="number" min="0" /></div><div><label>Download link for the new app</label><input id="uUrl" placeholder="https://github.com/…/releases/latest" /></div></div>
+          <p class="note">Players on an older app build are asked to update before they play. The build number is the "Android build N" in the GitHub release name.</p>
+          <div class="row"><button id="uSave">Save</button><span class="msg" id="uStat"></span></div>
+        </section>
+        <section class="card" data-tab="settings">
+          <h2>Game balance (live)</h2>
+          <p class="note">Changes apply to every battle immediately. Empty a box (or press Reset) to go back to the default.</p>
+          <div id="tGroups"></div>
+          <div class="row" style="margin-top:12px"><button id="tSave">Save balance</button><span class="msg" id="tStat"></span></div>
+        </section>
+
+        <!-- ===== Team ===== -->
+        <section class="card" data-tab="team">
+          <h2>Admin team</h2>
+          <p class="note">You (owner, ADMIN_KEY) can do everything. <b>Moderators</b> handle players, battles, chat and reports. <b>Marketing</b> handles notifications, announcements and ads. Each member signs in with their own key.</p>
+          <div class="row"><input id="tmName" placeholder="Name" style="max-width:220px" /><select id="tmRole" style="max-width:170px"><option value="moderator">Moderator</option><option value="marketing">Marketing</option><option value="super">Super admin</option></select><button id="tmAdd">Add member</button></div>
+          <div class="msg" id="tmMsg"></div>
+          <table style="margin-top:10px"><thead><tr><th>Name</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody id="tmRows"></tbody></table>
+        </section>
+        <section class="card" data-tab="team">
+          <h2>Audit log</h2>
+          <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead><tbody id="auRows"></tbody></table>
+        </section>
+
+        <!-- ===== Ads (existing) ===== -->
+        <section data-tab="ads" class="card">
           <h2>Network</h2>
           <div class="kpis">
             <div class="kpi"><small>Live adverts</small><b id="kLive">0</b></div>
@@ -118,13 +283,13 @@
           <div class="status" id="status"></div>
         </section>
 
-        <section class="card" id="reviewCard">
+        <section data-tab="ads" class="card" id="reviewCard">
           <h2>Paid adverts waiting for your review <span id="reviewCount"></span></h2>
           <p class="note">Advertisers have paid for these. Approve to put them live. Reject sends a full Paystack refund and shows your reason to the advertiser.</p>
           <div id="reviews"></div>
         </section>
 
-        <section class="card">
+        <section data-tab="ads" class="card">
           <h2>Prices (naira)</h2>
           <div class="pgrid">
             <div><label>Sky billboard / day</label><input id="pSky" type="number" min="1" /></div>
@@ -143,7 +308,7 @@
           <div class="row" style="margin-top: 10px"><button id="priceBtn">Save prices</button><span class="msg" id="priceMsg"></span></div>
         </section>
 
-        <section class="card">
+        <section data-tab="ads" class="card">
           <h2>New house / direct campaign</h2>
           <p class="note">For deals you arrange yourself. Paid bookings from the portal (/advertise) appear above automatically.</p>
           <div class="grid">
@@ -165,7 +330,7 @@
           <p class="note">House adverts fill billboards nobody has booked, and share rotation with paid ones. Every advert wall carries a life gem. Players walk up to your wall to collect it, and dead players run to it as spirits to come back, so walls get close, repeated attention. Views count only when your wall is on a player's screen within 45 m, once per player per minute. Advertisers see totals by state, side, faction and hour, never who the individual players are.</p>
         </section>
 
-        <section class="card">
+        <section data-tab="ads" class="card">
           <h2>Campaigns</h2>
           <table>
             <thead><tr><th>Art</th><th>Advertiser</th><th>Where</th><th>Views</th><th>Unique players</th><th>Gem pickups</th><th>Paid</th><th>Status</th><th></th></tr></thead>
@@ -173,13 +338,13 @@
           </table>
         </section>
 
-        <section class="card">
+        <section data-tab="ads" class="card">
           <h2>Advertiser accounts <span id="advCount"></span></h2>
           <div class="row"><input id="rEmail" placeholder="advertiser email" style="max-width: 260px" /><input id="rPass" placeholder="new password (8+)" style="max-width: 220px" /><button class="ghost" id="resetBtn">Reset password</button><span class="msg" id="resetMsg"></span></div>
           <table style="margin-top: 10px"><thead><tr><th>Business</th><th>Email</th><th>Phone</th><th>Since</th></tr></thead><tbody id="advRows"></tbody></table>
         </section>
 
-        <section class="card" id="detail" hidden>
+        <section data-tab="ads" class="card" id="detail" hidden>
           <h2 id="dTitle">Campaign report</h2>
           <div class="kpis" id="dKpis"></div>
           <div class="two" style="margin-top: 16px">
@@ -226,12 +391,18 @@
 
       async function login() {
         try {
-          data = await api('overview');
+          const me = await api('me');
           sessionStorage.setItem('podAdminKey', key);
           $('login').hidden = true;
           $('app').hidden = false;
-          renderZones();
-          render();
+          window.ROLE = me.role;
+          $('whoami').textContent = `${me.name} · ${me.role}`;
+          if (me.role !== 'moderator') {
+            data = await api('overview');
+            renderZones();
+            render();
+          }
+          window.SA.init(me.role);
         } catch (e) {
           $('loginMsg').textContent = e.message;
         }
@@ -517,12 +688,357 @@
       };
       if (key) login();
       setInterval(async () => {
-        if ($('app').hidden) return;
+        if ($('app').hidden || window.ROLE === 'moderator' || window.TAB !== 'ads') return;
         try {
           data = await api('overview');
           render();
         } catch {}
       }, 10000);
+    </script>
+    <script>
+      // ---------- Super admin ----------
+      window.SA = (() => {
+        const TABS = { super: ['dash', 'players', 'battles', 'mod', 'notify', 'settings', 'ads', 'team'], moderator: ['dash', 'players', 'battles', 'mod'], marketing: ['dash', 'notify', 'ads'] };
+        const ago = (t) => {
+          if (!t) return '—';
+          const s = (Date.now() - t) / 1000;
+          if (s < 90) return 'just now';
+          if (s < 3600) return `${Math.round(s / 60)} min ago`;
+          if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+          return `${Math.round(s / 86400)} d ago`;
+        };
+        const when = (t) => (t ? new Date(t).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+        const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body || {}) });
+        const put = (path, body) => api(path, { method: 'PUT', body: JSON.stringify(body || {}) });
+        let role = 'super';
+        let timer = null;
+        const MODE = { conquest: 'Hold Ground', tdm: 'Gbas Gbos', bomb: 'Plant & Defuse', stage: 'Campaign' };
+
+        function show(tab) {
+          window.TAB = tab;
+          for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === tab);
+          for (const s of document.querySelectorAll('main > [data-tab]')) s.hidden = s.dataset.tab !== tab || (s.id === 'detail' && !selected) || (s.id === 'pDetail' && !pOpen);
+          for (const b of document.querySelectorAll('[data-tabonly]')) b.hidden = b.dataset.tabonly !== tab;
+          clearInterval(timer);
+          const loaders = { dash: loadDash, players: loadPlayers, battles: loadBattles, mod: loadMod, notify: loadNotify, settings: loadSettings, team: loadTeam, ads: () => {} };
+          loaders[tab]?.();
+          if (tab === 'dash') timer = setInterval(loadDash, 10000);
+          if (tab === 'battles') timer = setInterval(loadBattles, 5000);
+          if (tab === 'mod') timer = setInterval(() => loadMod(true), 15000);
+          try {
+            sessionStorage.setItem('podAdminTab', tab);
+          } catch {}
+        }
+
+        function init(r) {
+          role = r;
+          const allowed = TABS[role] || TABS.super;
+          for (const b of document.querySelectorAll('#tabs button')) {
+            b.hidden = !allowed.includes(b.dataset.tab);
+            b.onclick = () => show(b.dataset.tab);
+          }
+          let t = 'dash';
+          try {
+            t = sessionStorage.getItem('podAdminTab') || 'dash';
+          } catch {}
+          show(allowed.includes(t) ? t : 'dash');
+          bind();
+        }
+
+        // ---------- dashboard ----------
+        async function loadDash() {
+          const d = await api('dashboard');
+          const k = (label, v, sub = '') => `<div class="kpi"><small>${label}</small><b>${v}</b>${sub ? `<span class="note">${sub}</span>` : ''}</div>`;
+          $('dKpisTop').innerHTML = [
+            k('Online now', num(d.online), `peak today ${num(d.peakToday)}`),
+            k('Live battles', num(d.liveBattles)),
+            k('Active today', num(d.dau), `7 days ${num(d.wau)} · 30 days ${num(d.mau)}`),
+            k('New players today', num(d.newToday), `${num(d.totalPlayers)} soldiers in total`),
+            k('Battles joined today', num(d.joinsToday), `${num(d.matchesToday)} finished · ${num(d.killsToday)} kills`),
+            k('Accounts', num(d.registered), `${num(d.banned)} banned`),
+            k('Open reports', num(d.openReports)),
+            k('Push devices', num(d.push.web + d.push.fcm), `${num(d.push.players)} players`)
+          ].join('');
+          $('dStatus').innerHTML = `<span>Version ${esc(d.game.version)}</span><span>Up ${Math.round(d.uptimeMs / 3600000)} h</span><span>Memory ${d.memoryMb} MB</span><span class="${d.fcm ? 'good' : 'warn'}">${d.fcm ? 'Android push ON (Firebase)' : 'Android push needs Firebase keys · web push ON'}</span>`;
+          $('repCount').hidden = !d.openReports;
+          $('repCount').textContent = d.openReports;
+          const max = Math.max(1, ...d.series.flatMap((s) => [s.active, s.joins, s.newPlayers]));
+          $('dChart').innerHTML = d.series.map((s) => `<div class="col" title="${s.day}: ${s.active} active, ${s.joins} joins, ${s.newPlayers} new"><i style="height:${(s.active / max) * 100}%;background:#e8b23a"></i><i style="height:${(s.joins / max) * 100}%;background:#4f9dff"></i><i style="height:${(s.newPlayers / max) * 100}%;background:#4fd18b"></i><small>${s.day.slice(8)}</small></div>`).join('');
+          bars($('dModes'), d.topModes.map(([m, v]) => [MODE[m] || m, v]));
+          bars($('dStates2'), d.topStates.map(([s, v]) => [stateName(s), v]), '#4f9dff');
+          bars($('dRanks'), Object.entries(d.ranks).sort((a, b) => b[1] - a[1]), '#4fd18b');
+        }
+
+        // ---------- players ----------
+        let pOpen = null;
+        async function loadPlayers() {
+          const q = encodeURIComponent($('pQ').value.trim());
+          const r = await api(`players?q=${q}&filter=${$('pFilter').value}&sort=${$('pSort').value}`);
+          $('pTotal').textContent = `${num(r.total)} found${r.total > 200 ? ' (showing 200)' : ''}`;
+          $('pRows').innerHTML = r.players
+            .map((p) => `<tr class="click ${pOpen === p.pid ? 'sel' : ''}" data-pid="${p.pid}"><td>${p.online ? '🟢' : '⚪'}</td><td><b>${p.crew ? `[${esc(p.crew)}] ` : ''}${esc(p.name)}</b><br><span class="note">${p.pid}${p.account ? ' · account' : ' · guest'}</span></td><td>${esc(p.rank)}</td><td class="num">${num(p.xp)}</td><td class="num">${num(p.gems)}</td><td class="num">${p.kills} / ${p.deaths}</td><td>${ago(p.lastSeen)}</td><td>${p.banned ? '<span class="pill off">BANNED</span>' : ''}${p.muted ? ' <span class="pill unpaid">MUTED</span>' : ''}</td></tr>`)
+            .join('') || '<tr><td colspan="8" class="note">No players match.</td></tr>';
+        }
+
+        async function openPlayer(pid) {
+          pOpen = pid;
+          const p = await api(`players/${pid}`);
+          const box = $('pDetail');
+          box.hidden = false;
+          box.innerHTML = `
+            <h2>${p.crew ? `[${esc(p.crew)}] ` : ''}${esc(p.name)} <span class="note">· ${p.pid} · ${p.account ? 'account' : 'guest'} · joined ${when(p.created)}</span></h2>
+            <div class="kpis">
+              <div class="kpi"><small>Rank</small><b>${esc(p.rank)}</b></div><div class="kpi"><small>XP</small><b>${num(p.xp)}</b></div><div class="kpi"><small>Gems</small><b>${num(p.gems)}</b></div>
+              <div class="kpi"><small>Kills / deaths</small><b>${p.kills} / ${p.deaths}</b></div><div class="kpi"><small>Wins / battles</small><b>${p.wins} / ${p.matches}</b></div>
+              <div class="kpi"><small>Status</small><b style="font-size:16px">${p.online ? '🟢 Online' : `Last seen ${ago(p.lastSeen)}`}</b><span class="note">${p.live ? `In ${esc(MODE[p.live.mode] || p.live.mode)} · ${esc(stateName(p.live.state))}` : ''}</span></div>
+            </div>
+            <p class="note">Friends ${p.friends} · rivals ${p.rivals} · business chats ${p.threads} · push devices ${p.pushDevices} · daily streak ${p.daily}${p.ban ? ` · <b style="color:var(--red)">Banned: ${esc(p.ban.reason)}${p.ban.until ? ` until ${when(p.ban.until)}` : ' (permanent)'}</b>` : ''}${p.mutedUntil > Date.now() ? ` · muted until ${when(p.mutedUntil)}` : ''}</p>
+            <div class="two">
+              <div>
+                <h2>Moderate</h2>
+                <div class="row"><input id="xReason" placeholder="Reason (players see this)" /><input id="xHours" type="number" min="0" placeholder="Hours (0 = forever)" style="max-width:150px" /></div>
+                <div class="row" style="margin-top:8px">
+                  ${p.banned ? '<button data-pa="unban">Unban</button>' : '<button class="danger" data-pa="ban">Ban</button>'}
+                  ${p.muted ? '<button class="ghost" data-pa="unmute">Unmute</button>' : '<button class="ghost" data-pa="mute">Mute chat</button>'}
+                  <button class="ghost" data-pa="kick" ${p.live ? '' : 'disabled'}>Kick from battle</button>
+                </div>
+                <h2 style="margin-top:14px">Message this player</h2>
+                <input id="xMsgT" placeholder="Title" /><textarea id="xMsgB" rows="2" placeholder="Message" style="margin-top:6px"></textarea>
+                <div class="row" style="margin-top:6px"><label class="allrow" style="margin:0"><input type="checkbox" id="xMsgP" checked /> <span>also push to phone</span></label><button class="ghost" data-pa="message">Send</button></div>
+              </div>
+              <div>
+                <h2>Account</h2>
+                <div class="row"><input id="xGems" type="number" placeholder="± gems" style="max-width:120px" /><input id="xXp" type="number" placeholder="± XP" style="max-width:120px" /><input id="xNote" placeholder="Note to player (optional)" /></div>
+                <div class="row" style="margin-top:6px"><button data-pa="grant">Give / take</button></div>
+                <div class="row" style="margin-top:10px"><input id="xName" placeholder="New name" style="max-width:200px" /><button class="ghost" data-pa="rename">Rename</button></div>
+                <div class="row" style="margin-top:10px"><button class="ghost" data-pa="reset">Reset stats</button><button class="danger" data-pa="delete">Delete player</button></div>
+              </div>
+            </div>
+            <h2 style="margin-top:14px">Recent chat</h2>
+            <div class="chatlog">${p.chat.length ? p.chat.map((c) => `<div><span class="note">${when(c.at)} · ${esc(c.state)}</span> ${esc(c.text)}</div>`).join('') : '<div class="note">No chat.</div>'}</div>
+            <div class="msg" id="xMsg"></div>`;
+          box.scrollIntoView({ behavior: 'smooth' });
+          loadPlayers();
+        }
+
+        async function playerAction(a) {
+          const pid = pOpen;
+          if ((a === 'delete' || a === 'reset') && !confirm(`${a === 'delete' ? 'Delete this player for good' : 'Reset all their stats'}?`)) return;
+          const body = { reason: $('xReason')?.value, hours: Number($('xHours')?.value) || 0 };
+          if (a === 'mute') body.hours = Number($('xHours').value) || 24;
+          if (a === 'grant') Object.assign(body, { gems: Number($('xGems').value) || 0, xp: Number($('xXp').value) || 0, note: $('xNote').value });
+          if (a === 'rename') body.name = $('xName').value;
+          if (a === 'message') Object.assign(body, { title: $('xMsgT').value || 'Message from the POD team', body: $('xMsgB').value, push: $('xMsgP').checked });
+          try {
+            const r = await post(`players/${pid}/${a}`, body);
+            if (!r.player) {
+              pOpen = null;
+              $('pDetail').hidden = true;
+              return loadPlayers();
+            }
+            await openPlayer(pid);
+            $('xMsg').textContent = 'Done.';
+          } catch (e) {
+            $('xMsg').textContent = e.message;
+          }
+        }
+
+        // ---------- battles ----------
+        async function loadBattles() {
+          const r = await api('battles');
+          $('bList').innerHTML = r.battles.length
+            ? r.battles
+                .map((b) => `<div class="battle"><h3>${esc(b.stateName || b.state)} · ${esc(MODE[b.mode] || b.mode)}${b.real ? ' <span class="pill review-l">REAL PLAYERS ONLY</span>' : ''}${b.ended ? ' <span class="pill off">ENDED</span>' : ''} <span class="note">Security ${b.score.sec} – ${b.score.out} Outlaws · ${b.humans.length} players · ${b.bots} bots · ${ago(b.startedAt)}</span></h3>
+                <table><tbody>${b.humans.map((h) => `<tr><td>${h.side === 'sec' ? '🔵' : '🔴'} <b>${esc(h.name)}</b> <span class="note">${h.pid}</span></td><td class="num">${h.kills} / ${h.deaths}</td><td>${esc(h.status)}</td><td><button class="ghost" data-open="${h.pid}">Profile</button> <button class="danger" data-kick="${esc(b.key)}|${esc(h.id)}">Kick</button></td></tr>`).join('') || '<tr><td class="note">Only bots.</td></tr>'}</tbody></table>
+                <div class="row" style="margin-top:8px"><input placeholder="Message to this battle" data-bmsg="${esc(b.key)}" /><button class="ghost" data-bsend="${esc(b.key)}">Send</button><button class="danger" data-bend="${esc(b.key)}">End battle</button></div></div>`)
+                .join('')
+            : '<p class="note">No battles running.</p>';
+        }
+
+        // ---------- moderation ----------
+        async function loadMod(quiet) {
+          const [r, c, cv] = await Promise.all([api('reports'), api(`chat?q=${encodeURIComponent($('cQ').value)}`), quiet ? null : api('conversations')]);
+          $('rList').innerHTML = r.reports.length
+            ? r.reports
+                .map((x) => `<div class="rep ${x.status !== 'open' ? 'closed' : ''}"><b>${esc(x.reporter?.name)}</b> reported <b>${esc(x.target?.name)}</b> <span class="note">${when(x.at)} · ${esc(stateName(x.state))} · ${esc(x.status)}</span><div>“${esc(x.reason || 'no reason')}”</div>${x.chat?.length ? `<div class="chatlog">${x.chat.map((m) => `<div>${esc(m.text)}</div>`).join('')}</div>` : ''}${x.status === 'open' ? `<div class="row" style="margin-top:6px"><button class="ghost" data-open="${x.target.pid}">Open player</button><button class="ghost" data-rep="${x.id}|resolve">Mark handled</button><button class="ghost" data-rep="${x.id}|dismiss">Dismiss</button></div>` : ''}</div>`)
+                .join('')
+            : '<p class="note">No reports. Players report others from the battle scoreboard.</p>';
+          $('cList').innerHTML = c.chat.map((m) => `<div><span class="note">${when(m.at)} · ${esc(stateName(m.state))}${m.team ? ' · team' : ''}</span> <b>${esc(m.name)}</b>: ${esc(m.text)} ${m.pid ? `<button class="ghost" data-open="${m.pid}" style="padding:2px 8px">Player</button>` : ''}</div>`).join('') || '<div class="note">No chat yet.</div>';
+          if (cv) $('convList').innerHTML = cv.conversations.length ? `<table><thead><tr><th>Business</th><th>Player</th><th>Billboard</th><th>Last messages</th><th>Updated</th></tr></thead><tbody>${cv.conversations.map((t) => `<tr><td><b>${esc(t.business)}</b>${t.blocked ? ' <span class="pill off">BLOCKED</span>' : ''}</td><td>${esc(t.player)}</td><td>${esc(t.board || '')}</td><td class="note">${t.msgs.map((m) => esc(m.text)).join(' · ')}</td><td>${ago(t.updated)}</td></tr>`).join('')}</tbody></table>` : '<p class="note">No conversations yet.</p>';
+        }
+
+        // ---------- notifications ----------
+        async function loadNotify() {
+          const r = await api('notify');
+          $('nDevices').textContent = `${num(r.devices.players)} players have notifications on (${r.devices.web} browser/phone web, ${r.devices.fcm} Android app).${r.fcm ? '' : ' Android app push switches on when you add the Firebase keys (see README).'}`;
+          $('nHist').innerHTML = r.history.map((h) => `<tr><td>${when(h.at)}</td><td><b>${esc(h.title)}</b><br><span class="note">${esc(h.body)}</span></td><td>${esc(h.target)}</td><td class="num">${h.sent}${h.failed ? ` <span class="note">(${h.failed} failed)</span>` : ''}</td><td class="num">${h.inApp}</td><td>${esc(h.by)}</td></tr>`).join('') || '<tr><td colspan="6" class="note">Nothing sent yet.</td></tr>';
+          const cfg = await api('config');
+          if (cfg.announcement) {
+            $('aText').value = cfg.announcement.text;
+            $('aKind').value = cfg.announcement.kind || 'info';
+          }
+        }
+
+        // ---------- settings ----------
+        async function loadSettings() {
+          const c = await api('config');
+          $('mOn').checked = c.maintenance.on;
+          $('mMsg').value = c.maintenance.message;
+          $('eStat').textContent = c.event ? `Running: ${c.event.name} (XP ×${c.event.xpMult}, money ×${c.event.moneyMult})${c.event.until ? ` until ${when(c.event.until)}` : ''}` : 'No event running.';
+          $('uMin').value = c.minBuild || 0;
+          $('uUrl').value = c.updateUrl || '';
+          const groups = {};
+          for (const t of c.tunables) (groups[t.group] ||= []).push(t);
+          $('tGroups').innerHTML = Object.entries(groups)
+            .map(([g, list]) => `<div class="tgroup"><h3>${esc(g)}</h3><div class="tgrid">${list.map((t) => `<label class="${t.value !== t.default ? 'changed' : ''}">${esc(t.label)}<input type="number" step="any" min="${t.min}" max="${t.max}" data-tk="${t.key}" value="${t.value}" /><small>default ${t.default} · ${t.min}–${t.max}</small></label>`).join('')}</div></div>`)
+            .join('');
+        }
+
+        // ---------- team ----------
+        async function loadTeam() {
+          const r = await api('team');
+          $('tmRows').innerHTML = r.admins.map((a) => `<tr><td>${esc(a.name)}</td><td>${esc(a.role)}</td><td>${when(a.created)}</td><td><button class="danger" data-rm="${a.id}">Remove</button></td></tr>`).join('') || '<tr><td colspan="4" class="note">Only you so far.</td></tr>';
+          $('auRows').innerHTML = r.audit.map((a) => `<tr><td>${when(a.at)}</td><td>${esc(a.who)} <span class="note">${esc(a.role)}</span></td><td>${esc(a.action)}</td><td class="note">${esc(a.detail)}</td></tr>`).join('');
+        }
+
+        function bind() {
+          if (bind.done) return;
+          bind.done = true;
+          let qt;
+          $('pQ').addEventListener('input', () => {
+            clearTimeout(qt);
+            qt = setTimeout(loadPlayers, 300);
+          });
+          $('pFilter').onchange = $('pSort').onchange = loadPlayers;
+          $('pCsv').onclick = async () => {
+            const res = await fetch('/api/admin/export/players.csv', { headers: { 'x-admin-key': key } });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(await res.blob());
+            a.download = 'pod-players.csv';
+            a.click();
+          };
+          $('pRows').addEventListener('click', (e) => {
+            const tr = e.target.closest('[data-pid]');
+            if (tr) openPlayer(tr.dataset.pid);
+          });
+          $('pDetail').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-pa]');
+            if (b) playerAction(b.dataset.pa);
+          });
+          document.querySelector('main').addEventListener('click', async (e) => {
+            const t = e.target.closest('button');
+            if (!t) return;
+            try {
+              if (t.dataset.open) {
+                show('players');
+                return openPlayer(t.dataset.open);
+              }
+              if (t.dataset.kick) {
+                const [k, id] = t.dataset.kick.split('|');
+                if (!confirm('Kick this player from the battle?')) return;
+                await post(`battles/${encodeURIComponent(k)}/kick`, { id });
+                return loadBattles();
+              }
+              if (t.dataset.bsend) {
+                const inp = document.querySelector(`[data-bmsg="${CSS.escape(t.dataset.bsend)}"]`);
+                await post(`battles/${encodeURIComponent(t.dataset.bsend)}/message`, { text: inp.value });
+                inp.value = '';
+                return;
+              }
+              if (t.dataset.bend) {
+                if (!confirm('End this battle now?')) return;
+                await post(`battles/${encodeURIComponent(t.dataset.bend)}/end`);
+                return loadBattles();
+              }
+              if (t.dataset.rep) {
+                const [id, a] = t.dataset.rep.split('|');
+                await post(`reports/${id}/${a}`);
+                return loadMod();
+              }
+              if (t.dataset.rm) {
+                if (!confirm('Remove this admin? Their key stops working.')) return;
+                await api(`team/${t.dataset.rm}`, { method: 'DELETE' });
+                return loadTeam();
+              }
+            } catch (ex) {
+              alert(ex.message);
+            }
+          });
+          let cq;
+          $('cQ').addEventListener('input', () => {
+            clearTimeout(cq);
+            cq = setTimeout(() => loadMod(true), 300);
+          });
+          $('nTarget').onchange = () => {
+            $('nDaysWrap').hidden = $('nTarget').value !== 'inactive';
+            $('nPidWrap').hidden = $('nTarget').value !== 'player';
+          };
+          $('nSend').onclick = async () => {
+            $('nMsg').textContent = 'Sending…';
+            try {
+              const r = await post('notify', { title: $('nTitle').value, body: $('nBody').value, url: $('nUrl').value, target: $('nTarget').value, days: Number($('nDays').value), pid: $('nPid').value.trim(), channels: { push: $('nPush').checked, inApp: $('nInApp').checked } });
+              $('nMsg').textContent = `Sent: ${r.sent} phones/browsers${r.failed ? ` (${r.failed} failed)` : ''}, ${r.inApp} in the game right now.`;
+              loadNotify();
+            } catch (e) {
+              $('nMsg').textContent = e.message;
+            }
+          };
+          $('aSave').onclick = async () => {
+            try {
+              await put('announcement', { text: $('aText').value, kind: $('aKind').value, hours: Number($('aHours').value) || 0 });
+              $('aMsg').textContent = 'Banner is live in every lobby.';
+            } catch (e) {
+              $('aMsg').textContent = e.message;
+            }
+          };
+          $('aClear').onclick = async () => {
+            await put('announcement', {});
+            $('aText').value = '';
+            $('aMsg').textContent = 'Banner removed.';
+          };
+          $('bSend').onclick = async () => {
+            try {
+              await post('broadcast', { text: $('bText').value });
+              $('bMsg').textContent = 'Sent to everyone online.';
+              $('bText').value = '';
+            } catch (e) {
+              $('bMsg').textContent = e.message;
+            }
+          };
+          const save = async (body, el, okText) => {
+            try {
+              await put('config', body);
+              $(el).textContent = okText;
+              loadSettings();
+            } catch (e) {
+              $(el).textContent = e.message;
+            }
+          };
+          $('mSave').onclick = () => {
+            if ($('mOn').checked && !confirm('Turn on maintenance? Everyone in a battle goes back to the lobby.')) return;
+            save({ maintenance: { on: $('mOn').checked, message: $('mMsg').value } }, 'mStat', 'Saved.');
+          };
+          $('eStart').onclick = () => save({ event: { name: $('eName').value || 'Special event', xpMult: Number($('eXp').value), moneyMult: Number($('eMoney').value), hours: Number($('eHours').value) } }, 'eStat', 'Event started.');
+          $('eStop').onclick = () => save({ event: null }, 'eStat', 'Event stopped.');
+          $('uSave').onclick = () => save({ minBuild: Number($('uMin').value) || 0, updateUrl: $('uUrl').value }, 'uStat', 'Saved.');
+          $('tSave').onclick = () => {
+            const o = {};
+            for (const i of document.querySelectorAll('[data-tk]')) o[i.dataset.tk] = i.value === '' ? null : Number(i.value);
+            save({ overrides: o }, 'tStat', 'Balance saved. Live in every battle now.');
+          };
+          $('tmAdd').onclick = async () => {
+            try {
+              const r = await post('team', { name: $('tmName').value, role: $('tmRole').value });
+              $('tmMsg').innerHTML = `Key for <b>${esc(r.admin.name)}</b> (${esc(r.admin.role)}): <code style="user-select:all">${esc(r.admin.key)}</code><br>Copy it now and send it privately. It is not shown again.`;
+              loadTeam();
+            } catch (e) {
+              $('tmMsg').textContent = e.message;
+            }
+          };
+        }
+
+        return { init, show };
+      })();
     </script>
   </body>
 </html>

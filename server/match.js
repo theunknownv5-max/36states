@@ -385,10 +385,12 @@ export class Match {
       case 'chat': {
         const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
         if (!text) return;
+        if (this.hooks.control?.muted(p.profile)) return this.toast(p, 'Admin don mute your chat for now.', 'bad');
         p.chatTimes = (p.chatTimes || []).filter((x) => x > now() - 30000);
         if (p.chatTimes.length >= 8) return;
         p.chatTimes.push(now());
         const team = !!m.team;
+        this.hooks.control?.logChat({ pid: this.hooks.pidOf?.(p.profile.token) || null, name: p.name, text, team, state: this.stateId, mode: this.modeId });
         return this.broadcast({ t: 'chat', id: p.id, name: p.name, side: p.side, text, team }, (o) => !team || o.side === p.side);
       }
       default:
@@ -729,7 +731,7 @@ export class Match {
       killer.kills++;
       killer.streak++;
       if (headshot) killer.headshots++;
-      const reward = WEAPONS[weapon]?.kill ?? 300;
+      const reward = Math.round((WEAPONS[weapon]?.kill ?? 300) * (this.hooks.control?.eventMult('money') || 1));
       killer.money = Math.min(MONEY.max, killer.money + reward);
       killer.points += MATCH.killPoints + (headshot ? MATCH.headshotBonus : 0);
       this.score[killer.side] += this.mode.killPoints(killer, headshot);
@@ -750,6 +752,7 @@ export class Match {
         if (rival && rival.token === killer.profile.token) this.toast(v, `Na your rival ${killer.profile.name} again! Pay am back.`, 'bad');
       }
       if (killer.human) {
+        this.hooks.control?.track('kill');
         killer.profile.kills++;
         this.mission(killer, 'kills');
         if (headshot) this.mission(killer, 'headshots');
@@ -787,6 +790,7 @@ export class Match {
 
   addXP(p, n) {
     if (!p.human) return;
+    n = Math.round(n * (this.hooks.control?.eventMult('xp') || 1)); // admin events (double XP weekend)
     const before = Math.floor(p.profile.xp / XP.levelEvery);
     p.profile.xp += n;
     p.xp += n;
@@ -1384,6 +1388,7 @@ export class Match {
       }
     }
     this.hooks.saveProfile();
+    this.hooks.control?.track('match');
     this.broadcast({ t: 'matchEnd', winner, score: this.score, roster, mvp: mvp?.name, next: MATCH.endScreenMs, mode: this.modeId, modeState: this.mode.state() });
   }
 

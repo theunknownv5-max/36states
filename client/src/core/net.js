@@ -1,6 +1,6 @@
 // WebSocket link to the game server, with clock sync so every client agrees on
 // server time (gem cooldowns, lag-compensated shots, interpolation).
-import { WS_URL } from './server.js';
+import { WS_URL, IS_APP, BUILD } from './server.js';
 
 export class Net {
   constructor() {
@@ -43,7 +43,7 @@ export class Net {
       ws.onopen = () => {
         this.online = true;
         this.retries = 0;
-        this.send({ t: 'hello', ...this.hello });
+        this.send({ t: 'hello', ...this.hello, app: IS_APP, build: BUILD });
         this.emit('status', true);
         this.startPing();
         resolve(true);

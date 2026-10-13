@@ -22,6 +22,11 @@ jobs:
       # Every build is signed with the same key (android-res/pod-release.p12), so new
       # versions install over old ones. A POD_KS_PASS secret, if set, overrides this.
       POD_KS_PASS: ${{ secrets.POD_KS_PASS || 'f32136dc909ac9d2675bd9ab04fb135e' }}
+      # The build number lets the admin panel ask players on old apps to update.
+      VITE_BUILD: ${{ github.run_number }}
+      # Push notifications in the app: add a GOOGLE_SERVICES_JSON secret (the google-services.json
+      # file from Firebase). Without it the app is built without push, exactly as before.
+      GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +41,16 @@ jobs:
 
       - name: Install
         run: npm install --include=dev
+
+      - name: Push notifications (only when Firebase is set up)
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            npm install --no-save @capacitor/push-notifications@^6.0.0
+            echo "VITE_FCM=1" >> "$GITHUB_ENV"
+            echo "Firebase push: ON"
+          else
+            echo "Firebase push: off (no GOOGLE_SERVICES_JSON secret)"
+          fi
 
       - name: Build the game
         run: npm run build
@@ -96,6 +111,13 @@ jobs:
               }
           }
           GRADLE
+
+      - name: Firebase config
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            node -e "JSON.parse(require('fs').readFileSync('android/app/google-services.json','utf8'))" && echo "google-services.json OK"
+          fi
 
       - name: Sync web files into the app
         run: npx cap sync android

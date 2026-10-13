@@ -14,3 +14,9 @@ export const api = (path) => (path.startsWith('http') ? path : HTTP_BASE + path)
 
 // Running inside the Android app?
 export const IS_APP = !!window.Capacitor?.isNativePlatform?.();
+
+// App build number (the GitHub Actions run number, set as VITE_BUILD when the APK is built).
+// The server can ask players on old builds to update.
+export const BUILD = Number(env.VITE_BUILD) || 0;
+// The APK was built with Firebase (google-services.json) so it can get push notifications.
+export const HAS_FCM = env.VITE_FCM === '1';

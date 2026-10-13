@@ -68,6 +68,7 @@
           <span class="kd">K <b id="p-k">0</b> · D <b id="p-d">0</b> · W <b id="p-w">0</b></span>
         </div>
         <div class="lobby-actions">
+          <button class="btn ghost icon-btn" id="btn-notes" title="News and notifications">🔔<span class="lbl"> News</span> <i class="badge" id="notes-badge" hidden></i></button>
           <button class="btn ghost icon-btn" id="btn-daily" title="Daily rewards and missions">🎁<span class="lbl"> Daily</span> <i class="badge" id="daily-badge" hidden></i></button>
           <button class="btn ghost icon-btn" id="btn-squad" title="Friends, crew and rivals">👥<span class="lbl"> Squad</span> <i class="badge" id="squad-badge" hidden></i></button>
           <button class="btn ghost icon-btn" id="btn-inbox" title="Messages from businesses">📨<span class="lbl"> Inbox</span> <i class="badge" id="inbox-badge" hidden></i></button>
@@ -77,6 +78,7 @@
           <button class="btn ghost" id="btn-about">About</button>
         </div>
       </header>
+      <div id="announce" class="announce" hidden></div>
       <nav class="modes" id="modes"></nav>
       <div class="lobby-body">
         <div class="map-wrap" id="map-wrap">
@@ -240,6 +242,7 @@
               <div><kbd>F</kbd> punch (3 in a row = heavy blow) · <kbd>3</kbd> machete · <kbd>N</kbd> blood pill</div>
               <div><kbd>H</kbd> chase cam · <kbd>T</kbd> scout drone · <kbd>J</kbd> chat with the business on the advert you dey look</div>
             </div>
+            <button class="btn" id="btn-report">🚩 Report a player</button>
             <button class="btn danger" id="btn-leave">Comot from battle</button>
           </div>
         </div>
@@ -300,6 +303,9 @@
           <label>Camera view <select id="set-view"><option value="fp">Hands only (first person)</option><option value="chase">Full body (third person)</option></select></label>
           <h4>Battle</h4>
           <label class="sw"><span>Fight with bots (off = real players only)</span><input type="checkbox" id="set-bots" /><i></i></label>
+          <h4>Notifications</h4>
+          <label class="sw"><span>Push notifications (game news, events, updates)</span><input type="checkbox" id="set-push" /><i></i></label>
+          <p class="muted small" id="push-note"></p>
           <h4>Graphics</h4>
           <label>Quality <select id="set-quality"><option value="low">Low (old phones)</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra (gaming PC)</option></select></label>
           <label>Field of view <input type="range" id="set-fov" min="65" max="100" step="1" /></label>
@@ -370,6 +376,26 @@
         <div id="daily-body"></div>
       </div>
     </div>
+
+    <div id="notes" class="sheet" hidden>
+      <div class="card sheet-card">
+        <div class="menu-head"><h2>🔔 News</h2><button class="x" data-close-sheet="notes">✕</button></div>
+        <div id="notes-body" class="notes-list"></div>
+      </div>
+    </div>
+
+    <div id="report" class="sheet" hidden>
+      <div class="card sheet-card">
+        <div class="menu-head"><h2>🚩 Report a player</h2><button class="x" data-close-sheet="report">✕</button></div>
+        <p class="muted small">Only real players for this battle. The POD team go see the report plus their recent chat.</p>
+        <label class="rep-field">Who <select id="rep-who"></select></label>
+        <label class="rep-field">Wetin happen <select id="rep-why"><option>Cheating or hacking</option><option>Abuse or insult for chat</option><option>Bad name</option><option>Killing own team</option><option>Scam or spam</option><option>Something else</option></select></label>
+        <input id="rep-more" maxlength="140" placeholder="More details (optional)" autocomplete="off" />
+        <p style="text-align:right;margin:12px 0 0"><button class="btn primary" id="rep-send">Send report</button></p>
+      </div>
+    </div>
+
+    <div id="lockout" class="lockout" hidden><div class="card"><h2 id="lock-title"></h2><p id="lock-body"></p><p id="lock-acts"></p></div></div>
 
     <div id="modal" class="modal" hidden><div class="card" id="modal-card"></div></div>
     <script type="module" src="/src/main.js"></script>

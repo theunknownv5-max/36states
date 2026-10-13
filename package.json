@@ -11,8 +11,9 @@
     "build": "vite build",
     "start": "node server/index.js",
     "preview": "npm run build && npm start",
-    "test": "node server/test.js && node server/test-ads.js",
+    "test": "node server/test.js && node server/test-ads.js && node server/test-admin.js",
     "test:ads": "node server/test-ads.js",
+    "test:admin": "node server/test-admin.js",
     "android": "npm run build && npx cap sync android"
   },
   "dependencies": {

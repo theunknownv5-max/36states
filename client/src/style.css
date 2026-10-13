@@ -2566,3 +2566,25 @@ body.drone-on #scope { display: none !important; }
 .tag.bad { color: var(--bad); }
 .tag.good { color: var(--good); }
 .lab.rival { color: #ff6b6b; font-weight: 800; }
+
+/* ---------- news, announcements, reports, lockout ---------- */
+#notes .card, #report .card { animation: none; backdrop-filter: none; background: #13110f; }
+.announce { display: flex; align-items: center; gap: 10px; margin: 8px 16px 0; padding: 9px 14px; border-radius: 10px; background: linear-gradient(90deg, rgba(255, 122, 26, 0.22), rgba(255, 179, 71, 0.08)); border: 1px solid rgba(255, 179, 71, 0.45); font: 600 15px var(--body); }
+.announce.warn { background: linear-gradient(90deg, rgba(255, 79, 79, 0.25), rgba(255, 79, 79, 0.06)); border-color: rgba(255, 79, 79, 0.5); }
+.announce.event { background: linear-gradient(90deg, rgba(79, 224, 138, 0.22), rgba(63, 224, 255, 0.08)); border-color: rgba(79, 224, 138, 0.5); }
+.announce a { color: var(--pod-2); margin-left: auto; white-space: nowrap; }
+.announce .ev { font-family: var(--title); letter-spacing: 0.04em; }
+.notes-list { display: grid; gap: 10px; max-height: 60vh; overflow-y: auto; }
+.note-item { padding: 12px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.note-item.new { border-color: rgba(255, 179, 71, 0.6); }
+.note-item b { display: block; font-size: 16px; }
+.note-item p { margin: 4px 0 0; color: var(--text); white-space: pre-wrap; }
+.note-item small { color: var(--muted); }
+.note-item a { color: var(--pod-2); }
+.rep-field { display: grid; gap: 4px; margin: 10px 0; color: var(--muted); }
+.rep-field select, #rep-more { width: 100%; padding: 9px 10px; border-radius: 8px; background: #0e131a; color: var(--text); border: 1px solid var(--line); font: 500 15px var(--body); }
+.lockout { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(4, 5, 8, 0.94); padding: 16px; }
+.lockout[hidden] { display: none; }
+.lockout .card { max-width: 460px; text-align: center; padding: 24px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line); }
+.lockout h2 { font-family: var(--title); color: var(--pod-2); margin: 0 0 8px; }
+.lockout p { color: var(--text); }

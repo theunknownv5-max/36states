@@ -237,6 +237,39 @@ Keep the secret keys only in Render. Never put them in the code or send them in 
 
 ---
 
+## Super admin panel (`/admin`)
+
+Sign in at `https://three6states.onrender.com/admin` with `ADMIN_KEY`. Tabs:
+
+| Tab | What you can do |
+| --- | --- |
+| 📊 Dashboard | players online now and today's peak, live battles, active players (today, 7 days, 30 days), new players, battles and kills today, accounts, bans, open reports, push devices, a 14-day chart, top modes, players by rank, server memory and uptime |
+| 👤 Players | search by name or player ID, filter (online, banned, muted, accounts), sort, CSV export. Open a player to ban (for hours or forever), unban, mute chat, kick from battle, give or take gems/XP, rename (sticks even for guests), reset stats, delete, or message them (in game and on their phone) |
+| ⚔ Live battles | every battle with real players: who is in it, kills and deaths, message the battle, kick a player, end the battle |
+| 🛡 Moderation | player reports (with the reported player's recent chat), the live chat log, and every player ↔ business conversation |
+| 🔔 Notifications | send a push notification to everyone, to players who have been away for N days, or to one player; a lobby announcement banner; an instant pop-up to everyone online; history of everything sent |
+| ⚙ Game settings | maintenance mode (everyone goes back to the lobby, nobody can start a battle), events such as double XP or double money for N hours, "update your app" (minimum Android build and download link), and live game balance (health regen, bot damage, armour, pills, XP, gems, money) with reset to default |
+| 🪧 Ads & billboards | everything from the ad portal section above |
+| 👥 Team & audit | add team members with their own key: **moderator** (players, battles, chat, reports) or **marketing** (notifications, announcements, ads). Remove them at any time. The audit log records who did what |
+
+Players see news under the 🔔 button in the lobby, the announcement and event strip above the modes, and pop-ups during battle. They can report a player from the pause menu (🚩 Report a player).
+
+### Push notifications
+
+Players switch them on or off in **Settings → Notifications**.
+
+- **Website (Chrome, Edge, Firefox, Android browsers):** works straight away. The server makes its own keys; nothing to set up.
+- **Android app:** uses Firebase Cloud Messaging. Until you do the steps below, the app is built without push (and the switch says it comes with the next update). One-time setup:
+  1. Go to console.firebase.google.com → **Add project** (Analytics not needed).
+  2. **Add app → Android**, package name `ng.tcee.proofofduty`. Download **google-services.json**.
+  3. GitHub → your repo → **Settings → Secrets and variables → Actions → New repository secret**: name `GOOGLE_SERVICES_JSON`, value = the whole content of that file. The next APK has push.
+  4. Firebase → **Project settings → Service accounts → Generate new private key**. On Render, add an environment variable `FIREBASE_SERVICE_ACCOUNT` with the whole content of that JSON file.
+  5. Optional: `PUSH_CONTACT` = `mailto:you@example.com` (sent to push services as the contact).
+
+Treat both Firebase files like passwords: keep them only in GitHub secrets and Render.
+
+---
+
 ## Sound
 
 All sound is **synthesised live** with Web Audio:
@@ -367,8 +400,13 @@ server/
   media.js         advert images (Supabase Storage or local files)
   store.js         persistence (Supabase table or local JSON)
   advertise.html   the self-serve ad portal (/advertise)
-  admin.html       advertiser dashboard
+  admin.html       super admin panel (/admin)
+  admin-routes.js  super admin API: players, battles, moderation, notifications, settings, team
+  control.js       live settings, maintenance, events, bans, mutes, reports, stats, admin roles, audit
+  push.js          push notifications (Web Push with VAPID, and Firebase for the Android app)
   test.js          simulation tests
+  test-ads.js      ad portal end-to-end tests
+  test-admin.js    admin panel and push end-to-end tests
 shared/            states, config, map generator and physics, used by both client and server
 android-res/       app icon and splash screen for the Android build
 capacitor.config.json, .github/workflows/android.yml   Android app build

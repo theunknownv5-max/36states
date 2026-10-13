@@ -17,6 +17,9 @@ import { Advertisers } from './advertisers.js';
 import { Inbox } from './inbox.js';
 import { Daily } from './daily.js';
 import { Social } from './social.js';
+import { Control, pidOf } from './control.js';
+import { Push } from './push.js';
+import { adminRoutes } from './admin-routes.js';
 import * as paystack from './paystack.js';
 import { boardsFor, BOARD_TYPES, tierFor } from '../shared/billboards.js';
 
@@ -45,11 +48,15 @@ await media.init();
 const ads = new AdManager(catalogue);
 const advertisers = new Advertisers();
 const inbox = new Inbox();
+const control = new Control();
+const push = new Push();
 const tokenConns = new Map(); // player token -> Set of live connections (for reply notifications)
 const store = new JsonStore('players.json', { profiles: {}, accounts: {} });
 await ads.load();
 await advertisers.load();
 await inbox.load();
+await control.load();
+await push.load();
 await store.load();
 const saveProfile = () => store.markDirty();
 const daily = new Daily(saveProfile);
@@ -72,7 +79,7 @@ function notifyPlayer(token, msg) {
 const matches = new Map(); // "mode:state" (or "stage:<player>") -> Match
 function matchFor(stateId, mode = 'conquest', key = `${mode}:${stateId}`, opts = {}) {
   if (!matches.has(key)) {
-    const m = new Match(stateId, { ads, saveProfile, daily, social }, mode, opts);
+    const m = new Match(stateId, { ads, saveProfile, daily, social, control, pidOf }, mode, opts);
     m.key = key;
     matches.set(key, m);
   }
@@ -110,8 +117,10 @@ function authenticate(msg) {
   if (Object.values(accounts).some((a) => a.token === token)) return { error: 'Abeg log in to this account.' };
   const name = String(msg.name || '').replace(/[^\w .'-]/g, '').trim().slice(0, 18) || `Soldier${Math.floor(Math.random() * 9000 + 1000)}`;
   if (!store.data.profiles[token]) store.data.profiles[token] = newProfile(token, name);
-  store.data.profiles[token].name = name;
-  return { token, name, account: false };
+  // A name the admin set (e.g. to replace an offensive one) sticks.
+  const p = store.data.profiles[token];
+  if (!p.nameLock) p.name = name;
+  return { token, name: p.name, account: false };
 }
 
 function profilePublic(p) {
@@ -184,7 +193,9 @@ async function readRaw(req, limit) {
 }
 
 async function readBody(req, limit = 10 * 1024 * 1024) {
-  return JSON.parse((await readRaw(req, limit)).toString('utf8') || '{}');
+  // Read once; later handlers for the same request get the same body.
+  if (req._body === undefined) req._body = JSON.parse((await readRaw(req, limit)).toString('utf8') || '{}');
+  return req._body;
 }
 
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
@@ -313,11 +324,11 @@ async function advRoute(req, res, route, url) {
   return json(res, 404, { error: 'Unknown route' });
 }
 
-function isAdmin(req) {
-  const given = Buffer.from(String(req.headers['x-admin-key'] || ''));
-  const want = Buffer.from(ADMIN_KEY);
-  return given.length === want.length && timingSafeEqual(given, want);
+// Super admin (ADMIN_KEY) or a team member's own key with a role.
+function adminOf(req) {
+  return control.roleFor(req.headers['x-admin-key'], ADMIN_KEY);
 }
+let superAdmin;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -370,8 +381,13 @@ const server = http.createServer(async (req, res) => {
       return res.end(await readFile(join(__dirname, 'admin.html')));
     }
     if (path.startsWith('/api/admin/')) {
-      if (!isAdmin(req)) return json(res, 401, { error: 'Wrong admin key' });
+      const who = adminOf(req);
+      if (!who) return json(res, 401, { error: 'Wrong admin key' });
       const route = path.slice('/api/admin/'.length);
+      superAdmin ||= adminRoutes({ control, store, matches, tokenConns, push, inbox, social, json, readBody, profilePublic, saveProfile });
+      if (await superAdmin(req, res, route, who)) return;
+      // Ads, billboards, prices and advertisers: owner and marketing team.
+      if (who.role === 'moderator') return json(res, 403, { error: "Your role (moderator) can't manage ads." });
       if (route === 'overview' && req.method === 'GET') {
         const now = Date.now();
         return json(res, 200, {
@@ -465,17 +481,30 @@ wss.on('connection', (ws) => {
     if (msg.t === 'hello') {
       const r = authenticate(msg);
       if (r.error) return send({ t: 'authError', error: r.error });
+      const fresh = !store.data.profiles[r.token];
       conn.profile = store.data.profiles[r.token] || (store.data.profiles[r.token] = newProfile(r.token, r.name));
+      const ban = control.banInfo(conn.profile);
+      if (ban) {
+        conn.profile = null;
+        return send({ t: 'authError', error: `You don collect ban${ban.until ? ` till ${new Date(ban.until).toLocaleString('en-NG')}` : ''}: ${ban.reason}`, banned: true });
+      }
+      if (fresh) control.track('newPlayer');
+      conn.profile.lastSeen = Date.now();
+      if (r.account) conn.profile.account = true;
       saveProfile();
       if (conn.token) tokenConns.get(conn.token)?.delete(conn);
       conn.token = r.token;
       if (!tokenConns.has(r.token)) tokenConns.set(r.token, new Set());
       tokenConns.get(r.token).add(conn);
-      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile) });
+      // Old app build below the minimum the admin set: ask to update.
+      const ctl = control.publicState();
+      const needUpdate = msg.app && ctl.minBuild && (Number(msg.build) || 0) < ctl.minBuild;
+      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile), control: ctl, push: { vapid: push.publicKey, fcm: push.fcmReady(), on: !!push.store.data.subs[r.token] }, needUpdate });
     }
     if (!conn.profile) return;
     if (msg.t === 'lobby') return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile) });
     if (msg.t === 'join') {
+      if (control.store.data.maintenance.on) return send({ t: 'joinError', error: control.store.data.maintenance.message });
       const mode = MODES[msg.mode] ? msg.mode : 'conquest';
       let state = msg.state;
       let faction = msg.faction;
@@ -505,6 +534,7 @@ wss.on('connection', (ws) => {
       if (r.error) return send({ t: 'joinError', error: r.error });
       conn.match = match;
       conn.player = r.player;
+      control.track('join', { mode, state });
       send(match.info(r.player));
       match.syncMe(r.player);
       return;
@@ -548,6 +578,25 @@ wss.on('connection', (ws) => {
     if (msg.t === 'threadRead') {
       inbox.readBy(String(msg.id || ''), 'player', conn.profile.token);
       return send({ t: 'inboxUnread', unread: inbox.unreadFor(conn.profile.token) });
+    }
+    // ---------- push notifications and reports ----------
+    if (msg.t === 'pushSub') {
+      try {
+        push.subscribe(conn.profile.token, msg.kind === 'fcm' ? { kind: 'fcm', token: String(msg.token || '') } : { kind: 'web', sub: msg.sub });
+        return send({ t: 'pushState', on: true });
+      } catch (e) {
+        return send({ t: 'pushState', on: false, error: e.message });
+      }
+    }
+    if (msg.t === 'pushOff') {
+      push.unsubscribe(conn.profile.token);
+      return send({ t: 'pushState', on: false });
+    }
+    if (msg.t === 'report') {
+      const target = conn.match?.players.get(String(msg.id || ''));
+      if (!target?.human || target === conn.player) return send({ t: 'notice', title: 'Report', body: 'You fit report only real players for this battle.' });
+      control.report({ reporter: { pid: pidOf(conn.profile.token), name: conn.profile.name }, target: { pid: pidOf(target.profile.token), name: target.profile.name }, reason: msg.reason, state: conn.match.stateId, mode: conn.match.modeId });
+      return send({ t: 'notice', title: 'Report don reach', body: `Thank you. The POD team go check ${target.profile.name}.` });
     }
     // ---------- friends, crews, rivals ----------
     const socialReply = (extra = {}) => send({ t: 'social', social: social.view(conn.profile), ...extra });
@@ -650,13 +699,18 @@ setInterval(() => {
   ads.store.save();
   advertisers.store.save();
   inbox.store.save();
+  control.store.save();
+  push.store.save();
+  let on = 0;
+  for (const set of tokenConns.values()) if (set.size) on++;
+  control.track('online', { n: on });
 }, 15000);
 // Unique-viewer lists are bigger and change often: save them less frequently.
 setInterval(() => ads.uniqueStore.save(), 120000);
 setInterval(() => ads.housekeeping().catch((e) => console.error('ad housekeeping', e.message)), 60000);
 
 async function shutdown() {
-  await Promise.all([store.save(true), ads.store.save(true), ads.uniqueStore.save(true), advertisers.store.save(true), inbox.store.save(true)]);
+  await Promise.all([store.save(true), ads.store.save(true), ads.uniqueStore.save(true), advertisers.store.save(true), inbox.store.save(true), control.store.save(true), push.store.save(true)]);
   process.exit(0);
 }
 process.on('SIGINT', shutdown);

@@ -11,6 +11,7 @@ import { PRESETS, detectQuality, saveQuality } from './core/quality.js';
 import * as T from './core/textures.js';
 import { Game } from './game.js';
 import { InboxUI, toast } from './ui/chat.js';
+import { Notices } from './ui/notices.js';
 import { api, IS_APP } from './core/server.js';
 import { STATE_BY_ID } from '../../shared/states.js';
 import { FACTIONS, RESPAWN, GEMS, GAME, MODES, BOMB } from '../../shared/config.js';
@@ -139,6 +140,7 @@ function openSettings() {
   $('set-view').value = settings.view;
   $('set-bots').checked = settings.bots;
   $('set-note').textContent = '';
+  window.__notices?.syncPushSwitch();
   showSheet('settings');
 }
 
@@ -555,6 +557,34 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
   game.saveSettings = saveSettings;
   setupSquad();
   setupDaily(welcome.daily);
+  // News, announcements, events, maintenance, update prompts and push notifications.
+  const notices = new Notices({
+    net,
+    store,
+    isInGame: () => inGame && game.running,
+    hudToast: (text, kind, ms) => game.hud.toast(text, kind, ms),
+    onKicked: () => {
+      if (!inGame) return;
+      lastJoin = null;
+      game.stop();
+    }
+  });
+  notices.welcome(welcome);
+  window.__notices = notices;
+  // Report a real player in this battle.
+  $('btn-report').onclick = () => {
+    const real = (game.rosterList || []).filter((r) => !r.bot && r.id !== game.myId);
+    if (!real.length) return game.hud.toast('No other real player for this battle.', 'info', 3000);
+    game.togglePause(false);
+    $('rep-who').innerHTML = real.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
+    $('rep-more').value = '';
+    showSheet('report');
+  };
+  $('rep-send').onclick = () => {
+    const more = $('rep-more').value.trim();
+    net.send({ t: 'report', id: $('rep-who').value, reason: `${$('rep-why').value}${more ? `: ${more}` : ''}` });
+    showSheet('report', false);
+  };
   if (new URLSearchParams(location.search).has('debug')) {
     window.__game = game;
     window.__THREE = THREE;
