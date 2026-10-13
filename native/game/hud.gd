@@ -106,7 +106,7 @@ func _ready() -> void:
 	# Toasts and banner (centre).
 	toasts = VBoxContainer.new()
 	toasts.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	toasts.position.y = 84
+	toasts.position.y = 128
 	toasts.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	toasts.alignment = BoxContainer.ALIGNMENT_CENTER
 	toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -256,14 +256,14 @@ func kill_feed(m: Dictionary, my_id: String) -> void:
 	var text := "%s  [%s]%s  %s" % [kn, wn, " ✚" if m.get("head", false) else "", str(m.get("vn", ""))]
 	if kn == "":
 		text = "%s  [%s]" % [str(m.get("vn", "")), wn]
-	var l := Kit.label(text, 15, Color.WHITE, true)
+	var l := Kit.label(text, 13, Color.WHITE, true)
 	var mine: bool = m.get("killer") == my_id or m.get("victim") == my_id
 	var p := PanelContainer.new()
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.add_theme_stylebox_override("panel", Kit.box(Color(0, 0, 0, 0.55) if not mine else Color(0.5, 0.25, 0.05, 0.75), 6, Color(0, 0, 0, 0), 0, 3))
 	p.add_child(l)
 	feed.add_child(p)
-	while feed.get_child_count() > 5:
+	while feed.get_child_count() > 4:
 		feed.get_child(0).queue_free()
 		feed.remove_child(feed.get_child(0))
 	get_tree().create_timer(6.0).timeout.connect(func(): if is_instance_valid(p): p.queue_free())
@@ -504,7 +504,7 @@ func show_scores(roster: Array, my_id: String) -> void:
 		var rows := roster.filter(func(r): return r.side == side)
 		rows.sort_custom(func(a, b): return int(a.points) > int(b.points))
 		for r in rows:
-			var line := Kit.label("%s%s   %d/%d   %d pts" % [r.name, " (bot)" if r.get("bot", false) else "", int(r.kills), int(r.deaths), int(r.points)], 15, Color.WHITE if r.id == my_id else Kit.MUTED, r.id == my_id)
+			var line := Kit.label("%s%s   %d/%d   %d pts" % [r.name, "" if str(r.name).contains("BOT") or not r.get("bot", false) else " (bot)", int(r.kills), int(r.deaths), int(r.points)], 15, Color.WHITE if r.id == my_id else Kit.MUTED, r.id == my_id)
 			col.add_child(line)
 
 ## You fell: life gem, spirit run or medevac (or wait in practice).

@@ -39,6 +39,9 @@ var gun: Node3D
 var tag: Label3D
 var hp_bar: MeshInstance3D
 var mats: Array = []
+var phys: Phys
+var biome := "savanna"
+var step_d := 0.0
 
 static var _mesh_cache := {}
 
@@ -147,7 +150,7 @@ func setup(info: Dictionary, mate: bool) -> void:
 	tag = Label3D.new()
 	tag.font = Kit.font_bold
 	tag.font_size = 40
-	tag.pixel_size = 0.006
+	tag.pixel_size = 0.009
 	tag.outline_size = 10
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	tag.no_depth_test = true
@@ -235,6 +238,12 @@ func update(dt: float, render_ts: float, cam_pos: Vector3) -> void:
 	# Walk / run cycle from actual movement.
 	var sprint := flags & 128 != 0
 	walk_phase += moved * (2.6 if sprint else 3.2)
+	# Their footsteps (only the ones close enough to hear).
+	step_d += moved
+	if step_d > (2.6 if sprint else 2.1) and moved < 1.0:
+		step_d = 0.0
+		if phys and cam_pos.distance_to(pos) < 28.0 and not crouch and pos.y > -0.5:
+			Sfx.footstep(phys.surface_at(pos.x, pos.y, pos.z, biome), pos + Vector3(0, 0.1, 0), 0.9 if sprint else 0.6)
 	var amp: float = clamp(speed / 4.4, 0.0, 1.3) * (0.7 if crouch else 1.0)
 	var sw := sin(walk_phase) * 0.6 * amp
 	var bend_base := 0.9 if crouch else 0.0

@@ -70,6 +70,7 @@ var boards: Array = []         # [slot id, node, type, pos, normal]
 var heart_t := 0.0
 var settings_overlay: Control
 var paused := false
+var amb_t := 3.0
 
 func begin(m: Dictionary) -> void:
 	info = m
@@ -428,6 +429,8 @@ func _on_snapshot(m: Dictionary) -> void:
 			s = Soldier.new()
 			add_child(s)
 			s.setup(r, r.get("side") == side)
+			s.phys = phys
+			s.biome = world.biome
 			soldiers[id] = s
 		s.push(ts, e)
 	for id in soldiers:
@@ -922,6 +925,28 @@ func _process(delta: float) -> void:
 	if driving == null:
 		touch.use_label = "REVIVE" if mate != null else "ENTER" if near_v != null else "USE"
 	hud.prompt_lbl.text = ("Hold USE: revive %s" % mate.pname) if mate != null else ("USE: enter %s" % vehicles.def(near_v.type).get("name", "")) if near_v != null else ""
+	# Countdowns while you wait to come back.
+	var s_left := 0.0
+	match status:
+		"medevac":
+			s_left = (float(me.get("medevacAt", 0)) - s_now) / 1000.0
+			hud.status_lbl.text = "MEDEVAC DEY COME… %ds" % int(max(0.0, s_left))
+		"spirit":
+			s_left = (float(me.get("spiritUntil", 0)) - s_now) / 1000.0
+			hud.status_lbl.text = "SPIRIT RUN: reach any glowing gem · %ds" % int(max(0.0, s_left))
+		"downed":
+			var dm := float(Cfg.rules.get("RESPAWN", {}).get("downedMs", 10000))
+			s_left = (float(me.get("downedAt", 0)) + dm - s_now) / 1000.0
+			hud.status_lbl.text = "YOU DON FALL! Teammate fit revive you · %ds" % int(max(0.0, s_left))
+	# Birds and distant life.
+	amb_t -= dt
+	if amb_t <= 0.0:
+		amb_t = randf_range(3.5, 6.0)
+		var ap := Vector3(body.x + randf_range(-60, 60), 8.0, body.z + randf_range(-60, 60))
+		if world.biome == "urban" and randf() < 0.5:
+			Sfx.play("horn", ap, {"ref": 20.0, "bus": "Amb", "delay": false})
+		else:
+			Sfx.play("bird", ap, {"ref": 20.0, "bus": "Amb", "delay": false})
 	# Heartbeat when badly hurt.
 	if status == "alive" and float(me.get("health", 100)) < 30:
 		heart_t -= dt
