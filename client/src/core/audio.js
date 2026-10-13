@@ -903,6 +903,26 @@ export class AudioEngine {
     this.tone(o.input, o.when + 1.2, { f: 70, f2: 40, dur: 0.4, gain: 0.5 });
   }
 
+  // A stray dog: two quick barks.
+  bark(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 5, reverb: 0.3 });
+    for (const dt of [0, 0.22]) {
+      const f = 520 + Math.random() * 120;
+      this.tone(o.input, o.when + dt, { f, f2: f * 0.55, dur: 0.12, gain: 0.32, type: 'sawtooth', attack: 0.004 });
+      this.noiseHit(o.input, o.when + dt, { dur: 0.09, gain: 0.25, type: 'bandpass', f: 1300, q: 1.4 });
+    }
+  }
+
+  // A crocodile's jaws snapping shut and a splash.
+  croc(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 6, reverb: 0.3 });
+    this.noiseHit(o.input, o.when, { dur: 0.05, gain: 0.8, type: 'bandpass', f: 1800, q: 2 });
+    this.tone(o.input, o.when, { f: 120, f2: 60, dur: 0.15, gain: 0.6 });
+    this.noiseHit(o.input, o.when + 0.04, { dur: 0.6, gain: 0.5, type: 'lowpass', f: 1600, f2: 400 });
+  }
+
   // Found a relic: a bright rising chord.
   relic() {
     if (!this.ready()) return;

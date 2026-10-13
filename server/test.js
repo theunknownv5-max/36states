@@ -755,6 +755,123 @@ section('Underground: domed hall, tunnel, catacomb, graves, relic guns');
   check(mm.world.graves.every((g) => !g.dug), 'graves are full again next round');
 }
 
+section('Practice range, skills, deep water, crocodiles, crew room, vehicle entry fixes');
+{
+  const { SKILLS, DROWN, bigWaters, deepWater } = await import('../shared/skills.js');
+  const { Social } = await import('./social.js');
+  const { CROC } = await import('./wildlife.js');
+  // Practice range: dummies that never shoot, nothing counts.
+  const pr = new Match('kano', hooks, 'practice', { practice: true });
+  const ws = fakeWs();
+  const prof = profile('Trainee');
+  const P = pr.addHuman(ws, 'army', prof).player;
+  const dummies = [...pr.players.values()].filter((o) => !o.human);
+  check(dummies.length === 6 && dummies.every((d) => d.side !== P.side), 'six target dummies on the other side');
+  const base = pr.map.bases[P.side];
+  check(dummies.every((d) => Math.abs(d.x - base.x) < 75), 'dummies stand on the range in front of your base');
+  P.protectUntil = 0;
+  const hp0 = P.health;
+  run(pr, 20);
+  check(P.health >= hp0 && ws.log.filter((x) => x.t === 'shot' && x.id !== P.id).length === 0, 'dummies never shoot back');
+  check(P.money === 16000, 'everything is free to try on the range');
+  const d0 = dummies[0];
+  d0.armor = 0;
+  pr.damage(d0, P, 500, { weapon: 'ak47' });
+  check(d0.status === 'dead' && prof.kills === 0 && prof.xp === 0, 'kills on the range do not count for your record');
+  run(pr, 3);
+  check(d0.status === 'alive', 'dummies come back quickly');
+  pr.damage(P, null, 500, { weapon: 'fire', explosive: true });
+  check(P.status === 'dead' && prof.deaths === 0, 'dying on the range does not count either');
+  run(pr, 3.5);
+  check(P.status === 'alive', 'free respawn on the range');
+  // Swimming: train in water, practice counts 3x.
+  const w = pr.map.water[0] || null;
+  if (w) {
+    const sw0 = prof.skills?.swim || 0;
+    for (let k = 0; k < 40; k++) {
+      Object.assign(P, { x: w.x0 + 0.6 + (k % 2) * 0.3, z: (w.z0 + w.z1) / 2, y: 0 });
+      run(pr, 0.05);
+    }
+    check((prof.skills.swim || 0) > sw0, `swimming in water trains the skill (${sw0.toFixed(1)} → ${prof.skills.swim.toFixed(1)})`);
+  } else check(true, 'no water on this map');
+  // Deep water: untrained soldiers go under, trained ones swim.
+  const st = STATES.find((s) => bigWaters(generateMap(s.id)).length);
+  const mm = new Match(st.id, hooks, 'tdm');
+  const ws2 = fakeWs();
+  const prof2 = profile('Sinker');
+  const S = mm.addHuman(ws2, 'police', prof2).player;
+  for (const p of [...mm.players.values()]) if (!p.human) mm.players.delete(p.id);
+  const big = bigWaters(mm.map)[0];
+  const deep = { x: (big.x0 + big.x1) / 2, z: (big.z0 + big.z1) / 2 };
+  check(deepWater(mm.map, deep.x, deep.z), 'the middle of a big river is deep');
+  // Keep crocodiles away for this part.
+  for (const c of mm.wildlife.crocs) Object.assign(c, { state: 'dead', respawnAt: Infinity });
+  Object.assign(S, { x: deep.x, z: deep.z, y: 0, health: 100, protectUntil: 0 });
+  run(mm, DROWN.graceSecs + 3);
+  check(S.health < 100, `can't swim yet: deep water starts to drown you (${S.health.toFixed(0)})`);
+  mm.spawn(S);
+  prof2.skills.swim = SKILLS.swim.canSwimAt + 1;
+  Object.assign(S, { x: deep.x, z: deep.z, y: 0, health: 100, protectUntil: 0 });
+  run(mm, DROWN.graceSecs + 3);
+  check(S.health === 100, 'trained swimmers are fine in deep water');
+  check(ws2.log.some((x) => x.t === 'me' && x.skills && x.skills.swim >= SKILLS.swim.canSwimAt), 'your skills reach your phone');
+  // Crocodiles.
+  check(mm.wildlife.crocs.length >= 1, `crocodiles live in the big river (${mm.wildlife.crocs.length})`);
+  const croc = mm.wildlife.crocs[0];
+  mm.wildlife.place(croc);
+  Object.assign(croc, { x: deep.x + 3, z: deep.z });
+  Object.assign(S, { x: deep.x, z: deep.z, y: 0, health: 100, armor: 0, protectUntil: 0 });
+  run(mm, 2.5);
+  check(S.health < 100 && ws2.log.some((x) => x.t === 'croc' && x.a === 'bite'), 'a crocodile chases and bites a swimmer');
+  Object.assign(S, { x: big.x0 - 12, z: deep.z, health: 100 });
+  const before = S.health;
+  run(mm, 3);
+  check(S.health === before, 'out of the water you are safe from it');
+  S.slot = 'secondary';
+  Object.assign(croc, { x: S.x + 6, z: S.z, state: 'lurk', hp: 20 });
+  fakeNow += 1000;
+  const o = [S.x, PLAYER.eye, S.z];
+  mm.handle(S, { t: 'fire', w: S.weapons.secondary, o, d: [croc.x - o[0], 0.05 - o[1], croc.z - o[2]], ts: fakeNow });
+  check(croc.state === 'dead', 'you can shoot a crocodile dead');
+  check(ws2.log.some((x) => x.t === 'croc' && x.a === 'dead'), 'everyone sees it die');
+  // Crew room: chat and plan.
+  const store = { data: { profiles: {} } };
+  const social = new Social(store, () => {}, () => ({ online: false, where: null }));
+  const a = profile('Ada');
+  const b = profile('Bayo');
+  store.data.profiles[a.token] = a;
+  store.data.profiles[b.token] = b;
+  const crew = social.createCrew(a, 'Lagos Lions', 'LGL');
+  social.joinCrew(b, crew.id);
+  social.crewChat(a, 'Meet for Kano at 8');
+  social.crewPlan(b, 'Snipers on the dome');
+  const vb = social.view(b);
+  check(vb.crew.chat.length === 1 && vb.crew.chat[0].text === 'Meet for Kano at 8' && !vb.crew.chat[0].mine, 'crew chat reaches every member');
+  check(vb.crew.plan.text === 'Snipers on the dome' && vb.crew.plan.by === 'Bayo', 'the crew tactics plan is shared');
+  let threw = false;
+  try {
+    social.crewChat(profile('Loner'), 'hi');
+  } catch {
+    threw = true;
+  }
+  check(threw, 'no crew, no crew chat');
+  // Vehicle entry: a wrong vehicle number or a stale seat never blocks you.
+  const vm = new Match('lagos', hooks, 'tdm');
+  const ws3 = fakeWs();
+  const D = vm.addHuman(ws3, 'police', profile('Driver2')).player;
+  for (const p of [...vm.players.values()]) if (!p.human) vm.players.delete(p.id);
+  const car = vm.world.vehicles.find((v) => v.type !== 'apc');
+  Object.assign(D, { x: car.x + 2.4, z: car.z, y: 0, status: 'alive' });
+  D.veh = 99; // stale seat from nowhere
+  const other = vm.world.vehicles.find((v) => v !== car && Math.hypot(v.x - car.x, v.z - car.z) > 20);
+  vm.handle(D, { t: 'veh', a: 'enter', i: other.i });
+  check(D.veh === car.i && car.driver === D.id, 'pressing E gets you into the vehicle next to you, even if the request named another');
+  vm.handle(D, { t: 'veh', a: 'exit' });
+  Object.assign(D, { x: car.x + 40, z: car.z });
+  vm.handle(D, { t: 'veh', a: 'enter', i: car.i });
+  check(D.veh == null && ws3.log.some((x) => x.t === 'toast' && /closer|No motor/.test(x.text)), 'too far: the game tells you why');
+}
+
 section('Every state loads');
 for (const s of STATES) {
   for (const mode of ['conquest', 'tdm', 'bomb']) {

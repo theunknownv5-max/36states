@@ -199,6 +199,30 @@ function bindSettings() {
     if (game) game.quality = PRESETS[settings.quality];
     $('set-note').textContent = inGame ? 'New graphics go start from your next deploy.' : 'Saved.';
   });
+  // One tap back to how the game came out of the box (notifications are left as they are).
+  $('set-reset').onclick = () => {
+    if (!confirm('Reset sound, controls, camera, bots and graphics to default?')) return;
+    try {
+      localStorage.removeItem('36s.quality');
+    } catch {
+      /* storage blocked */
+    }
+    Object.assign(settings, { sensitivity: isTouch() ? 1.3 : 1, fov: 80, volume: 0.8, music: 0.5, musicOn: true, gunsOn: true, touchSens: 1, invertY: false, view: 'fp', bots: true });
+    settings.quality = detectQuality();
+    saveSettings();
+    audio.setVolume(settings.volume);
+    audio.gunsOn = settings.gunsOn;
+    music.setVolume(settings.music);
+    music.setEnabled(settings.musicOn);
+    input.sensitivity = settings.sensitivity;
+    input.touchSens = settings.touchSens;
+    input.invertY = settings.invertY;
+    game?.cams?.setView('fp');
+    if (game) game.quality = PRESETS[settings.quality];
+    warmap?.renderInfo();
+    openSettings();
+    $('set-note').textContent = 'All settings don go back to default.';
+  };
   $('btn-how').onclick = howToPlay;
   $('btn-about').onclick = openAbout;
   $('btn-top').onclick = openLeaderboard;
@@ -256,6 +280,9 @@ function showAuth() {
   for (const b of $('auth-tabs').children) b.onclick = () => setTab(b.dataset.tab);
   setTab(mode);
   $('guest-name').value = store.get('name', '');
+  // Phones: keep the field you are typing in (and the button) above the keyboard.
+  for (const el of document.querySelectorAll('#auth-form input'))
+    el.addEventListener('focus', () => setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250));
   $('acc-user').value = store.get('user', '');
   return new Promise((resolve) => {
     $('auth-form').onsubmit = async (e) => {
@@ -302,12 +329,14 @@ function showAuth() {
 // ---------- squad: friends, crew, rivals ----------
 let squad = null;
 let squadTab = 'friends';
+let crewUnread = 0;
+function badgeCrew() {
+  const n = (squad?.requests?.length || 0) + crewUnread;
+  $('squad-badge').hidden = !n;
+  $('squad-badge').textContent = n;
+}
 function setupSquad() {
-  const badge = () => {
-    const n = squad?.requests?.length || 0;
-    $('squad-badge').hidden = !n;
-    $('squad-badge').textContent = n;
-  };
+  const badge = badgeCrew;
   net.on('social', (m) => {
     squad = m.social;
     badge();
@@ -317,6 +346,25 @@ function setupSquad() {
     note.textContent = m.error || m.note || '';
     if (!$('squad').hidden) renderSquad();
   });
+  net.on('crewMsg', (m) => {
+    if (squad?.crew) {
+      squad.crew.chat = [...(squad.crew.chat || []), m.msg].slice(-60);
+      if (!$('squad').hidden && squadTab === 'crew' && crewTab === 'chat') {
+        const box = $('crew-chat');
+        if (box) {
+          box.outerHTML = crewPane(squad).split('<form')[0];
+          $('crew-chat').scrollTop = 1e6;
+        }
+      }
+    }
+    if (m.msg.mine) return;
+    if (inGame && game.running) game.hud.toast(`[${m.tag}] ${m.msg.from}: ${m.msg.text}`, 'info', 4500);
+    else if ($('squad').hidden) {
+      crewUnread++;
+      badgeCrew();
+      toast(`💬 [${m.tag}] ${m.msg.from}: ${m.msg.text.slice(0, 80)}`);
+    }
+  });
   net.on('friendWhere', (m) => {
     showSheet('squad', false);
     warmap.setMode(m.mode);
@@ -325,6 +373,8 @@ function setupSquad() {
     join({ state: m.state, faction: m.faction, mode: m.mode, bots: !m.real });
   });
   $('btn-squad').onclick = () => {
+    crewUnread = 0;
+    badgeCrew();
     showSheet('squad');
     renderSquad();
     net.send({ t: 'social' });
@@ -335,10 +385,36 @@ function setupSquad() {
       for (const x of document.querySelectorAll('.squad-tabs button')) x.classList.toggle('on', x === b);
       renderSquad();
     };
+  $('squad-body').addEventListener('submit', (e) => {
+    if (e.target.id !== 'crew-form') return;
+    e.preventDefault();
+    const v = $('crew-input').value.trim();
+    if (v) net.send({ t: 'crewChat', text: v });
+    $('crew-input').value = '';
+  });
   $('squad-body').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-ct]');
+    if (tab) {
+      crewTab = tab.dataset.ct;
+      renderSquad();
+      return;
+    }
+    const idea = e.target.closest('[data-idea]');
+    if (idea) {
+      const ta = $('crew-plan');
+      ta.value = (ta.value ? ta.value.trimEnd() + '\n' : '') + '• ' + idea.dataset.idea;
+      return;
+    }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
+    if (a === 'crewPlan') return net.send({ t: 'crewPlan', text: $('crew-plan').value });
+    if (a === 'practice') {
+      showSheet('squad', false);
+      const st = warmap.selected || 'lagos';
+      toast('🎯 Opening the practice range…');
+      return join({ mode: 'practice', state: st, faction: warmap.faction || 'police' });
+    }
     if (a === 'copy') {
       navigator.clipboard?.writeText(b.dataset.code).catch(() => {});
       return toast(`Copied ${b.dataset.code}`);
@@ -352,7 +428,37 @@ function setupSquad() {
   net.send({ t: 'social' });
 }
 
-const MODE_NAMES = { conquest: 'Hold Ground', tdm: 'Gbas Gbos', bomb: 'Plant & Defuse' };
+const MODE_NAMES = { conquest: 'Hold Ground', tdm: 'Gbas Gbos', bomb: 'Plant & Defuse', practice: 'Practice Range' };
+let crewTab = 'chat';
+const PLAN_IDEAS = ['Rush A together on 3', 'Two snipers on the roofs, rest push B', 'Hold the dome and the tunnel', 'Drive the jeep, drop us by the site', 'Smoke, flash, then entry', 'Everybody stay with the medic'];
+const timeAgo = (t) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
+};
+const bar = (v, mark) => `<span class="skill-bar"><i style="width:${Math.min(100, v)}%"></i>${mark ? `<b style="left:${mark}%"></b>` : ''}</span>`;
+function crewPane(s) {
+  const c = s.crew;
+  if (crewTab === 'chat')
+    return `<div class="crew-chat" id="crew-chat">${(c.chat || []).length ? c.chat.map((m) => `<div class="cm ${m.mine ? 'mine' : ''}"><b>${esc(m.from)}</b><span>${esc(m.text)}</span><small>${timeAgo(m.at)}</small></div>`).join('') : '<p class="muted">Crew room dey quiet. Talk to your people: plan the next battle, call time, gist.</p>'}</div>
+      <form class="sq-row" id="crew-form"><input id="crew-input" maxlength="300" placeholder="Talk to your crew…" autocomplete="off"><button class="btn primary">Send</button></form>`;
+  if (crewTab === 'plan')
+    return `<p class="muted">The crew battle plan. Everybody fit see am and edit am.</p>
+      <textarea id="crew-plan" maxlength="1200" rows="6" placeholder="Who go where, who carry wetin, the signal to move…">${esc(c.plan?.text || '')}</textarea>
+      ${c.plan ? `<small class="muted">Last change by ${esc(c.plan.by)} · ${timeAgo(c.plan.at)} ago</small>` : ''}
+      <div class="plan-ideas">${PLAN_IDEAS.map((t) => `<button class="btn ghost sm" data-idea="${esc(t)}">+ ${esc(t)}</button>`).join('')}</div>
+      <button class="btn primary" data-act="crewPlan">Save plan</button>`;
+  if (crewTab === 'train')
+    return `<div class="train-me">
+        <div><b>🏊 Swimming</b> ${s.skills.swim}/100 ${bar(s.skills.swim, 30)}<small>${s.skills.swim >= 70 ? 'Strong swimmer: fast in water.' : s.skills.swim >= 30 ? 'You fit swim deep water.' : 'Under 30 you go drown for deep river. Swim near the bank to learn.'}</small></div>
+        <div><b>💪 Fitness</b> ${s.skills.fitness}/100 ${bar(s.skills.fitness)}<small>Sprint to train. Each point = longer sprint and small extra pace.</small></div>
+      </div>
+      <p class="muted">🎯 <b>Practice Range</b>: private ground for your crew only. Target dummies wey no dey shoot back, all guns free, respawn sharp sharp, and training count <b>3x</b>. Spar with your crew mates too. Nothing count for your record.</p>
+      <button class="btn primary" data-act="practice">🎯 Open the crew practice range</button>`;
+  return c.members
+    .sort((a, b) => b.online - a.online)
+    .map((f) => `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${esc(f.name)}</b><small>${esc(f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}` : f.online ? 'Online · for lobby' : 'Offline')} · 🏊 ${f.swim} · 💪 ${f.fitness}</small></div><div class="sq-acts">${f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}</div></div>`)
+    .join('') + '<button class="btn danger" data-act="crewLeave" style="margin-top:12px">Leave crew</button>';
+}
 function renderSquad() {
   const s = squad;
   const body = $('squad-body');
@@ -375,9 +481,8 @@ function renderSquad() {
     const c = s.crew;
     body.innerHTML = c
       ? `<div class="sq-code">[${esc(c.tag)}] <b>${esc(c.name)}</b> · code <b>${esc(c.code)}</b> <button class="btn ghost" data-act="copy" data-code="${esc(c.code)}">Copy</button></div>
-         <p class="muted">Your crew tag dey show before your name for battle. Share the code make your people join.</p>
-         <h4>Members (${c.members.length})</h4>${c.members.sort((a, b) => b.online - a.online).map((f) => person(f, f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : '')).join('')}
-         <button class="btn danger" data-act="crewLeave" style="margin-top:12px">Leave crew</button>`
+         <div class="crew-tabs">${[['chat', '💬 Chat'], ['plan', '🗺 Tactics'], ['train', '🏋 Training'], ['members', `👥 Members (${c.members.length})`]].map(([k, l]) => `<button data-ct="${k}" class="${crewTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+         <div id="crew-pane">${crewPane(s)}</div>`
       : `<h4>Start a crew</h4><div class="sq-row"><input id="sq-crew-name" placeholder="Crew name" maxlength="24"><input id="sq-crew-tag" placeholder="TAG" maxlength="4" style="max-width:90px;text-transform:uppercase"><button class="btn primary" data-act="createCrew">Create</button></div>
          <h4>Join a crew</h4><div class="sq-row"><input id="sq-crew-code" placeholder="Crew code, e.g. CREW-AB12C" maxlength="12"><button class="btn primary" data-act="joinCrew">Join</button></div>`;
   } else {
@@ -439,6 +544,14 @@ function renderDaily() {
       .join('')}</div>`;
   $('daily-claim').onclick = () => net.send({ t: 'dailyClaim' });
   for (const b of document.querySelectorAll('[data-mission]')) b.onclick = () => net.send({ t: 'missionClaim', id: b.dataset.mission });
+}
+
+let lastOnline = 0;
+function setOnline(n) {
+  if (n === undefined) return;
+  lastOnline = n;
+  $('online-chip').hidden = false;
+  $('online-chip').innerHTML = `<i></i>${n} online`;
 }
 
 function showProfile(p) {
@@ -530,11 +643,21 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
   music.loadTrack();
   boot.hide();
   bindSettings();
-  warmap = new WarMap({ onDeploy: deploy, onStage: startStage });
+  warmap = new WarMap({
+    onDeploy: deploy,
+    onStage: startStage,
+    getBots: () => settings.bots,
+    setBots: (on) => {
+      settings.bots = on;
+      saveSettings();
+      toast(on ? '🤖 Bots go fill empty places for your next battle.' : '👥 Next battle: real players only.');
+    }
+  });
   if (boot.lobby) warmap.setLobby(boot.lobby);
   const welcome = await showAuth();
   showProfile(welcome.profile);
-  warmap.setLobby(welcome.lobby);
+  warmap.setLobby(welcome.lobby, welcome.online);
+  setOnline(welcome.online);
   game = new Game({
     renderer,
     net,
@@ -595,7 +718,8 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     import('../../shared/physics.js').then((m) => (window.__phys = m));
   }
   net.on('lobby', (m) => {
-    warmap.setLobby(m.states);
+    warmap.setLobby(m.states, m.online);
+    setOnline(m.online);
     showProfile(m.profile);
   });
   net.on('joinError', (m) => {
@@ -620,6 +744,18 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     game.quality = PRESETS[settings.quality];
     game.start(m);
     music.play('battle');
+    // Tell players plainly whether they are fighting bots or real people.
+    if (m.mode === 'practice') setTimeout(() => inGame && game.hud.toast('🎯 Practice range: dummies no dey shoot back, buy any gun (B), swim and sprint to train. Nothing count for your record.', 'info', 7000), 7600);
+    else if (m.mode !== 'stage') {
+      const bots = m.roster.filter((r) => r.bot).length;
+      const humans = m.roster.length - bots;
+      setTimeout(() => {
+        if (!inGame) return;
+        if (bots) game.hud.toast(`🤖 ${bots} bots (marked [BOT]) dey this battle. For real players only, turn off "Fight with bots" for Settings · ${lastOnline} online now.`, 'info', 7000);
+        else if (humans <= 1) game.hud.toast(`👥 Real players only. You never get company yet: ${lastOnline} online, invite your squad (👥) or wait small.`, 'info', 7000);
+        else game.hud.toast(`👥 Real players only: ${humans} real soldiers for this battle. No bots.`, 'good', 5000);
+      }, 7600);
+    }
     if (lastSpawn) game.onSpawn(lastSpawn);
   });
   // After a dropped connection, rejoin the same battle.

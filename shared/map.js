@@ -5,7 +5,7 @@ import { STATE_BY_ID, RESOURCES, BIOMES, stateSeed } from './states.js';
 import { buildIndex } from './physics.js';
 import { MATCH, DRUMS } from './config.js';
 import { VEHICLES, HOUSES, footprint } from './vehicles.js';
-import { buildUnderworld } from './underworld.js';
+import { buildUnderworld, buildCave } from './underworld.js';
 
 export const HALF = 110; // map runs from -110 to 110 metres on x and z
 const NAV_CELL = 2;
@@ -257,6 +257,7 @@ function tryGenerate(state, seed) {
   const urng = mulberry32(Math.imul(seed ^ 0x7031, 0x85ebca6b) >>> 0);
   for (let k = 0; k < 3; k++) urng();
   const under = buildUnderworld({ rng: urng, free, reserve, box, visuals, water, half: HALF });
+  buildCave({ rng: urng, free, reserve, box, visuals, water, half: HALF }, under, state.biome);
   // ---------- buildings ----------
   const buildings = [];
   const houses = []; // homes that can be bombed and burnt down

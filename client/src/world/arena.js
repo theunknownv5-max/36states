@@ -383,7 +383,7 @@ export class Arena {
       const k = b.kind;
       // Houses that can burn get their own meshes (walls, roof) so each can char on its own.
       const HB = b.house !== undefined ? houseBuilder(b) : B;
-      if (b.prop === 'drum' || b.prop === 'wreck' || k === 'adwall' || k === 'vehicle' || b.headstone || b.tomb) continue; // custom meshes
+      if (b.prop === 'drum' || b.prop === 'wreck' || k === 'adwall' || k === 'vehicle' || b.headstone || b.tomb || b.cave) continue; // custom meshes
       if (k === 'tunnel') {
         // Tunnel ceilings sit just under the ground surface so they never flicker through it.
         HB.add('stone', b.ceil ? { ...b, y1: -0.05 } : b, 2.5, b.floor ? [0.42, 0.4, 0.38] : [0.55, 0.52, 0.48]);

@@ -8,6 +8,7 @@ export const GAME = {
   tagline: 'Shoot • Survive • Win',
   version: 'V0.1',
   developer: 'Tcee',
+  website: 'https://proofofduty.com',
   about:
     'Proof of Duty na tactical shooter wey dey happen for all 36 states of Nigeria plus Abuja. Choose your side, hold the ground, collect life gems, and show say you get the heart for duty. Na one Naija developer, Tcee, build am from scratch.'
 };
@@ -231,6 +232,17 @@ export const MODES = {
     scoreLimit: 5,
     timeLimitMs: 40 * 60 * 1000,
     icon: '💣'
+  },
+  practice: {
+    label: 'Practice Range',
+    blurb: 'Your private training ground (you and your crew only): target dummies wey no dey shoot back, free kit, train swimming and fitness 3x faster. Nothing count for your record.',
+    sites: false,
+    respawn: true,
+    practice: true,
+    private: true,
+    scoreLimit: 0,
+    timeLimitMs: 60 * 60 * 1000,
+    icon: '🎯'
   },
   stage: {
     label: 'Campaign Stages',

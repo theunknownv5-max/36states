@@ -1,14 +1,15 @@
 // One live battle in one state. The server decides every hit, death, revive,
 // gem pickup, capture, explosion and payout. Bots fill empty slots.
 import { randomUUID } from 'node:crypto';
-import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, HEALTH, PUNCH, TILE_GEMS, priceFor, rankFor } from '../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, HEALTH, PUNCH, TILE_GEMS, MODES, priceFor, rankFor } from '../shared/config.js';
 import { generateMap, inWater, tileGemSpots } from '../shared/map.js';
-import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise } from '../shared/physics.js';
+import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise, holeAt } from '../shared/physics.js';
 import { RESOURCES } from '../shared/states.js';
 import { mulberry32 } from '../shared/rng.js';
 import { BotBrain, botName, botLoadout } from './bots.js';
 import { createMode } from './modes.js';
 import { WorldState } from './world-state.js';
+import { Wildlife } from './wildlife.js';
 import { VEHICLES, WRECK } from '../shared/vehicles.js';
 
 export const WEAPON_IDS = Object.keys(WEAPONS);
@@ -21,6 +22,7 @@ export class Match {
     this.modeId = modeId;
     this.opts = opts;
     this.mode = createMode(modeId, this, opts);
+    this.practice = !!MODES[modeId]?.practice; // nothing here counts for anyone's record
     this.hooks = hooks; // { profileOf(token), saveProfile(), ads }
     this.map = generateMap(stateId);
     this.players = new Map();
@@ -35,6 +37,7 @@ export class Match {
     for (const g of this.tileGems) g.type = this.pickGemType();
     // Vehicles, burning houses, C4 and the ambulance.
     this.world = new WorldState(this);
+    this.wildlife = new Wildlife(this); // crocodiles, swimming and fitness
     this.emptySince = now();
     this.reset();
   }
@@ -225,7 +228,10 @@ export class Match {
         best = s;
       }
     }
+    const custom = this.mode.spawnPoint?.(p);
+    if (custom) best = custom;
     Object.assign(p, { x: best.x, y: 0, z: best.z, yaw: best.yaw, pitch: 0, vy: 0, onGround: true, crouch: false });
+    p.anchor = { x: best.x, z: best.z };
     p.health = PLAYER.maxHealth;
     p.armor = FACTIONS[p.faction].perks.startVest ? 100 : 0;
     p.helmet = false;
@@ -252,6 +258,7 @@ export class Match {
     }
     if (kit) Object.assign(p, kit);
     if (first) p.money = Math.max(p.money, MONEY.start);
+    if (this.practice && p.human) p.money = MONEY.max; // practice: everything free to try
     p.spawnAt = now();
     p.protectUntil = p.spawnAt + RESPAWN.protectMs;
     p.reloadUntil = 0;
@@ -308,6 +315,7 @@ export class Match {
       veh: p.veh ?? null,
       vhp: p.veh != null ? Math.max(0, Math.round((this.world.vehicles[p.veh].hp / VEHICLES[this.world.vehicles[p.veh].type].hp) * 100)) : 0,
       ambReady: p.ambReady || 0,
+      skills: { swim: Math.floor(p.profile.skills?.swim || 0), fitness: Math.floor(p.profile.skills?.fitness || 0) },
       level: p.human ? rankFor(p.profile.xp).level : 1,
       rival: this.hooks.social?.rivalOf(p.profile)?.name || null,
       status: p.status,
@@ -346,6 +354,7 @@ export class Match {
       tileGems: this.tileGemView(),
       drums: this.drumsDead,
       world: this.world.view(),
+      crocs: this.wildlife.view(),
       discovery: this.discovery,
       roster: this.roster(),
       serverTime: now()
@@ -602,6 +611,13 @@ export class Match {
           const h = hitSoldier(ox, oy, oz, dir[0], dir[1], dir[2], { x: pos.x, y: pos.y, z: pos.z, crouch: pos.crouch, downed: tgt.status === 'downed' });
           if (h && h.t < reach && (!best || h.t < best.h.t)) best = { tgt, h };
         }
+        // Crocodiles take bullets too.
+        const croc = this.wildlife.rayHit(ox, oy, oz, dir[0], dir[1], dir[2], Math.min(remaining, reach, best ? best.h.t : Infinity));
+        if (croc) {
+          end = [ox + dir[0] * croc.t, oy + dir[1] * croc.t, oz + dir[2] * croc.t];
+          this.wildlife.hurt(croc.c, w.dmg * mult, p);
+          break;
+        }
         if (best) {
           const dist = travelled + best.h.t;
           const [f0, f1] = w.falloff || [w.range, w.range];
@@ -797,7 +813,7 @@ export class Match {
       if (killer.streak === artilleryAt) this.grantStreak(killer, 'artillery');
       this.syncMe(killer);
       // Rivalries between real people.
-      if (killer.human && v.human && this.hooks.social) {
+      if (killer.human && v.human && this.hooks.social && !this.practice) {
         const r = this.hooks.social.recordKill(killer.profile, v.profile);
         if (r.revenge) {
           this.addXP(killer, 150);
@@ -806,7 +822,7 @@ export class Match {
         const rival = this.hooks.social.rivalOf(v.profile);
         if (rival && rival.token === killer.profile.token) this.toast(v, `Na your rival ${killer.profile.name} again! Pay am back.`, 'bad');
       }
-      if (killer.human) {
+      if (killer.human && !this.practice) {
         this.hooks.control?.track('kill');
         killer.profile.kills++;
         this.mission(killer, 'kills');
@@ -823,7 +839,7 @@ export class Match {
       o.points += 3;
       this.syncMe(o);
     }
-    if (v.human) v.profile.deaths++;
+    if (v.human && !this.practice) v.profile.deaths++;
     this.broadcast({ t: 'kill', killer: killer?.id || null, victim: v.id, w: weapon, head: headshot, kn: killer?.name, vn: v.name, ks: killer?.side, vs: v.side });
     if (!v.human) v.bot.respawnAt = t + this.mode.botRespawnMs(v);
     this.mode.onKill(v, killer, weapon, headshot);
@@ -838,13 +854,13 @@ export class Match {
 
   // Daily mission progress (humans only).
   mission(p, kind, n = 1) {
-    if (!p.human || !this.hooks.daily) return;
+    if (!p.human || !this.hooks.daily || this.practice) return;
     const done = this.hooks.daily.progress(p.profile, kind, n);
     for (const m of done) this.toast(p, `Mission complete: ${m.title}! Claim am for 🎁 Daily.`, 'streak');
   }
 
   addXP(p, n) {
-    if (!p.human) return;
+    if (!p.human || this.practice) return;
     n = Math.round(n * (this.hooks.control?.eventMult('xp') || 1)); // admin events (double XP weekend)
     const before = Math.floor(p.profile.xp / XP.levelEvery);
     p.profile.xp += n;
@@ -859,6 +875,7 @@ export class Match {
   // ---------- respawning ----------
   onRespawn(p, mode) {
     if (!['dead', 'spirit'].includes(p.status)) return;
+    if (this.practice) return this.spawn(p);
     if (!this.mode.canRespawn(p)) return this.toast(p, 'No respawn for this mode. You go enter next round.', 'info');
     if (mode === 'gem') {
       if (p.profile.gems < RESPAWN.gemCost) return this.toast(p, 'You no get life gem. Try Spirit Run or wait for medevac.', 'bad');
@@ -879,8 +896,15 @@ export class Match {
     }
   }
 
+  // Somewhere a soldier can stand (not inside a wall, not in water, not over a stairwell).
+  freeSpot(x, z) {
+    const lim = this.map.half - 4;
+    return Math.abs(x) < lim && Math.abs(z) < lim && !insideAnyBox(this.map.index, x, 0, z) && !inWater(this.map, x, z) && !holeAt(this.map.index, x, z);
+  }
+
   // ---------- buying ----------
   inBuyZone(p) {
+    if (this.practice) return true;
     const b = this.map.bases[p.side];
     return Math.hypot(p.x - b.x, p.z - b.z) < MONEY.buyZoneRadius || now() < p.spawnAt + MONEY.buyWindowMs;
   }
@@ -1099,6 +1123,7 @@ export class Match {
     }
     // Vehicles and houses caught in the blast.
     this.world.onBlast(x, y, z, radius, dmg, owner, weapon);
+    this.wildlife.onBlast(x, y, z, radius, dmg, owner);
   }
 
   // ---------- fuel drums ----------
@@ -1399,6 +1424,7 @@ export class Match {
         this.spawn(p);
         this.toast(p, `Medevac don land you. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
       }
+      if (this.practice && p.human && p.status === 'dead' && t - p.deadAt > 3000) this.spawn(p);
       // A human who leaves the death screen alone too long gets the medevac.
       if (p.human && p.status === 'dead' && t - p.deadAt > 60000 && this.mode.canRespawn(p)) this.onRespawn(p, 'medevac');
       if (!p.human) p.bot.tick(p, dt);
@@ -1412,6 +1438,7 @@ export class Match {
     this.smokes = this.smokes.filter((s) => s.until > t);
     this.stepDrums(dt);
     this.world.tick(dt);
+    this.wildlife.tick(dt);
     if (this.mode.usesSites()) this.stepSites(dt);
     this.stepGems();
     this.stepTileGems(t);
@@ -1438,6 +1465,7 @@ export class Match {
     const roster = this.roster().sort((a, b) => b.points - a.points);
     const mvp = roster.find((r) => !r.bot) || roster[0];
     for (const p of this.humans()) {
+      if (this.practice) continue;
       p.profile.matches++;
       this.mission(p, 'matches');
       if (p.side === winner) {
@@ -1461,6 +1489,7 @@ export class Match {
     const projectiles = this.projectiles.map((p) => [p.kind, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)]);
     const smokes = this.smokes.map((s) => [+s.x.toFixed(1), +s.z.toFixed(1), s.r]);
     const vehicles = this.world.snapshot();
+    const crocs = this.wildlife.crocs.length ? this.wildlife.view() : undefined;
     for (const me of this.humans()) {
       const uav = this.uav[me.side] > t;
       const list = [];
@@ -1483,7 +1512,7 @@ export class Match {
           (o.veh != null ? 4096 : 0);
         list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
       }
-      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes, vh: vehicles });
+      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes, vh: vehicles, ck: crocs });
     }
   }
 }

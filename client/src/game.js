@@ -30,8 +30,11 @@ import { AdChat } from './ad-chat.js';
 import { Vehicles, Charges, Ambulances } from './world/vehicles.js';
 import { Houses } from './world/houses.js';
 import { Driving } from './driving.js';
+import { WaitAds } from './ui/wait-ads.js';
+import { Crocs, Dogs } from './world/animals.js';
 import { Underworld } from './world/underworld.js';
 import { DIG, LOOT } from '../../shared/underworld.js';
+import { swimFactor, deepWater, staminaFor, sprintFor, SKILLS } from '../../shared/skills.js';
 import { VEHICLES, C4, AMBULANCE } from '../../shared/vehicles.js';
 
 const WEAPON_IDS = Object.keys(WEAPONS); // same order as the server
@@ -64,6 +67,7 @@ export class Game {
       if (code === 'unlock' && this.running) this.onUnlock();
     });
     this.bindUi();
+    this.waitAds = new WaitAds(this);
   }
 
   // ---------- lifecycle ----------
@@ -105,6 +109,9 @@ export class Game {
     this.driving ||= new Driving(this);
     this.driving.stop();
     this.underworld = new Underworld(scene, this.map, this.arena);
+    this.crocs = new Crocs(scene, this.fx);
+    this.crocs.apply(info.crocs, info.serverTime);
+    this.dogs = new Dogs(scene, this.map);
     this.digging = null;
     this.diggers = new Map();
     this.applyWorld(info.world);
@@ -165,6 +172,7 @@ export class Game {
     this.hud.score(info.score, info.sites, this.msLeft);
     this.hud.hideMatchEnd();
     for (const k of ['buy', 'scoreboard', 'pause', 'death', 'downed', 'spirit', 'medevac']) $(k).hidden = true;
+    this.waitAds.hide();
     $('touch').hidden = !isTouch();
     this.touchKey = null;
     if (isTouch() && !this.touchBound) {
@@ -403,6 +411,12 @@ export class Game {
       if (this.me) this.hud.nades(this.me);
     });
     on('amb', (m) => this.ambulances.add(m));
+    on('croc', (m) => {
+      if (m.a === 'bite') {
+        this.crocs.bite(m.i);
+        if (m.id === this.myId) this.fx.shake = Math.min(1.4, this.fx.shake + 0.8);
+      } else if (m.a === 'dead' && m.by) this.hud.toast(`🐊 ${m.by} don kill crocodile`, 'info', 2000);
+    });
     // Digging graves and opening tombs.
     on('dig', (m) => {
       if (m.i >= 0) this.digging = { i: m.i, start: performance.now(), secs: m.secs };
@@ -420,7 +434,7 @@ export class Game {
       this.underworld.open(m.i, m.loot);
       const G = this.map.graves[m.i];
       const L = LOOT[m.loot];
-      if (G.kind === 'tomb') audio.tombOpen?.({ x: G.x, y: G.y + 0.8, z: G.z });
+      if (G.kind !== 'grave') audio.tombOpen?.({ x: G.x, y: G.y + 0.8, z: G.z });
       if (m.id === this.myId) {
         if (L.kind !== 'none') {
           audio.relic?.();
@@ -552,6 +566,7 @@ export class Game {
     // Soldiers missing from the snapshot (enemy spirits) are hidden.
     for (const [id, s] of this.soldiers) s.visible = seen.has(id);
     this.vehicles.onSnapshot(m.vh, m.ts, this.driving.active ? this.driving.v.i : -1);
+    if (m.ck) this.crocs.apply(m.ck, m.ts);
     this.fx.projectiles(m.pr);
     this.fx.syncSmokes(m.sm);
     this.smokes = m.sm.map(([x, z, r]) => ({ x, z, r }));
@@ -560,6 +575,9 @@ export class Game {
   onMe(m) {
     const prev = this.status;
     this.me = m;
+    // The server is the judge of who sits where: never stay stuck in (or out of) a seat.
+    if (this.driving?.active && m.veh == null) this.driving.stop();
+    else if (this.driving && !this.driving.active && m.veh != null && this.vehicles?.list[m.veh]) this.driving.start(this.vehicles.list[m.veh]);
     this.status = m.status;
     // Keep predicted ammo unless we fired very recently.
     const w = m.weapons[m.slot];
@@ -601,6 +619,8 @@ export class Game {
       if (!isTouch()) this.input.lock();
     } else this.vm.visible = false;
     if (now === 'downed') this.closeMenus();
+    // Waiting for the medevac: the drone tours the battlefield's adverts until you land.
+    if (now === 'medevac') this.cams.startTour();
   }
 
   onSpawn(m) {
@@ -616,6 +636,7 @@ export class Game {
 
   onShot(m) {
     if (m.id === this.myId) return;
+    if (Math.random() < 0.3) this.scareAnimals(m.o[0], m.o[2]);
     const sol = this.soldiers.get(m.id);
     const w = WEAPONS[m.w];
     const from = sol && sol.visible ? sol.muzzleWorld(new THREE.Vector3()) : new THREE.Vector3(...m.o);
@@ -672,6 +693,7 @@ export class Game {
   }
 
   onBoom(m) {
+    this.scareAnimals(m.x, m.z, 60);
     const p = new THREE.Vector3(m.x, m.y, m.z);
     this.fx.explosion(p, m.r, m.w);
     audio.explosion(p, m.w === 'artillery' || m.w === 'rpg' ? 1.3 : 1);
@@ -709,7 +731,7 @@ export class Game {
       if (q) return this.modes.sendQuick(+q[1] - 1);
     }
     if (code === 'KeyY' || code === 'KeyU') return this.openChat(code === 'KeyU');
-    if (code === 'KeyT') return this.cams.toggleDrone();
+    if (code === 'KeyT') return (st === 'dead' || st === 'medevac') && this.cams.mode !== 'drone' ? this.cams.startTour() : this.cams.toggleDrone();
     if (code === 'KeyH') return this.cams.toggleChase();
     if (code === 'KeyJ') return this.adChat.openTarget();
     if (this.cams.mode === 'drone') {
@@ -791,7 +813,7 @@ export class Game {
     $('opt-gem').onclick = () => this.respawn('gem');
     $('opt-spirit').onclick = () => this.respawn('spirit');
     $('opt-medevac').onclick = () => this.respawn('medevac');
-    $('opt-drone').onclick = () => this.cams.toggleDrone();
+    $('opt-drone').onclick = () => this.cams.startTour();
     $('ad-prompt').onclick = () => this.adChat.openTarget();
     $('veh-prompt').onclick = () => (this.driving?.active ? this.net.send({ t: 'veh', a: 'exit' }) : this.enterVehicle());
     $('btn-inbox-game').onclick = () => this.onInbox?.();
@@ -893,6 +915,8 @@ export class Game {
 
   respawn(mode) {
     audio.unlock();
+    this.respawnAt = performance.now();
+    $('death').hidden = true;
     this.net.send({ t: 'respawn', mode });
     if (mode !== 'medevac' && !isTouch()) this.input.lock();
   }
@@ -980,6 +1004,10 @@ export class Game {
     const o = chase ? chase.o : [this.camera.position.x, this.camera.position.y, this.camera.position.z];
     let d = chase ? chase.d : dirFromAngles(this.yaw + this.punch.y + (this.sway?.y || 0), this.pitch + this.punch.p + (this.sway?.p || 0));
     if (!w.pellets) d = spreadDir(d, this.spreadNow(w, this.vel.length()));
+    if (!this.scareT || now - this.scareT > 400) {
+      this.scareT = now;
+      this.scareAnimals(o[0], o[2]);
+    }
     this.net.send({ t: 'fire', w: id, o: o.map((v) => +v.toFixed(3)), d: d.map((v) => +v.toFixed(4)), ts: Math.round(this.net.serverNow() - NET.interpDelayMs) });
     // Recoil: part is view punch that recovers, part climbs for good.
     const k = w.kick * (this.adsOn ? 0.75 : 1) * (this.body.crouch ? 0.8 : 1);
@@ -1070,7 +1098,11 @@ export class Game {
   // Quick punch with the free hand, any time (three in a row on one enemy = heavy blow).
   enterVehicle() {
     const v = this.vehicles.nearest(this.body.x, this.body.z);
-    if (v) this.net.send({ t: 'veh', a: 'enter', i: v.i });
+    if (!v) return;
+    // Don't fire twice while the first request is on its way.
+    if (this.enterAt && performance.now() - this.enterAt < 600) return;
+    this.enterAt = performance.now();
+    this.net.send({ t: 'veh', a: 'enter', i: v.i });
   }
 
   // Stick a C4 charge on whatever you are looking at (a wall, a vehicle) or drop it at your feet.
@@ -1207,7 +1239,7 @@ export class Game {
     this.viewsT += dt;
     if (this.viewsT > ADS.reportEveryMs / 1000) {
       this.viewsT = 0;
-      if (st === 'alive' || st === 'spirit') {
+      if (st === 'alive' || st === 'spirit' || this.cams.mode === 'drone') {
         const slots = this.boards.visible(this.camera, this.map.index, lineBlocked, this.smokes || []);
         if (slots.length) this.net.send({ t: 'views', slots });
       }
@@ -1234,7 +1266,15 @@ export class Game {
     this.render();
   }
 
+  // Gunfire and blasts: dogs bolt, birds lift off.
+  scareAnimals(x, z, r = 30) {
+    this.dogs?.scare(x, z, r);
+    this.ambience?.scare?.(x, z);
+  }
+
   updateWarzone(dt, sNow) {
+    this.crocs.update(dt, sNow, this.arena.time);
+    this.dogs.update(dt, this.arena.time, this.status === 'alive' ? this.body : null);
     const mine = this.driving.active ? this.driving.v.i : -1;
     this.vehicles.update(dt, sNow, this.arena.time, mine);
     this.houses.update(dt, this.arena.time);
@@ -1262,8 +1302,8 @@ export class Game {
         const G = this.map.graves[i];
         if (!G) continue;
         const p = new THREE.Vector3(G.x, G.y + 0.3, G.z);
-        for (let k = 0; k < 6; k++) this.fx.dust.spawn(p, { colour: G.kind === 'tomb' ? '#9a948a' : '#6b4f35', size: 0.25, life: 0.9, v: new THREE.Vector3((Math.random() - 0.5) * 2, 2 + Math.random() * 1.5, (Math.random() - 0.5) * 2), g: 6, opacity: 0.9 });
-        audio.dig?.({ x: G.x, y: G.y + 0.5, z: G.z }, G.kind === 'tomb');
+        for (let k = 0; k < 6; k++) this.fx.dust.spawn(p, { colour: G.kind === 'grave' ? '#6b4f35' : '#9a948a', size: 0.25, life: 0.9, v: new THREE.Vector3((Math.random() - 0.5) * 2, 2 + Math.random() * 1.5, (Math.random() - 0.5) * 2), g: 6, opacity: 0.9 });
+        audio.dig?.({ x: G.x, y: G.y + 0.5, z: G.z }, G.kind !== 'grave');
       }
     }
     // Vehicle prompt and touch button.
@@ -1347,15 +1387,26 @@ export class Game {
     const wantSprint = (inp.down('ShiftLeft') || inp.down('ShiftRight') || inp.touch.sprint) && forward && !b.crouch;
     this.adsOn = inp.aiming() && !this.anyMenu() && !w.melee && !droning;
     this.sprinting = wantSprint && this.stamina > 0.2 && !this.adsOn && !this.local.reloadUntil;
+    const sk = this.me?.skills || { swim: 0, fitness: 0 };
+    const maxStam = staminaFor(sk.fitness, PLAYER.stamina);
     if (this.sprinting) this.stamina = Math.max(0, this.stamina - dt);
-    else this.stamina = Math.min(PLAYER.stamina, this.stamina + dt * 0.8);
+    else this.stamina = Math.min(maxStam, this.stamina + dt * 0.8);
     let speed = PLAYER.jog;
-    if (this.sprinting) speed = PLAYER.run;
+    if (this.sprinting) speed = PLAYER.run * sprintFor(sk.fitness);
     else if (inp.down('KeyZ')) speed = PLAYER.slow;
     if (b.crouch) speed = PLAYER.crouchSpeed;
     if (this.adsOn) speed *= PLAYER.adsSpeed + 0.2;
     speed *= (w.speed || 1) * (f.speedMult || 1);
-    if (b.y < 0.1 && this.arena.inWater(b.x, b.z)) speed *= PLAYER.waterSpeed * (f.swimMult || 1);
+    if (b.y < 0.1 && this.arena.inWater(b.x, b.z)) {
+      const deep = deepWater(this.map, b.x, b.z);
+      speed *= PLAYER.waterSpeed * (f.swimMult || 1) * swimFactor(sk.swim, deep);
+      // Deep water without the skill: say so plainly (the server makes you go under).
+      if (deep && sk.swim < SKILLS.swim.canSwimAt && now - (this.swimWarnAt || 0) > 6000) {
+        this.swimWarnAt = now;
+        $('tint').className = 'drowning';
+        setTimeout(() => $('tint').className === 'drowning' && ($('tint').className = ''), 1500);
+      }
+    }
     if (this.local.heal > now) speed *= 0.5;
     const accel = b.onGround ? 14 : 2.5;
     const k = 1 - Math.exp(-accel * dt);
@@ -1516,9 +1567,10 @@ export class Game {
     const m = this.me;
     const st = this.status;
     this.hud.timers(st, m, sNow);
+    this.waitAds.update(now, sNow);
     this.hud.score(this.score, null, this.msLeft - (now - this.leftAt));
     this.modes.update(dt, sNow);
-    this.hud.stamina(this.stamina / PLAYER.stamina);
+    this.hud.stamina(this.stamina / staminaFor(this.me?.skills?.fitness || 0, PLAYER.stamina));
     // Crosshair grows with spread.
     const w = WEAPONS[this.weapon()];
     const spread = this.spreadNow(w, this.vel.length());
@@ -1534,9 +1586,9 @@ export class Game {
     if (!prompt && st === 'alive') prompt = this.modes.prompt();
     if (st === 'alive' && this.digging) {
       const pct = Math.min(100, ((now - this.digging.start) / (this.digging.secs * 1000)) * 100);
-      const tomb = this.map.graves[this.digging.i]?.kind === 'tomb';
-      prompt = `${tomb ? 'Pushing the lid' : 'Digging'}… <span class="dig-bar"><i style="width:${pct.toFixed(0)}%"></i></span>`;
-    } else if (!prompt && st === 'alive' && this.nearGrave && !this.driving.active) prompt = `<kbd>E</kbd> Hold to ${this.nearGrave.g.kind === 'tomb' ? 'open the tomb' : 'dig the grave'}`;
+      const kind = this.map.graves[this.digging.i]?.kind;
+      prompt = `${kind === 'tomb' ? 'Pushing the lid' : kind === 'cache' ? 'Forcing the chest' : 'Digging'}… <span class="dig-bar"><i style="width:${pct.toFixed(0)}%"></i></span>`;
+    } else if (!prompt && st === 'alive' && this.nearGrave && !this.driving.active) prompt = `<kbd>E</kbd> Hold to ${{ tomb: 'open the tomb', cache: 'open the old chest' }[this.nearGrave.g.kind] || 'dig the grave'}`;
     if (!this.artilleryAim) this.hud.prompt(prompt);
     if (isTouch()) this.syncTouch(st, m);
     // "Click to fight" whenever the mouse is free during play (desktop only).

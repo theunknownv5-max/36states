@@ -49,7 +49,7 @@ export class WorldState {
     this.ambulances = [];
     // Graves and tombs: what each one hides is decided at the start of the round.
     const rnd = this.m.rng || Math.random;
-    this.graves = map.graves.map((g) => ({ i: g.i, dug: false, loot: rollLoot(g.kind === 'tomb' ? TOMB_LOOT : GRAVE_LOOT, rnd), digger: null }));
+    this.graves = map.graves.map((g) => ({ i: g.i, dug: false, loot: rollLoot(g.kind === 'grave' ? GRAVE_LOOT : TOMB_LOOT, rnd), digger: null }));
     for (const p of this.m.players?.values() || []) p.dig = null;
   }
 
@@ -116,7 +116,7 @@ export class WorldState {
     if (p.dig) this.stopDig(p, 'switch');
     g.digger = p.id;
     p.dig = { i, since: now(), x: p.x, z: p.z };
-    const secs = G.kind === 'tomb' ? DIG.tombSecs : DIG.graveSecs;
+    const secs = G.kind === 'grave' ? DIG.graveSecs : DIG.tombSecs;
     this.m.send(p, { t: 'dig', i, secs });
     this.m.broadcastNear(p, { t: 'digging', id: p.id, i, on: true }, 45);
   }
@@ -149,7 +149,7 @@ export class WorldState {
     else if (L.kind === 'gems') p.profile.gems += 1;
     this.m.broadcast({ t: 'grave', i: g.i, by: p.name, id: p.id, loot: g.loot });
     this.m.send(p, { t: 'dig', i: -1, reason: 'done' });
-    if (L.kind === 'none') this.m.toast(p, `${G.kind === 'tomb' ? 'The tomb' : 'The grave'} empty. ${L.icon} Na only old bones dey inside.`, 'bad');
+    if (L.kind === 'none') this.m.toast(p, `${G.kind === 'grave' ? 'The grave' : G.kind === 'cache' ? 'The chest' : 'The tomb'} empty. ${L.icon} Na only old bones dey inside.`, 'bad');
     else {
       this.m.toast(p, `${L.icon} You dig out: ${L.name}!${L.kind === 'weapon' ? ' Relic gun: you go lose am if you die.' : ''}`, 'streak');
       this.m.addXP(p, DIG.xp);
@@ -159,20 +159,39 @@ export class WorldState {
   }
 
   enter(p, i) {
-    const v = this.vehicles[i];
-    if (!v || p.veh != null || !this.m.canAct(p) || v.state >= BURNING || v.driver) return;
+    // A seat left over from an earlier ride (should not happen, but never let it block you).
+    if (p.veh != null) {
+      const cur = this.seatOf(p);
+      if (cur && cur.driver === p.id) return;
+      p.veh = null;
+    }
+    if (p.status !== 'alive') return;
+    if (this.m.chatting(p)) return;
+    if (this.m.mode.frozen?.()) return this.m.toast(p, 'Wait make the round start first.', 'bad');
+    const reach = (v) => Math.hypot(p.x - v.x, p.z - v.z) - VEHICLES[v.type].L / 2;
+    const usable = (v) => v && v.state < BURNING && !v.driver && reach(v) <= 3.2 && p.y < 3;
+    let v = this.vehicles[i];
+    if (!usable(v)) {
+      // Not that one? Take the nearest one you can actually get into.
+      const near = this.vehicles.filter(usable).sort((a, b) => reach(a) - reach(b))[0];
+      if (!near) {
+        const why = !v ? 'No motor near you.' : v.state >= BURNING ? 'That motor dey burn!' : v.driver ? 'Somebody dey drive am already.' : 'Go closer to the motor.';
+        return this.m.toast(p, why, 'bad');
+      }
+      v = near;
+    }
     const d = VEHICLES[v.type];
-    if (Math.hypot(p.x - v.x, p.z - v.z) > d.L / 2 + 2.4 || p.y > 2) return;
     v.driver = p.id;
     v.speed = 0;
     v.lastMove = now();
-    p.veh = i;
+    p.veh = v.i;
     p.x = v.x;
     p.z = v.z;
     p.y = d.seatY;
     p.crouch = true;
     p.healAt = 0; // no first aid while driving
-    this.m.broadcast({ t: 'vseat', i, id: p.id });
+    p.dig && this.stopDig(p, 'vehicle');
+    this.m.broadcast({ t: 'vseat', i: v.i, id: p.id });
     this.m.syncMe(p);
   }
 
@@ -482,7 +501,7 @@ export class WorldState {
         this.stopDig(p, 'moved');
         continue;
       }
-      if (t - p.dig.since >= (G.kind === 'tomb' ? DIG.tombSecs : DIG.graveSecs) * 1000) this.finishDig(p);
+      if (t - p.dig.since >= (G.kind === 'grave' ? DIG.graveSecs : DIG.tombSecs) * 1000) this.finishDig(p);
     }
     // Ambulances arriving.
     for (const a of this.ambulances) {

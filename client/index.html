@@ -66,6 +66,7 @@
           <span id="p-rank" class="rank">Recruit</span>
           <span class="gems" title="Life gems">💎 <b id="p-gems">0</b></span>
           <span class="kd">K <b id="p-k">0</b> · D <b id="p-d">0</b> · W <b id="p-w">0</b></span>
+          <span class="online-chip" id="online-chip" hidden title="Soldiers online now"></span>
         </div>
         <div class="lobby-actions">
           <button class="btn ghost icon-btn" id="btn-notes" title="News and notifications">🔔<span class="lbl"> News</span> <i class="badge" id="notes-badge" hidden></i></button>
@@ -226,6 +227,15 @@
           <h2>MEDEVAC DEY COME</h2>
           <p>You go land back in <b id="medevac-t">25</b>s</p>
         </div>
+        <div id="wait-ads" class="wait-ads" hidden>
+          <div class="wa-head"><b id="wa-title">Drone view</b><span id="wa-time"></span></div>
+          <div class="wa-ad" id="wa-ad">
+            <img id="wa-img" alt="" />
+            <div class="wa-txt"><small>Sponsored</small><b id="wa-name"></b><span id="wa-sub"></span></div>
+            <div class="wa-btns"><a id="wa-link" class="btn ghost" target="_blank" rel="noopener">Visit</a><button id="wa-chat" class="btn primary">💬 Chat</button></div>
+          </div>
+          <div class="wa-actions" id="wa-actions"></div>
+        </div>
 
         <!-- Menus -->
         <div id="buy" class="menu" hidden>
@@ -323,6 +333,7 @@
           <label>Quality <select id="set-quality"><option value="low">Low (old phones)</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra (gaming PC)</option></select></label>
           <label>Field of view <input type="range" id="set-fov" min="65" max="100" step="1" /></label>
           <p class="muted small" id="set-note"></p>
+          <button class="btn ghost" id="set-reset" type="button">↺ Reset all settings to default</button>
         </div>
       </div>
     </div>
@@ -339,7 +350,9 @@
           <dt>Developer</dt><dd><b>Tcee</b> — na im alone build am. Proudly Nigerian 🇳🇬</dd>
           <dt>Battlefields</dt><dd>36 states + Abuja (FCT)</dd>
           <dt>Modes</dt><dd>Hold Ground · Gbas Gbos · Plant &amp; Defuse · Campaign Stages</dd>
+          <dt>Website</dt><dd><a href="https://proofofduty.com" target="_blank" rel="noopener" class="about-link">proofofduty.com</a></dd>
         </dl>
+        <p style="margin:10px 0 0"><a class="btn primary" href="https://proofofduty.com" target="_blank" rel="noopener">🌐 Visit the official website</a></p>
         <p class="muted small">© Tcee. All rights reserved.</p>
       </div>
     </div>

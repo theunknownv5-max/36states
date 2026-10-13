@@ -126,6 +126,31 @@ export class Social {
     this.save();
   }
 
+  // ---------- crew room: chat, the tactics plan, training ----------
+  crewChat(me, text) {
+    const crew = this.crewOf(me);
+    if (!crew) throw new Error('Join or start a crew first.');
+    text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!text) throw new Error('Type something first.');
+    const t = Date.now();
+    me.crewChatTimes = (me.crewChatTimes || []).filter((x) => x > t - 20000);
+    if (me.crewChatTimes.length >= 8) throw new Error('Slow down small.');
+    me.crewChatTimes.push(t);
+    const msg = { at: t, from: me.name, me: me.token, text };
+    (crew.chat ||= []).push(msg);
+    if (crew.chat.length > 120) crew.chat.splice(0, crew.chat.length - 120);
+    this.save();
+    return { crew, msg };
+  }
+
+  crewPlan(me, text) {
+    const crew = this.crewOf(me);
+    if (!crew) throw new Error('Join or start a crew first.');
+    crew.plan = { text: String(text || '').slice(0, 1200), by: me.name, at: Date.now() };
+    this.save();
+    return crew;
+  }
+
   // ---------- rivals ----------
   // Called when one real player kills another.
   recordKill(killer, victim) {
@@ -168,7 +193,22 @@ export class Social {
       code: this.codeOf(me),
       friends: (me.friends || []).map(who).filter(Boolean),
       requests: (me.requests || []).map(who).filter(Boolean),
-      crew: crew ? { code: `CREW-${crew.id}`, name: crew.name, tag: crew.tag, owner: crew.owner === me.token, members: crew.members.map(who).filter(Boolean) } : null,
+      crew: crew
+        ? {
+            code: `CREW-${crew.id}`,
+            name: crew.name,
+            tag: crew.tag,
+            owner: crew.owner === me.token,
+            members: crew.members.map((t) => {
+              const w = who(t);
+              const sk = this.profiles[t]?.skills;
+              return w && { ...w, swim: Math.floor(sk?.swim || 0), fitness: Math.floor(sk?.fitness || 0) };
+            }).filter(Boolean),
+            chat: (crew.chat || []).slice(-60).map((m) => ({ at: m.at, from: m.from, mine: m.me === me.token, text: m.text })),
+            plan: crew.plan || null
+          }
+        : null,
+      skills: { swim: Math.floor(me.skills?.swim || 0), fitness: Math.floor(me.skills?.fitness || 0) },
       rivals: Object.values(me.rivals || {})
         .filter((r) => r.theyKilledMe + r.iKilledThem > 0)
         .sort((a, b) => b.theyKilledMe + b.iKilledThem - (a.theyKilledMe + a.iKilledThem))

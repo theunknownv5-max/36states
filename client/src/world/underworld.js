@@ -38,8 +38,9 @@ export class Underworld {
       else if (v.type === 'lamp') this.lamp(v);
       else if (v.type === 'catacomb') this.catacomb(v);
       else if (v.type === 'gatePosts' && v.gate) this.gate(v);
+      else if (v.type === 'cave') this.cave(v);
     }
-    for (const g of map.graves || []) this.graves.push(g.kind === 'tomb' ? this.tomb(g) : this.grave(g));
+    for (const g of map.graves || []) this.graves.push(this.build(g));
     this.group.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = o.position.y > -1;
@@ -153,6 +154,106 @@ export class Underworld {
     }
   }
 
+  build(g) {
+    return g.kind === 'tomb' ? this.tomb(g) : g.kind === 'cache' ? this.chest(g) : this.grave(g);
+  }
+
+  // A cave: a lumpy rock hill over the hollow (whose walls and roof are the collision boxes),
+  // stalactites, glowing crystals, and the dark mouth facing the middle of the map.
+  cave(v) {
+    const rock = T.rockTexture();
+    // No normal map here: on the faceted boulders it turned the whole hill black on some GPUs.
+    const mat = new THREE.MeshStandardMaterial({ map: rock.map, color: '#c2b49c', roughness: 0.95, flatShading: true });
+    const inner = new THREE.MeshStandardMaterial({ map: rock.map, color: '#4e463d', roughness: 1, flatShading: true, side: THREE.BackSide });
+    const g = new THREE.Group();
+    g.position.set(v.x, 0, v.z);
+    const seed = (k) => hash(v.x, v.z, k);
+    // Outer shell: overlapping boulders following the walls and the roof.
+    const hw = v.w / 2;
+    const hd = v.d / 2;
+    const geo = new THREE.DodecahedronGeometry(1, 1);
+    const boulder = (x, y, z, s, k) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.scale.set(s * (0.8 + seed(k) * 0.5), s * (0.7 + seed(k + 1) * 0.4), s * (0.8 + seed(k + 2) * 0.5));
+      m.rotation.set(seed(k + 3) * 3, seed(k + 4) * 3, 0);
+      g.add(m);
+    };
+    let k = 0;
+    const doorOf = (x, z) => {
+      if (v.door === 'x0') return x < -hw + 1 && Math.abs(z) < 2.2;
+      if (v.door === 'x1') return x > hw - 1 && Math.abs(z) < 2.2;
+      if (v.door === 'z0') return z < -hd + 1 && Math.abs(x) < 2.2;
+      return z > hd - 1 && Math.abs(x) < 2.2;
+    };
+    for (let x = -hw; x <= hw; x += 2.6)
+      for (const z of [-hd + 0.6, hd - 0.6]) if (!doorOf(x, z)) boulder(x, 1.8, z, 2.0, k++ * 7);
+    for (let z = -hd + 2.6; z <= hd - 2.6; z += 2.6) for (const x of [-hw + 0.6, hw - 0.6]) if (!doorOf(x, z)) boulder(x, 1.8, z, 2.0, k++ * 7);
+    for (let x = -hw + 2; x <= hw - 2; x += 3) for (let z = -hd + 2; z <= hd - 2; z += 3) boulder(x, v.h + 1.0 + seed(k) * 0.8, z, 2.4, k++ * 7);
+    // Dark interior lining.
+    // (No lining on the mouth side, so you can see in and out.)
+    const hole = new THREE.MeshBasicMaterial({ visible: false });
+    const faces = [inner, inner, inner, inner, inner, inner];
+    faces[{ x1: 0, x0: 1, z1: 4, z0: 5 }[v.door]] = hole;
+    const lining = new THREE.Mesh(new THREE.BoxGeometry(v.w - 2.9, v.h - 0.05, v.d - 2.9), faces);
+    lining.position.y = v.h / 2;
+    g.add(lining);
+    // Stalactites and glowing crystals.
+    const drip = new THREE.ConeGeometry(0.16, 0.9, 6).rotateX(Math.PI);
+    for (let n = 0; n < 12; n++) {
+      const m = new THREE.Mesh(drip, inner.clone());
+      m.material.side = THREE.FrontSide;
+      m.position.set((seed(n + 50) - 0.5) * (v.w - 4), v.h - 0.45, (seed(n + 70) - 0.5) * (v.d - 4));
+      m.scale.y = 0.6 + seed(n + 90) * 0.9;
+      g.add(m);
+    }
+    const crystalMat = [new THREE.MeshStandardMaterial({ color: '#5fe0ff', emissive: '#1fa8d8', emissiveIntensity: 1.6, roughness: 0.2 }), new THREE.MeshStandardMaterial({ color: '#c58cff', emissive: '#7a30d8', emissiveIntensity: 1.6, roughness: 0.2 })];
+    for (let n = 0; n < 7; n++) {
+      const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), crystalMat[n % 2]);
+      c.scale.y = 2.2;
+      const wallX = (seed(n + 110) < 0.5 ? -1 : 1) * (hw - 1.6);
+      c.position.set(n % 2 ? wallX : (seed(n + 130) - 0.5) * (v.w - 4), 0.35, n % 2 ? (seed(n + 150) - 0.5) * (v.d - 4) : (seed(n + 170) < 0.5 ? -1 : 1) * (hd - 1.6));
+      c.rotation.z = (seed(n + 190) - 0.5) * 0.6;
+      g.add(c);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.softDot(), color: n % 2 ? '#c58cff' : '#5fe0ff', blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.5 }));
+      glow.scale.setScalar(1.4);
+      glow.position.copy(c.position);
+      g.add(glow);
+    }
+    // Stalagmites (their collision boxes are in the map).
+    for (const b of this.map.boxes) {
+      if (!b.mite || Math.abs((b.x0 + b.x1) / 2 - v.x) > hw || Math.abs((b.z0 + b.z1) / 2 - v.z) > hd) continue;
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.32, b.y1, 7), mat);
+      m.position.set((b.x0 + b.x1) / 2 - v.x, b.y1 / 2, (b.z0 + b.z1) / 2 - v.z);
+      g.add(m);
+    }
+    this.group.add(g);
+  }
+
+  // An old iron-bound chest half buried in the cave floor.
+  chest(g) {
+    const grp = new THREE.Group();
+    grp.position.set(g.x, 0, g.z);
+    grp.rotation.y = { x0: Math.PI / 2, x1: -Math.PI / 2, z0: 0, z1: Math.PI }[g.door] || 0;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.7), this.mats.wood);
+    base.position.y = 0.27;
+    const lid = new THREE.Group();
+    lid.position.set(0, 0.55, 0.35);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.1, 12, 1, false, 0, Math.PI).rotateZ(Math.PI / 2), this.mats.wood);
+    top.position.set(0, 0, -0.35);
+    lid.add(top);
+    for (const x of [-0.42, 0.42]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.58, 0.72), this.mats.steel);
+      band.position.set(x, 0.28, 0);
+      grp.add(band);
+    }
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.05), this.mats.gold);
+    lock.position.set(0, 0.48, -0.37);
+    grp.add(base, lid, lock);
+    this.group.add(grp);
+    return { g, grp, lid, chest: true, dug: false };
+  }
+
   // A grave: an earth mound with a headstone in one of a few styles.
   grave(g) {
     const grp = new THREE.Group();
@@ -215,7 +316,7 @@ export class Underworld {
     const e = this.graves[i];
     if (!e || e.dug) return;
     e.dug = true;
-    if (e.g.kind === 'tomb') {
+    if (e.g.kind !== 'grave') {
       e.lidT = instant ? 1 : 0;
       if (instant) this.placeLid(e, 1);
     } else {
@@ -244,6 +345,10 @@ export class Underworld {
   }
 
   placeLid(e, k) {
+    if (e.chest) {
+      e.lid.rotation.x = -1.9 * k; // hinged open
+      return;
+    }
     // Pushed aside and tipped against the base.
     e.lid.position.set(0.95 * k, 0.79 - 0.5 * k, 0.15 * k);
     e.lid.rotation.set(0, 0.25 * k, -0.5 * k);
@@ -252,7 +357,7 @@ export class Underworld {
   // Lids grinding open.
   update(dt) {
     for (const e of this.graves) {
-      if (e.g.kind !== 'tomb' || !e.dug || e.lidT >= 1) continue;
+      if (e.g.kind === 'grave' || !e.dug || e.lidT >= 1) continue;
       e.lidT = Math.min(1, e.lidT + dt * 1.4);
       this.placeLid(e, e.lidT * e.lidT * (3 - 2 * e.lidT));
     }
@@ -277,7 +382,7 @@ export class Underworld {
     for (const [k, e] of this.graves.entries()) {
       if (!e.dug) continue;
       this.group.remove(e.grp);
-      this.graves[k] = e.g.kind === 'tomb' ? this.tomb(e.g) : this.grave(e.g);
+      this.graves[k] = this.build(e.g);
     }
   }
 }

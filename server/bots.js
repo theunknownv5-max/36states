@@ -197,6 +197,7 @@ export class BotBrain {
     }
     if (p.status !== 'alive') return;
     if (m.mode.frozen()) return;
+    if (m.practice) return this.dummy(p, dt);
     // Planting or defusing: stay down and keep still.
     if (m.mode.action && m.mode.action.pid === p.id) {
       p.crouch = true;
@@ -294,6 +295,30 @@ export class BotBrain {
     moveBody(p, wishX, wishZ, dt, m.map.index, m.map.half, this.jump);
     this.jump = false;
     p.sprint = Math.hypot(wishX, wishZ) > PLAYER.walk + 0.5;
+  }
+
+  // Practice-range dummy: strolls between spots near where it stood, never fights back.
+  dummy(p, dt) {
+    const m = this.match;
+    const t = now();
+    const a = p.anchor || { x: p.x, z: p.z };
+    if (!this.dGoal || t > this.dGoal.until || Math.hypot(this.dGoal.x - p.x, this.dGoal.z - p.z) < 0.4) {
+      const ang = Math.random() * Math.PI * 2;
+      const r = Math.random() * 7;
+      this.dGoal = { x: a.x + Math.cos(ang) * r, z: a.z + Math.sin(ang) * r, until: t + 3000 + Math.random() * 4000, pause: Math.random() < 0.35 };
+      p.crouch = Math.random() < 0.2;
+    }
+    let wx = 0;
+    let wz = 0;
+    if (!this.dGoal.pause) {
+      const dx = this.dGoal.x - p.x;
+      const dz = this.dGoal.z - p.z;
+      const d = Math.hypot(dx, dz) || 1;
+      wx = (dx / d) * 2.2;
+      wz = (dz / d) * 2.2;
+      p.yaw = Math.atan2(-dx, -dz);
+    }
+    moveBody(p, wx, wz, dt, m.map.index, m.map.half, false);
   }
 
   shoot(p, tgt, dist) {

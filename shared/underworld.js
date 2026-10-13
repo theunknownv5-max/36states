@@ -35,6 +35,57 @@ export function rollLoot(table, rnd) {
   return table[0][0];
 }
 
+// Caves: a hollow rock hill in rocky country (not the cities or the creeks), with a chest
+// of relics hidden at the back. ctx as for buildUnderworld; adds to out.graves.
+export function buildCave(ctx, out, biome) {
+  if (biome === 'urban' || biome === 'creeks') return null;
+  const { rng, free, reserve, box, visuals, water } = ctx;
+  for (let tries = 0; tries < 300; tries++) {
+    const cx = range(rng, -58, 58);
+    const cz = range(rng, -72, 72);
+    const W = 16;
+    const D = 12;
+    const r = { x0: cx - W / 2, z0: cz - D / 2, x1: cx + W / 2, z1: cz + D / 2 };
+    if (!free(r.x0, r.z0, r.x1, r.z1, 2.5)) continue;
+    if (water.some((w) => r.x1 > w.x0 - 3 && r.x0 < w.x1 + 3 && r.z1 > w.z0 - 3 && r.z0 < w.z1 + 3)) continue;
+    reserve(r.x0, r.z0, r.x1, r.z1, 1.5);
+    const T = 1.4;
+    const H = 4.2;
+    // The mouth faces the middle of the map.
+    const door = Math.abs(cx) > Math.abs(cz) ? (cx > 0 ? 'x0' : 'x1') : cz > 0 ? 'z0' : 'z1';
+    for (const side of ['x0', 'x1', 'z0', 'z1']) {
+      const alongX = side === 'z0' || side === 'z1';
+      const at = r[side];
+      const o0 = side === 'x0' || side === 'z0' ? at : at - T;
+      const lo = alongX ? r.x0 : r.z0;
+      const hi = alongX ? r.x1 : r.z1;
+      const mid = (lo + hi) / 2;
+      const segs = side === door ? [[lo, mid - 1.6], [mid + 1.6, hi]] : [[lo, hi]];
+      for (const [a, b] of segs) {
+        if (alongX) box(a, 0, o0, b, H, o0 + T, 'stone', { cave: true });
+        else box(o0, 0, a, o0 + T, H, b, 'stone', { cave: true });
+      }
+      if (side === door) {
+        if (alongX) box(mid - 1.6, 3.0, o0, mid + 1.6, H, o0 + T, 'stone', { cave: true });
+        else box(o0, 3.0, mid - 1.6, o0 + T, H, mid + 1.6, 'stone', { cave: true });
+      }
+    }
+    box(r.x0, H, r.z0, r.x1, H + 1.6, r.z1, 'stone', { cave: true, roof: true });
+    // A few stalagmites to weave between.
+    for (let k = 0; k < 3; k++) {
+      const sx = cx + (rng() - 0.5) * (W - 6);
+      const sz = cz + (rng() - 0.5) * (D - 6);
+      box(sx - 0.25, 0, sz - 0.25, sx + 0.25, 1.1 + rng() * 0.8, sz + 0.25, 'stone', { cave: true, mite: true });
+    }
+    // The chest sits against the wall opposite the mouth.
+    const back = { x0: [r.x1 - T - 0.9, cz], x1: [r.x0 + T + 0.9, cz], z0: [cx, r.z1 - T - 0.9], z1: [cx, r.z0 + T + 0.9] }[door];
+    out.graves.push({ i: out.graves.length, kind: 'cache', x: back[0], z: back[1], y: 0, door });
+    visuals.push({ type: 'cave', x: cx, z: cz, w: W, d: D, h: H, door });
+    return { x: cx, z: cz };
+  }
+  return null;
+}
+
 // Is (x, z) over an opening in the ground (no ground plane there)?
 export function inHole(holes, x, z) {
   if (!holes) return false;

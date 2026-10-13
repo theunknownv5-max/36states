@@ -134,20 +134,33 @@ function lobby() {
     let humans = 0;
     let bots = 0;
     let score = null;
+    let real = 0;
+    const realModes = {};
     for (const id of Object.keys(MODES)) {
-      if (MODES[id].solo) continue;
+      if (MODES[id].solo || MODES[id].private) continue;
       for (const key of [`${id}:${s.id}`, `${id}:${s.id}:real`]) {
         const m = matches.get(key);
         if (!m) continue;
         const h = m.humans().length;
+        if (key.endsWith(':real')) {
+          real += h;
+          realModes[id] = (realModes[id] || 0) + h;
+        }
         modes[id] = (modes[id] || 0) + h;
         humans += h;
         bots += m.players.size - h;
         if (h && (!score || id === 'conquest')) score = m.score;
       }
     }
-    return { id: s.id, humans, bots, sec: score?.sec || 0, out: score?.out || 0, live: humans > 0, modes };
+    return { id: s.id, humans, bots, real, realModes, sec: score?.sec || 0, out: score?.out || 0, live: humans > 0, modes };
   });
+}
+
+// Soldiers connected right now (in the lobby or in battle).
+function onlineCount() {
+  let n = 0;
+  for (const set of tokenConns.values()) if (set.size) n++;
+  return n;
 }
 
 // Top soldiers by experience (names and totals only).
@@ -335,7 +348,7 @@ const server = http.createServer(async (req, res) => {
   const path = url.pathname;
   try {
     if (path === '/health') return json(res, 200, { ok: true, game: GAME.name, version: GAME.version, matches: matches.size, players: [...matches.values()].reduce((n, m) => n + m.humans().length, 0) });
-    if (path === '/api/lobby') return json(res, 200, { states: lobby() });
+    if (path === '/api/lobby') return json(res, 200, { states: lobby(), online: onlineCount() });
     if (path === '/api/leaderboard') return json(res, 200, { top: leaderboard() });
     if (path === '/api/ads') {
       const state = url.searchParams.get('state');
@@ -499,10 +512,10 @@ wss.on('connection', (ws) => {
       // Old app build below the minimum the admin set: ask to update.
       const ctl = control.publicState();
       const needUpdate = msg.app && ctl.minBuild && (Number(msg.build) || 0) < ctl.minBuild;
-      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile), control: ctl, push: { vapid: push.publicKey, fcm: push.fcmReady(), on: !!push.store.data.subs[r.token] }, needUpdate });
+      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), online: onlineCount(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile), control: ctl, push: { vapid: push.publicKey, fcm: push.fcmReady(), on: !!push.store.data.subs[r.token] }, needUpdate });
     }
     if (!conn.profile) return;
-    if (msg.t === 'lobby') return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile) });
+    if (msg.t === 'lobby') return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile), online: onlineCount() });
     if (msg.t === 'join') {
       if (control.store.data.maintenance.on) return send({ t: 'joinError', error: control.store.data.maintenance.message });
       const mode = MODES[msg.mode] ? msg.mode : 'conquest';
@@ -524,8 +537,13 @@ wss.on('connection', (ws) => {
       for (const m of matches.values()) for (const p of m.humans()) if (p.profile === conn.profile) m.removePlayer(p.id);
       // A fresh campaign match every time you start a stage.
       if (key) matches.delete(key);
-      // Real players only: a room with no bots at all.
-      if (mode !== 'stage' && msg.bots === false) {
+      // Practice Range: private to you, or to your crew if you have one.
+      if (mode === 'practice') {
+        const crew = social.crewOf(conn.profile);
+        key = `practice:${state}:${crew ? `c${crew.id}` : `t${conn.profile.token}`}`;
+        opts = { practice: true };
+      } else if (mode !== 'stage' && msg.bots === false) {
+        // Real players only: a room with no bots at all.
         key = `${mode}:${state}:real`;
         opts = { noBots: true };
       }
@@ -637,6 +655,22 @@ wss.on('connection', (ws) => {
         social.leaveCrew(conn.profile);
         return socialReply({ note: 'You don comot from the crew.' });
       }
+      if (msg.t === 'crewChat') {
+        if (control.muted(conn.profile)) return socialReply({ error: 'Admin don mute your chat for now.' });
+        const { crew, msg: m } = social.crewChat(conn.profile, msg.text);
+        control.logChat({ pid: pidOf(conn.profile.token), name: conn.profile.name, text: m.text, team: true, state: `crew ${crew.tag}`, mode: 'crew' });
+        for (const t of crew.members) {
+          const p = store.data.profiles[t];
+          if (!p) continue;
+          notifyPlayer(t, { t: 'crewMsg', msg: { at: m.at, from: m.from, mine: t === conn.profile.token, text: m.text }, tag: crew.tag });
+        }
+        return;
+      }
+      if (msg.t === 'crewPlan') {
+        const crew = social.crewPlan(conn.profile, msg.text);
+        for (const t of crew.members) if (t !== conn.profile.token) pingSocial(t);
+        return socialReply({ note: 'Tactics plan don save. Your crew go see am.' });
+      }
       if (msg.t === 'joinFriend') {
         const f = social.byCode(msg.code);
         const where = f && presence(f.token).where;
@@ -659,7 +693,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'leave') {
       if (conn.match) conn.match.removePlayer(conn.player.id);
       conn.match = conn.player = null;
-      return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile) });
+      return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile), online: onlineCount() });
     }
     if (conn.match && conn.player) {
       try {

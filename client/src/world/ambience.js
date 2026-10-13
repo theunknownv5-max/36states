@@ -130,6 +130,18 @@ export class Ambience {
       }
       this.flocks.push({ cx: (rng() - 0.5) * 160, cz: (rng() - 0.5) * 160, y: big ? 55 + rng() * 25 : 30 + rng() * 15, birds, speed: big ? 0.12 : 0.35 });
     }
+    // A low flock of white egrets (cattle egrets) where it is green.
+    if (map.biome !== 'sahel' && map.biome !== 'urban') {
+      const white = new THREE.MeshBasicMaterial({ color: '#f2efe6', side: THREE.DoubleSide, fog: true });
+      const birds = [];
+      for (let i = 0; i < 11; i++) {
+        const m = new THREE.Mesh(birdGeometry(), white);
+        m.scale.setScalar(0.8);
+        this.group.add(m);
+        birds.push({ m, off: rng() * Math.PI * 2, r: 4 + rng() * 8, h: rng() * 3, sp: 0.9 + rng() * 0.3 });
+      }
+      this.flocks.push({ cx: (rng() - 0.5) * 120, cz: (rng() - 0.5) * 120, y: 14 + rng() * 6, birds, speed: 0.45 });
+    }
     // Aircraft passes.
     this.nextFlyover = 25 + rng() * 40;
     this.craft = null;
@@ -150,6 +162,11 @@ export class Ambience {
     audio.flyover(heli, this.craft.dur);
   }
 
+  // Gunfire or a blast nearby: flocks within range take off.
+  scare(x, z) {
+    for (const f of this.flocks) if (Math.hypot(f.cx - x, f.cz - z) < 90) f.alarm = 4;
+  }
+
   update(dt, t, camera) {
     this.cloudTex.offset.x += dt * 0.0016;
     this.cloudTex.offset.y += dt * 0.0007;
@@ -166,14 +183,18 @@ export class Ambience {
     }
     for (const f of this.flocks) {
       f.cx += Math.sin(t * 0.05 + f.y) * dt * 2;
+      // Startled by gunfire: climb and wheel away fast, then settle back down.
+      f.alarm = Math.max(0, (f.alarm || 0) - dt);
+      f.lift = (f.lift || 0) + ((f.alarm > 0 ? 18 : 0) - (f.lift || 0)) * Math.min(1, dt * (f.alarm > 0 ? 1.5 : 0.2));
+      if (f.alarm > 0) f.cx += dt * 6;
       for (const b of f.birds) {
-        const a = t * f.speed * b.sp + b.off;
+        const a = t * f.speed * b.sp * (f.alarm > 0 ? 2.2 : 1) + b.off;
         const x = f.cx + Math.cos(a) * (b.r + 20);
         const z = f.cz + Math.sin(a) * (b.r + 20);
-        b.m.position.set(x, f.y + b.h + Math.sin(t + b.off) * 1.5, z);
+        b.m.position.set(x, f.y + (f.lift || 0) + b.h + Math.sin(t + b.off) * 1.5, z);
         b.m.rotation.y = -a;
         // Flap: move wing tips up and down.
-        const flap = Math.sin(t * (f.speed > 0.2 ? 14 : 4) + b.off) * 0.25;
+        const flap = Math.sin(t * (f.alarm > 0 ? 22 : f.speed > 0.2 ? 14 : 4) + b.off) * 0.25;
         const pos = b.m.geometry.attributes.position;
         pos.setY(1, flap);
         pos.setY(4, flap);

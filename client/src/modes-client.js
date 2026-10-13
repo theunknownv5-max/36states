@@ -135,6 +135,8 @@ export class ModeClient {
         const st = STAGES[this.st.stage || 0];
         return `${st.title}: ${st.story}`;
       }
+      case 'practice':
+        return `${buy} to pick any gun (all free here) · shoot the dummies · swim near the bank and sprint to train.`;
       default:
         return `${buy} to buy weapon · pick 💎 for advert walls · hold A, B and C`;
     }

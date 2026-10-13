@@ -45,6 +45,7 @@ To run the simulation tests, use `npm test`. It plays bot battles in every state
 | **Hold Ground** | The original mode: capture and hold the state's three resource sites. First side to 750 points wins. |
 | **Gbas Gbos** | Team deathmatch. First to 60 kills, or the side with the most kills after 10 minutes, wins. |
 | **Plant & Defuse** | Rounds with one life each. Outlaws carry a bomb to site A or B and plant it (hold E, 3.5 s). Security stops them or defuses it (hold E, 7 s). First to 5 rounds wins. There's an 8 s buy time at the start of each round, round money, a dropped bomb anyone on that side can pick up, and bots that plant and defuse. |
+| **Practice Range** | Private ground for you and your crew only. Six target dummies that don't shoot back, every gun free (₦16,000), respawn after 3 s, and skills train 3x faster. Nothing counts for your record. Open it from 👥 Squad → Crew → Training. |
 | **Campaign Stages** | A solo story of 12 stages across Nigeria, from *Wahala for Marina* (Lagos) to *Aso Rock Final Stand* (FCT). You and 2 bot allies clear waves of enemies with limited lives. You earn up to 3 stars per stage, and the first clear of each stage pays 1 gem. Each clear unlocks the next stage. |
 
 Press **V** (or the chat button on phones) for Pidgin quick chat.
@@ -72,9 +73,14 @@ Press **V** (or the chat button on phones) for Pidgin quick chat.
 ## Real players
 
 - **Bots are optional:** in Settings, turn off "Fight with bots" to play in rooms with real players only. Campaign stages keep their enemies.
+- **You always know who you're fighting:** the war map says whether the battle has bots and how many real players are online (and in that battle room), with a one-tap switch between "real players only" and "add bots". The lobby shows the online count too, and a notice at the start of each battle says whether there are bots.
 - **👥 Squad:**
   - **Friends:** add people by friend code, see who is online and in which battle, and press **Join** to land in the same battle.
-  - **Crews:** your crew tag shows before your name in battle, for example `[LGL] Ada`.
+  - **Crews:** your crew tag shows before your name in battle, for example `[LGL] Ada`. Every crew has its own room:
+    - **💬 Chat:** crew-only messages, with an unread badge on 👥 Squad.
+    - **🗺 Tactics:** a shared battle plan anyone in the crew can edit, with ready-made ideas to start from.
+    - **🏋 Training:** your swimming and fitness bars, and the button for the crew **Practice Range**.
+    - **👥 Members:** everyone's skills.
   - **Rivals:** the real players you keep trading kills with. Your top rival gets a ⚔ RIVAL mark when you can see them, and killing them back earns REVENGE XP.
 
 ## The world
@@ -84,6 +90,10 @@ Press **V** (or the chat button on phones) for Pidgin quick chat.
 - **A live railway on a viaduct** outside the wall, where trains thunder past on a timetable every player shares.
 - **Warehouses** with big loading doors and containers inside.
 - **Abandoned, burnt-out houses** with jagged shot-up walls, rubble and graffiti.
+- **Caves** in rocky country (most maps, not the cities or creeks): a boulder hill with a dark mouth, stalactites, stalagmites and glowing crystals, and an old chest inside to force open (hold E) for relic loot.
+- **Crocodiles** lurk in the big rivers and lakes. Step into their water and they come for you and bite (30 damage). Shoot them (or blow them up) for 75 XP; they come back after 90 s.
+- **Swimming is a skill.** Moving in water trains it; sprinting trains **fitness** (longer, slightly faster sprints). Under 30 swimming, deep water (away from the bank) starts drowning you after 4 s. At 30 you can swim, and from 70 you swim fast. Training counts 3x on the Practice Range.
+- **Animals:** dogs wander near the houses and bolt, barking, when shots or blasts go off; white egrets fly low over green country and lift off in alarm at gunfire, along with the other birds.
 
 ## Vehicles, explosives and fire
 
@@ -114,6 +124,7 @@ Press **V** (or the chat button on phones) for Pidgin quick chat.
   - Controls: WASD or the stick to fly, Shift for speed, Space/C (▲/▼ on phones) or the mouse wheel to change height.
   - Your soldier stays where you left them and can be shot. Taking damage cuts the drone signal.
   - The battery lasts 30 s and then recharges. It is unlimited while your side's recon drone killstreak is up, and while you are dead and waiting to come back (the death screen has a **Fly drone** option).
+- **Advert tour while you wait:** when you die and choose **Fly drone**, or while the medevac is coming, the drone flies itself from billboard to LED screen to wall banner to ground tile, paid adverts first, holding about 5 s on each, with the advertiser's name and Visit/Chat buttons. The death cards get out of the way; a slim bar keeps the countdown and the gem / spirit / medevac buttons (1/2/3). Touch the controls to fly yourself; the tour picks up again after 5 s alone. Each stop counts as an advert view.
 
 ## Talk to the businesses on the billboards
 
@@ -354,6 +365,8 @@ The app (id `ng.tcee.proofofduty`, version 0.1) opens full screen in landscape, 
 
 ## Controls
 
+Settings → **Reset all settings to default** puts graphics, sound, controls and camera back to how they started.
+
 | Desktop | |
 | --- | --- |
 | WASD | Move |
@@ -406,6 +419,8 @@ client/            browser game (Vite)
   src/driving.js   driving a vehicle
   src/world/vehicles.js, vehicle-models.js, houses.js   every vehicle model, fire and charred shells, C4, ambulance, burning houses
   src/world/underworld.js   domed hall, cemetery, mausoleum, graves, catacomb tombs, tunnel lamps
+  src/ui/wait-ads.js  advert tour bar while dead or waiting for medevac
+  src/world/animals.js  crocodiles and dogs
   src/ad-chat.js   aim at an advert to chat with the business
   src/ui/chat.js   chat window and Inbox
   src/modes-client.js  mode HUD: bomb, rounds, waves, quick chat
@@ -419,6 +434,7 @@ server/
   match.js         authoritative battle simulation (20 Hz)
   world-state.js   vehicles (driving, run-overs, damage), burning houses, C4, the ambulance, digging graves and tombs
   modes.js         game mode rules (Hold Ground, Gbas Gbos, Plant & Defuse, Campaign)
+  wildlife.js      crocodiles, swimming and fitness training, drowning
   bots.js          bot AI (A* pathing, aiming, strafing, grenades, killstreaks)
   ads.js           billboards, bookings, rotation and privacy-safe analytics
   inbox.js         player ↔ business conversations
@@ -435,7 +451,7 @@ server/
   test.js          simulation tests
   test-ads.js      ad portal end-to-end tests
   test-admin.js    admin panel and push end-to-end tests
-shared/            states, config, map generator, physics, vehicles (driving physics, damage tuning) and the underworld (cemetery, tunnels, loot), used by both client and server
+shared/            states, config, map generator, physics, vehicles (driving physics, damage tuning) the underworld (cemetery, tunnels, loot, caves) and skills, used by both client and server
 android-res/       app icon and splash screen for the Android build
 capacitor.config.json, .github/workflows/android.yml   Android app build
 ```
@@ -460,4 +476,4 @@ One server process runs every state's battle. For very large player counts, the 
 
 ## About
 
-**Proof of Duty** V0.1. © Tcee. Designed and developed solely by Tcee, a Nigerian developer.
+**Proof of Duty** V0.1. © Tcee. Official website: https://proofofduty.com Designed and developed solely by Tcee, a Nigerian developer.

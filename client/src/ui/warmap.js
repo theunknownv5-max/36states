@@ -78,7 +78,10 @@ function layout() {
 }
 
 export class WarMap {
-  constructor({ onSelect, onDeploy, onStage }) {
+  constructor({ onSelect, onDeploy, onStage, getBots, setBots }) {
+    this.getBots = getBots || (() => true);
+    this.setBots = setBots || (() => {});
+    this.online = 0;
     this.svg = $('warmap');
     this.onSelect = onSelect;
     this.onDeploy = onDeploy;
@@ -161,7 +164,8 @@ export class WarMap {
     }
   }
 
-  setLobby(states) {
+  setLobby(states, online) {
+    if (online !== undefined) this.online = online;
     for (const s of states) this.live[s.id] = s;
     this.updateCounts();
     if (this.selected && !MODES[this.mode].solo) this.renderInfo();
@@ -208,9 +212,24 @@ export class WarMap {
     $('si-biome').innerHTML = `Ground: ${esc(BIOMES[s.biome].label)}<div class="mode-blurb">${esc(mode.blurb)}</div>`;
     $('si-res').innerHTML = s.resources.map((r) => `<span><i style="background:${RESOURCES[r].colour}"></i>${RESOURCES[r].label}</span>`).join('');
     $('si-landmark').textContent = `Landmark for the map: ${s.landmark.name}`;
-    $('si-live').innerHTML = here
+    const bots = this.getBots();
+    const realHere = L.realModes?.[this.mode] || 0;
+    const live = here
       ? `🔴 <b>${here}</b> real ${here === 1 ? 'player' : 'players'} dey fight now for ${esc(mode.label)}`
       : `E quiet for here. Na bots dey hold am. You fit be the first to land.`;
+    // Bots or real players only: say it plainly, with the switch right here.
+    const kind = bots
+      ? `<div class="match-kind bots">🤖 <b>With bots:</b> computer soldiers (marked <b>[BOT]</b>) fill empty places so war always dey. <button class="btn ghost sm" id="si-real">Play real players only${this.online ? ` · ${this.online} online` : ''}</button></div>`
+      : `<div class="match-kind real">👥 <b>Real players only</b> · ${this.online} online now · ${realHere} for this battle room. No bots at all. <button class="btn ghost sm" id="si-bots">Add bots</button></div>`;
+    $('si-live').innerHTML = mode.practice
+      ? `<div class="match-kind real">🎯 <b>Your private practice range</b> (you and your crew only). Target dummies no dey shoot back, every gun free, swimming and fitness train 3x faster. Nothing count for your record.</div>`
+      : live + kind;
+    const flip = $('si-real') || $('si-bots');
+    if (flip)
+      flip.onclick = () => {
+        this.setBots(!bots);
+        this.renderInfo();
+      };
     const wrap = $('si-factions');
     wrap.innerHTML = '';
     for (const side of ['sec', 'out']) {
@@ -234,7 +253,7 @@ export class WarMap {
     }
     const btn = $('btn-deploy');
     btn.disabled = !this.faction;
-    btn.textContent = this.faction ? `DEPLOY TO ${s.name.toUpperCase()} AS ${FACTIONS[this.faction].label.toUpperCase()}` : 'CHOOSE WETIN YOU BE FIRST';
+    btn.textContent = !this.faction ? 'CHOOSE WETIN YOU BE FIRST' : mode.practice ? `OPEN PRACTICE RANGE IN ${s.name.toUpperCase()}` : `DEPLOY TO ${s.name.toUpperCase()} AS ${FACTIONS[this.faction].label.toUpperCase()}`;
   }
 
   setProfile(p) {

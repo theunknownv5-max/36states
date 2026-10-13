@@ -14,6 +14,15 @@ import { VEHICLES } from '../../shared/vehicles.js';
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+// While you wait to come back, the drone tours the adverts in this battlefield.
+export const TOUR = { dwell: 5.5, fly: 1.5, idleResume: 5 };
+const lerpA = (a, b, k) => {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * k;
+};
+
 export const DRONE = { battery: 30, recharge: 1 / 2.5, speed: 20, boost: 34, minAlt: 14, maxAlt: 75, startAlt: 38, range: 40 };
 
 export class CameraModes {
@@ -64,6 +73,104 @@ export class CameraModes {
     return g.status === 'dead' || g.status === 'medevac' || g.uavUntil > g.net.serverNow();
   }
 
+  // The advert tour: every billboard, LED screen, wall banner and floor tile in turn,
+  // paying advertisers first. Moving the drone yourself pauses it for a few seconds.
+  startTour() {
+    if (this.mode !== 'drone') this.toggleDrone();
+    if (this.mode !== 'drone') return;
+    const panels = [...(this.g.boards?.panels?.values() || [])];
+    const paid = panels.filter((p) => p.list.some((a) => a.chat));
+    const withAds = panels.filter((p) => p.list.length && !paid.includes(p));
+    const rest = panels.filter((p) => !p.list.length);
+    const shuffle = (a) => a.map((v) => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map((x) => x[1]);
+    // Paid boards first, then other adverts, then the empty boards ("your brand here").
+    const list = [...shuffle(paid), ...shuffle(withAds), ...(paid.length + withAds.length ? [] : shuffle(rest).slice(0, 8))];
+    if (!list.length) return;
+    this.g.input.takeLook(); // forget mouse movement from before the tour
+    this.tour = { list, i: -1, t: TOUR.dwell, from: null, to: null, touched: 0, started: performance.now() };
+  }
+
+  stopTour() {
+    this.tour = null;
+  }
+
+  // Where to hover to see an advert well.
+  tourView(panel) {
+    const g = this.g;
+    const f = panel.faces[0];
+    const b = g.map.billboards.find((x) => x.id === panel.id);
+    let pos;
+    if (panel.type === 'ground') {
+      const side = f.x < 0 ? -1 : 1;
+      pos = new THREE.Vector3(f.x - side * 7, 16, f.z + 2);
+    } else {
+      // Try a few spots in front of it and keep the first one with a clear view.
+      const w = b?.w || 3.2;
+      const tries = [];
+      for (const k of [0.9, 1.3, 1.8]) for (const up of [panel.type === 'wall' ? 1.0 : 1.2, 3]) tries.push([Math.max(4.2, w * k), up]);
+      pos = null;
+      for (const [dist, up] of tries) {
+        const p = new THREE.Vector3(f.x + f.nx * dist, f.y + up, f.z + f.nz * dist);
+        const dx = f.x - p.x;
+        const dy = f.y - p.y;
+        const dz = f.z - p.z;
+        const len = Math.hypot(dx, dy, dz);
+        const hit = raycast(g.map.index, p.x, p.y, p.z, dx / len, dy / len, dz / len, len);
+        if (hit.t >= len - 0.6) {
+          pos = p;
+          break;
+        }
+      }
+      pos ||= new THREE.Vector3(f.x + f.nx * Math.max(4.2, w * 0.9), f.y + 1.2, f.z + f.nz * Math.max(4.2, w * 0.9));
+    }
+    const dx = f.x - pos.x;
+    const dy = f.y - pos.y;
+    const dz = f.z - pos.z;
+    return { pos, yaw: Math.atan2(-dx, -dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)) };
+  }
+
+  tourPanel() {
+    const t = this.tour;
+    return t && t.i >= 0 && !this.tourPaused() ? t.list[t.i] : null;
+  }
+
+  // You took the controls in the last few seconds (ignoring the first second after starting).
+  tourPaused() {
+    const t = this.tour;
+    return !!t && performance.now() - t.touched < TOUR.idleResume * 1000;
+  }
+
+  touchTour() {
+    const t = this.tour;
+    if (t && performance.now() - t.started > 1000) t.touched = performance.now();
+  }
+
+  flyTour(dt, d, manual) {
+    const t = this.tour;
+    if (manual) this.touchTour();
+    if (this.tourPaused()) return false;
+    t.t += dt;
+    if (t.t >= TOUR.dwell + TOUR.fly || !t.to) {
+      t.i = (t.i + 1) % t.list.length;
+      t.t = 0;
+      t.from = { pos: new THREE.Vector3(d.x, d.y, d.z), yaw: d.yaw, pitch: d.pitch };
+      t.to = this.tourView(t.list[t.i]);
+    }
+    const k = Math.min(1, t.t / TOUR.fly);
+    const e = k * k * (3 - 2 * k);
+    const p = t.from.pos.clone().lerp(t.to.pos, e);
+    // Rise a little mid-flight so we don't clip roofs.
+    p.y += Math.sin(e * Math.PI) * 6;
+    d.x = p.x;
+    d.y = p.y;
+    d.z = p.z;
+    d.alt = Math.max(DRONE.minAlt, Math.min(DRONE.maxAlt, p.y));
+    d.yaw = lerpA(t.from.yaw, t.to.yaw, e);
+    d.pitch = t.from.pitch + (t.to.pitch - t.from.pitch) * e;
+    d.vx = d.vz = 0;
+    return true;
+  }
+
   toggleDrone() {
     if (this.mode === 'drone') return this.exitDrone();
     const g = this.g;
@@ -85,6 +192,7 @@ export class CameraModes {
     if (this.mode !== 'drone') return;
     this.mode = this.chase ? 'chase' : 'fp';
     this.drone = null;
+    this.tour = null;
     $('drone-hud').hidden = true;
     document.body.classList.remove('drone-on');
     audio.drone?.(false);
@@ -122,8 +230,9 @@ export class CameraModes {
   look(look, zoom) {
     if (this.mode !== 'drone') return false;
     const d = this.drone;
+    if (this.tour && Math.abs(look.yaw) + Math.abs(look.pitch) > 0.004) this.touchTour();
     d.yaw += look.yaw / zoom;
-    d.pitch = clamp(d.pitch + look.pitch / zoom, -1.55, -0.25);
+    d.pitch = clamp(d.pitch + look.pitch / zoom, -1.55, 0.35);
     return true;
   }
 
@@ -199,6 +308,13 @@ export class CameraModes {
     }
     const inp = g.input;
     const mv = g.anyMenu() ? { x: 0, y: 0 } : inp.move();
+    if (this.tour && this.flyTour(dt, d, mv.x || mv.y || this.climb || inp.down('Space'))) {
+      cam.position.set(d.x, d.y + Math.sin(d.t * 1.7) * 0.1, d.z);
+      cam.rotation.set(d.pitch, d.yaw, 0);
+      audio.moveDrone?.(cam.position);
+      this.hud(dt);
+      return true;
+    }
     const fast = inp.down('ShiftLeft') || inp.down('ShiftRight');
     const sp = fast ? DRONE.boost : DRONE.speed;
     const sin = Math.sin(d.yaw);

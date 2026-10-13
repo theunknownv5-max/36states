@@ -468,8 +468,49 @@ class StageMode extends BaseMode {
   }
 }
 
+// ---------- Practice Range ----------
+// A private room for one soldier or one crew: target dummies that walk about and never shoot
+// back, free kit, instant respawns, skills train 3x faster, nothing counts for your record.
+class PracticeMode extends BaseMode {
+  humanSide() {
+    for (const p of this.match.players.values()) if (p.human) return p.side;
+    return 'sec';
+  }
+  wantBots(side) {
+    return side === this.humanSide() ? 0 : 6;
+  }
+  killPoints() {
+    return 0;
+  }
+  botRespawnMs() {
+    return 2500;
+  }
+  checkEnd() {
+    return now() - this.match.startedAt >= this.def.timeLimitMs;
+  }
+  // Dummies stand on the range in front of your base, not at the far end of the map.
+  spawnPoint(p) {
+    if (p.human) return null;
+    const m = this.match;
+    const base = m.map.bases[this.humanSide()];
+    const dir = base.x < 0 ? 1 : -1;
+    for (let k = 0; k < 40; k++) {
+      const x = base.x + dir * (22 + m.rng() * 45);
+      const z = (m.rng() - 0.5) * 60;
+      if (!m.freeSpot(x, z)) continue;
+      return { x, z, yaw: dir > 0 ? Math.PI / 2 : -Math.PI / 2 };
+    }
+    return null;
+  }
+  state() {
+    return { mode: this.id, practice: true };
+  }
+}
+
 export function createMode(id, match, opts = {}) {
   switch (id) {
+    case 'practice':
+      return new PracticeMode(match, 'practice');
     case 'tdm':
       return new TdmMode(match, 'tdm');
     case 'bomb':
