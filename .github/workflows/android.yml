@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VITE_SERVER_ORIGIN: ${{ vars.GAME_SERVER || 'https://three6states.onrender.com' }}
+      # Every build is signed with the same key (android-res/pod-release.p12), so new
+      # versions install over old ones. A POD_KS_PASS secret, if set, overrides this.
+      POD_KS_PASS: ${{ secrets.POD_KS_PASS || 'f32136dc909ac9d2675bd9ab04fb135e' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +69,33 @@ jobs:
           sed -i "s/versionName \".*\"/versionName \"0.1\"/" "$G"
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" "$G"
           grep -n "versionName\|versionCode" "$G"
+          # Sign release builds with the permanent Proof of Duty key.
+          cat >> "$G" <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  pod {
+                      storeFile file("../../android-res/pod-release.p12")
+                      storeType "pkcs12"
+                      storePassword System.getenv("POD_KS_PASS")
+                      keyAlias "pod"
+                      keyPassword System.getenv("POD_KS_PASS")
+                      enableV1Signing true
+                      enableV2Signing true
+                  }
+              }
+              lint {
+                  checkReleaseBuilds false
+                  abortOnError false
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.pod
+                      minifyEnabled false
+                  }
+              }
+          }
+          GRADLE
 
       - name: Sync web files into the app
         run: npx cap sync android
@@ -74,8 +104,18 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk ../proof-of-duty.apk
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../proof-of-duty.apk
+
+      - name: Check the APK installs (signature and integrity)
+        run: |
+          set -e
+          AS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          "$AS/zipalign" -c -v 4 proof-of-duty.apk > /dev/null
+          "$AS/apksigner" verify --verbose --print-certs proof-of-duty.apk
+          "$AS/aapt2" dump badging proof-of-duty.apk | grep -E "^(package|sdkVersion|targetSdkVersion)"
+          echo "APK_SHA256=$(sha256sum proof-of-duty.apk | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "APK_MB=$(du -m proof-of-duty.apk | cut -f1)" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -89,8 +129,11 @@ jobs:
           name: Proof of Duty V0.1 (Android build ${{ github.run_number }})
           body: |
             **Proof of Duty V0.1** · developed by Tcee 🇳🇬
-            Download **proof-of-duty.apk** on your Android phone and open it to install.
-            (Allow "Install unknown apps" for your browser when asked.)
+            1. Tap **proof-of-duty.apk** below (about ${{ env.APK_MB }} MB) — not "Source code".
+            2. Wait for the download to finish completely, then open it from your Downloads.
+            3. Allow "Install unknown apps" for your browser when asked.
+            Needs Android 5.1 or newer. If an older Proof of Duty test build is installed, uninstall it first (one time only).
+            SHA-256: `${{ env.APK_SHA256 }}`
             Server: ${{ env.VITE_SERVER_ORIGIN }}
           files: proof-of-duty.apk
           make_latest: true
