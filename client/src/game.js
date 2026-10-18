@@ -496,6 +496,7 @@ export class Game {
     });
     on('score', (m) => {
       this.score = m.score;
+      this.hud.liveCount(m.humans);
       this.sites = m.sites;
       this.siteMarkers.apply(m.sites);
       if (m.roster) {
@@ -525,7 +526,17 @@ export class Game {
     on('spirit', () => {
       this.hud.toast('Find any 💎 wey dey shine for advert wall!', 'gem');
     });
+    on('joined', (m) => {
+      this.hud.liveCount(m.humans);
+      if (m.name) this.hud.toast(`${m.name} joined the battle`, 'info', 2500);
+    });
+    on('debrief', (d) => {
+      this.hud.debrief(d, { deploy: (o) => this.onOrders?.(o), map: () => this.leave() });
+      if (d.finished) audio.alert();
+    });
     on('left', (m) => {
+      this.hud.liveCount(m.humans);
+      if (m.name) this.hud.toast(`${m.name} left the battle`, 'info', 2500);
       this.soldiers.get(m.id)?.dispose();
       this.soldiers.delete(m.id);
       this.buffers.delete(m.id);

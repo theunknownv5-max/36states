@@ -2767,3 +2767,137 @@ body.waiting .dr-reticle, body.waiting .dr-left { opacity: 0.25; }
   border-color: var(--pod);
   background: rgba(255, 122, 26, 0.22);
 }
+
+/* Debrief after a battle: medals, rewards, Tour of Duty and new orders. */
+.me-debrief {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 6px auto 4px;
+  text-align: left;
+}
+.me-debrief > .db-medals,
+.me-debrief > .db-others,
+.me-debrief > .db-earned,
+.me-debrief > .db-done {
+  grid-column: 1 / -1;
+}
+#matchend {
+  overflow-y: auto;
+}
+@media (max-width: 640px) {
+  .me-debrief {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-height: 520px) {
+  #matchend h1 {
+    font-size: 38px;
+  }
+  #matchend .me-score {
+    font-size: 22px;
+    margin: 2px 0;
+  }
+  #matchend .me-stats {
+    gap: 12px;
+    margin: 2px 0 6px;
+  }
+  #matchend .me-stats b {
+    font-size: 18px;
+  }
+  .db-tour p {
+    display: none;
+  }
+}
+.db-medals,
+.db-others {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.db-others {
+  color: var(--muted);
+  font-size: 13px;
+}
+.db-medal {
+  background: linear-gradient(180deg, #ffd54f, #c79400);
+  color: #1a1200;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  animation: pop 0.35s ease-out;
+}
+.db-earned {
+  text-align: center;
+  font-family: var(--title);
+  font-size: 26px;
+  color: var(--gem, #6ee7ff);
+}
+.db-done {
+  text-align: center;
+  font-family: var(--title);
+  font-size: 22px;
+  color: var(--good);
+  animation: pop 0.4s ease-out;
+}
+.db-done small {
+  display: block;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--muted);
+}
+.db-tour,
+.db-orders {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.db-tour-h {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.db-tour-h span {
+  color: var(--pod, #ff7a1a);
+  font-weight: 700;
+}
+.db-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 0 4px;
+  overflow: hidden;
+}
+.db-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ff7a1a, #ffd54f);
+  transition: width 0.8s ease-out;
+}
+.db-tour-f {
+  font-size: 12px;
+  color: var(--muted);
+}
+.db-tour p,
+.db-orders p {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+.db-orders b {
+  color: var(--bad);
+  letter-spacing: 0.08em;
+  font-size: 13px;
+}
+.db-orders .me-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.live-count {
+  font-size: 11px;
+  color: var(--good);
+  letter-spacing: 0.04em;
+}

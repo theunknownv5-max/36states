@@ -515,7 +515,13 @@ function setupDaily(d) {
   // Pop the calendar once a day when there is a reward waiting.
   if (d?.login?.can && store.get('dailySeen', '') !== new Date().toDateString()) {
     store.set('dailySeen', new Date().toDateString());
-    setTimeout(() => !inGame && $('btn-daily').click(), 900);
+    // Wait for the first-time "how to play" card to close so the two never overlap.
+    const pop = () => {
+      if (inGame) return;
+      if (!$('modal').hidden) return setTimeout(pop, 700);
+      $('btn-daily').click();
+    };
+    setTimeout(pop, 900);
   }
 }
 
@@ -680,6 +686,15 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
   };
   $('btn-inbox').onclick = () => inboxUI.open();
   game.saveSettings = saveSettings;
+  // New orders from the debrief: straight into the next region with the same unit.
+  game.onOrders = (o) => {
+    const faction = game.faction;
+    game.hud.hideMatchEnd();
+    game.leave();
+    warmap.setMode(o.mode);
+    warmap.select(o.state);
+    deploy(o.state, faction, o.mode);
+  };
   setupSquad();
   setupDaily(welcome.daily);
   // News, announcements, events, maintenance, update prompts and push notifications.

@@ -1,5 +1,6 @@
 // One live battle in one state. The server decides every hit, death, revive,
 // gem pickup, capture, explosion and payout. Bots fill empty slots.
+import { awards, debrief } from './tour.js';
 import { randomUUID } from 'node:crypto';
 import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, TANKS, HEALTH, PUNCH, TILE_GEMS, MODES, priceFor, rankFor } from '../shared/config.js';
 import { generateMap, inWater, tileGemSpots } from '../shared/map.js';
@@ -112,6 +113,7 @@ export class Match {
       this.syncMe(p);
     }
     this.emptySince = 0;
+    this.broadcast({ t: 'joined', id: p.id, name: p.name, side: p.side, humans: this.humans().length }, (o) => o !== p);
     return { player: p };
   }
 
@@ -125,7 +127,7 @@ export class Match {
     if (p.human) this.hooks.saveProfile();
     this.balanceBots();
     if (!this.humans().length) this.emptySince = now();
-    this.broadcast({ t: 'left', id });
+    this.broadcast({ t: 'left', id, name: p.human ? p.name : undefined, humans: this.humans().length });
   }
 
   newPlayer({ human, conn = null, profile = null, faction, name }) {
@@ -1550,7 +1552,7 @@ export class Match {
       if (this.mode.usesSites()) this.payIncome();
       for (const p of this.humans()) this.syncMe(p);
       // The roster rides along so names, factions and the scoreboard stay current.
-      this.broadcast({ t: 'score', score: this.score, sites: this.siteView(), roster: this.roster(), left: Math.max(0, this.mode.def.timeLimitMs - (t - this.startedAt)), modeState: this.mode.state() });
+      this.broadcast({ t: 'score', score: this.score, sites: this.siteView(), roster: this.roster(), humans: this.humans().length, left: Math.max(0, this.mode.def.timeLimitMs - (t - this.startedAt)), modeState: this.mode.state() });
     }
     if (this.mode.checkEnd()) this.endMatch();
     this.sendSnapshots();
@@ -1562,7 +1564,7 @@ export class Match {
     this.ended = true;
     this.endsAt = now() + MATCH.endScreenMs;
     const roster = this.roster().sort((a, b) => b.points - a.points);
-    const mvp = roster.find((r) => !r.bot) || roster[0];
+    const mvp = roster.find((r) => !r.bot && r.points > 0) || roster[0];
     for (const p of this.humans()) {
       if (this.practice) continue;
       p.profile.matches++;
@@ -1573,9 +1575,12 @@ export class Match {
         this.mission(p, 'wins');
       }
     }
+    const medals = awards(roster);
+    this.broadcast({ t: 'matchEnd', winner, score: this.score, roster, mvp: mvp?.name, next: MATCH.endScreenMs, mode: this.modeId, modeState: this.mode.state(), medals: medals.map((a) => ({ id: a.id, medal: a.medal })) });
+    // Each real soldier gets their own debrief: medals, rewards, Tour of Duty and new orders.
+    if (!this.practice && this.modeId !== 'stage') for (const p of this.humans()) this.send(p, debrief(this, p, winner, roster, medals));
     this.hooks.saveProfile();
     this.hooks.control?.track('match');
-    this.broadcast({ t: 'matchEnd', winner, score: this.score, roster, mvp: mvp?.name, next: MATCH.endScreenMs, mode: this.modeId, modeState: this.mode.state() });
   }
 
   broadcastNear(p, msg, radius) {

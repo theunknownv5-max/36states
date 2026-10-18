@@ -1,5 +1,6 @@
 // Headless simulation tests: run with `npm test`.
 // Drives real matches on a fake clock and checks the rules the game depends on.
+import { debrief } from './tour.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1002,6 +1003,37 @@ section('Survival, close combat, dogs, fuel tanks, lorries crushing, coming back
   cm.onRespawn(C, 'gem', 'base');
   const bs = cm.map.bases[C.side];
   check(Math.hypot(C.x - bs.x, C.z - bs.z) < 25, 'or start fresh at your base');
+}
+
+section('Winners, debrief and the Tour of Duty');
+{
+  const mm = new Match('kogi', hooks, 'tdm');
+  const wa = fakeWs(), wb = fakeWs();
+  const A = mm.addHuman(wa, 'army', profile('Winner')).player;
+  const B = mm.addHuman(wb, 'bandit', profile('Loser')).player;
+  check(wa.log.some((m) => m.t === 'joined' && m.name === 'Loser' && m.humans === 2), 'others are told a real player joined, with the live count');
+  run(mm, 1.1);
+  const sc = wa.log.filter((m) => m.t === 'score').pop();
+  check(sc && sc.humans === 2, 'score updates carry the live count of real players');
+  A.kills = 5; A.points = 900; A.headshots = 3;
+  const gemsA = A.profile.gems, gemsB = B.profile.gems;
+  mm.score.sec = MODES.tdm.scoreLimit;
+  run(mm, 0.1);
+  const da = wa.log.find((m) => m.t === 'debrief');
+  const db = wb.log.find((m) => m.t === 'debrief');
+  check(da && da.won && !db.won, 'each player gets a personal debrief saying who won');
+  check(da.medals.some((x) => x.medal === 'MVP') && da.medals.some((x) => x.medal === 'Top Gun'), 'medals go to the best real player');
+  check(A.profile.gems === gemsA + 2 && B.profile.gems === gemsB, 'winners earn a gem, MVP one more; losers keep theirs');
+  check(da.chapter.title === 'Boot Camp' && da.chapter.merit === 3 && db.chapter.merit === 1, 'Tour of Duty merit: 3 for a win, 1 for a loss');
+  check(da.orders && da.orders.state !== 'kogi' && da.orders.brief.length > 10, 'new orders send you to another region');
+  check(/^[\x20-\x7E]+$/.test(da.orders.brief), 'orders are plain English text');
+  const xp0 = A.profile.xp;
+  A.profile.tour.merit = 5;
+  const d2 = debrief(mm, A, A.side, mm.roster(), []);
+  check(d2.finished?.title === 'Boot Camp' && d2.chapter.title === 'First Blood' && A.profile.xp >= xp0 + 1000, 'finishing a chapter pays out and opens the next one');
+  check(A.profile.tour.titles.includes('Recruit'), 'the chapter title is kept');
+  mm.removePlayer(B.id);
+  check(wa.log.some((m) => m.t === 'left' && m.name === 'Loser' && m.humans === 1), 'others are told a real player left');
 }
 
 section('Native app data (rules and maps)');

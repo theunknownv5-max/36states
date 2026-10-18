@@ -204,7 +204,7 @@ export const MATCH = {
   minPerSide: 5, // bots fill each side up to this many fighters
   scoreLimit: 750,
   timeLimitMs: 15 * 60 * 1000,
-  endScreenMs: 15000,
+  endScreenMs: 25000, // debrief, rest and new orders before the next battle
   captureTime: 8, // seconds to capture a site alone
   siteRadius: 9,
   sitePointsPerSec: 1,
@@ -223,8 +223,8 @@ export const MODES = {
     blurb: 'Capture and hold A, B and C. Every second wey una hold am dey bring point and money.',
     sites: true,
     respawn: true,
-    scoreLimit: 750,
-    timeLimitMs: 15 * 60 * 1000,
+    scoreLimit: 500,
+    timeLimitMs: 12 * 60 * 1000,
     icon: '⛳'
   },
   tdm: {

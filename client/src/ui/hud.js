@@ -375,7 +375,9 @@ export class Hud {
     const won = m.winner === mySide;
     $('me-title').textContent = stage ? (won ? 'STAGE CLEAR!' : 'STAGE FAIL') : !m.winner ? 'DRAW' : won ? 'VICTORY' : 'DEFEAT';
     $('me-title').style.color = !m.winner && !stage ? '#fff' : won ? 'var(--good)' : 'var(--bad)';
-    $('me-sub').textContent = stage ? m.modeState?.title || '' : won ? 'Una show say una get Proof of Duty!' : m.winner ? 'Dem beat una this time. Next time na una.' : 'Nobody win. E go hot next time.';
+    $('me-sub').textContent = stage ? m.modeState?.title || '' : won ? 'Your unit has proven its duty!' : m.winner ? 'The enemy took this one. Regroup and hit back.' : 'Nobody won. The next one decides it.';
+    $('me-debrief').hidden = true;
+    $('me-debrief').innerHTML = '';
     $('me-score').innerHTML = stage ? '' : `<span style="color:var(--sec)">${m.score.sec}</span> — <span style="color:var(--out)">${m.score.out}</span>`;
     const me = m.roster.find((r) => r.id === myId);
     $('me-stats').innerHTML = me
@@ -405,7 +407,7 @@ export class Hud {
     clearInterval(this.endT);
     this.endT = setInterval(() => {
       const s = Math.max(0, Math.ceil((until - performance.now()) / 1000));
-      $('me-next').textContent = this.endNoAuto ? '' : `Next battle go start in ${s}s`;
+      $('me-next').textContent = this.endNoAuto ? '' : `Rest and refit · the next battle here starts in ${s}s`;
       if (s <= 0) clearInterval(this.endT);
     }, 250);
   }
@@ -430,6 +432,56 @@ export class Hud {
       b.innerHTML = html;
       b._html = html;
     }
+  }
+
+  // Your personal debrief: medals, what you earned, the Tour of Duty and new orders from HQ.
+  debrief(d, { deploy, map } = {}) {
+    const box = $('me-debrief');
+    const c = d.chapter;
+    const pct = Math.min(100, Math.round((c.merit / c.need) * 100));
+    const medals = d.medals.length
+      ? `<div class="db-medals">${d.medals.map((x) => `<span class="db-medal" title="${esc(x.why)}">🎖 ${esc(x.medal)}</span>`).join('')}</div>`
+      : d.allMedals.length
+        ? `<div class="db-others">${d.allMedals.map((x) => `🎖 ${esc(x.medal)}: ${esc(x.name)}`).join(' · ')}</div>`
+        : '';
+    const earned = [d.gems ? `+${d.gems} 💎` : '', d.xp ? `+${d.xp} XP` : ''].filter(Boolean).join('  ');
+    const done = d.finished
+      ? `<div class="db-done">CHAPTER COMPLETE: ${esc(d.finished.title.toUpperCase())}<small>New title unlocked: ${esc(d.finished.rank)}</small></div>`
+      : '';
+    const o = d.orders;
+    box.innerHTML = `${medals}${earned ? `<div class="db-earned">${earned}</div>` : ''}${done}
+      <div class="db-tour">
+        <div class="db-tour-h"><b>TOUR OF DUTY · CHAPTER ${c.n}/${c.of}</b><span>${esc(c.title)}</span></div>
+        <div class="db-bar"><i style="width:${pct}%"></i></div>
+        <div class="db-tour-f">Merit ${c.merit}/${c.need} · a win gives 3, a loss 1 · ${c.wins} wins in ${c.battles} battles</div>
+        <p>${esc(c.story)}</p>
+      </div>
+      ${o ? `<div class="db-orders"><b>NEW ORDERS FROM HQ</b><p>${esc(o.brief)}</p><div class="me-actions"></div></div>` : ''}`;
+    if (o) {
+      const row = box.querySelector('.db-orders .me-actions');
+      const add = (label, primary, run) => {
+        const b = document.createElement('button');
+        b.className = `btn ${primary ? 'primary' : ''}`;
+        b.textContent = label;
+        b.onclick = run;
+        row.appendChild(b);
+      };
+      add(`Deploy to ${o.name}`, true, () => deploy?.(o));
+      add('Stay and fight here', false, () => {
+        row.innerHTML = '<span class="muted">Staying. Rest up, the next battle here starts soon.</span>';
+      });
+      add('Back to the map', false, () => map?.());
+    }
+    box.hidden = false;
+  }
+
+  // Real players in this battle right now (you included).
+  liveCount(n) {
+    const el = $('live-count');
+    if (!el || n === undefined) return;
+    el.hidden = false;
+    el.textContent = `👥 ${n} real`;
+    el.title = `${n} real ${n === 1 ? 'player' : 'players'} in this battle`;
   }
 
   hideMatchEnd() {

@@ -1,5 +1,6 @@
 // Proof of Duty game server: static hosting, accounts, the state lobby, live matches,
 // the ad feed, and the advertiser/admin API.
+import { chapterView } from './tour.js';
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
@@ -125,7 +126,7 @@ function authenticate(msg) {
 }
 
 function profilePublic(p) {
-  return { name: p.name, gems: p.gems, xp: p.xp, rank: rankFor(p.xp), kills: p.kills, deaths: p.deaths, wins: p.wins, matches: p.matches, stage: p.stage || 0, stageStars: p.stageStars || {} };
+  return { name: p.name, gems: p.gems, xp: p.xp, rank: rankFor(p.xp), kills: p.kills, deaths: p.deaths, wins: p.wins, matches: p.matches, stage: p.stage || 0, stageStars: p.stageStars || {}, tour: chapterView(p) };
 }
 
 // Live players per state, with a breakdown per mode (campaign stages are private).
