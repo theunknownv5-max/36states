@@ -154,7 +154,7 @@ jobs:
           tag_name: apk-${{ github.run_number }}
           name: Proof of Duty V0.1 (Android build ${{ github.run_number }})
           body: |
-            **Proof of Duty V0.1** · developed by Tcee 🇳🇬
+            **Proof of Duty V0.1** · powered by Business Game Experience
             1. Tap **proof-of-duty.apk** below (about ${{ env.APK_MB }} MB) — not "Source code".
             2. Wait for the download to finish completely, then open it from your Downloads.
             3. Allow "Install unknown apps" for your browser when asked.

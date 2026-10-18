@@ -62,7 +62,7 @@ export class ChatPanel {
     const box = $('ac-msgs');
     box.innerHTML = msgs.length
       ? msgs.map((m) => `<div class="m ${m.me ? 'me' : 'biz'}">${m.me ? esc(m.text) : linkify(m.text)}<small>${when(m.at)}</small></div>`).join('')
-      : '<div class="empty">Say hello. Ask about price, delivery or wetin you need. The business go reply for your Inbox.</div>';
+      : '<div class="empty">Say hello. Ask about price, delivery or whatever you need. The business replies in your Inbox.</div>';
     box.scrollTop = box.scrollHeight;
   }
 
@@ -100,7 +100,7 @@ export class InboxUI {
       if (chatPanel.isOpen && chatPanel.id === m.thread.id) {
         chatPanel.setMsgs(m.thread.msgs);
         this.net.send({ t: 'threadRead', id: m.thread.id });
-      } else this.onNotify?.(`📨 ${m.thread.business} don reply you. Check your Inbox.`);
+      } else this.onNotify?.(`📨 ${m.thread.business} replied. Check your Inbox.`);
       if (!$('inbox').hidden) this.render();
     });
     net.on('thread', (m) => {
@@ -143,7 +143,7 @@ export class InboxUI {
             return `<button class="th ${t.unread ? 'unread' : ''}" data-thread="${esc(t.id)}"><img src="${esc(t.image)}" alt=""><div><b>${esc(t.business)}</b><span>${last ? (last.me ? 'You: ' : '') + esc(last.text) : ''}</span></div>${t.unread ? `<i class="badge">${t.unread}</i>` : `<small class="muted">${last ? when(last.at) : ''}</small>`}</button>`;
           })
           .join('')
-      : '<div class="empty">No message yet. For battle, aim at any advert wey get 💬 and press J (or tap the chat button) to talk to that business.</div>';
+      : '<div class="empty">No message yet. In battle, aim at any advert with 💬 and press J (or tap the chat button) to talk to that business.</div>';
   }
 
   openThread(id) {
@@ -158,7 +158,7 @@ export class InboxUI {
       image: t.image,
       link: t.link,
       msgs: t.msgs,
-      safe: t.blocked ? 'This business no dey take message from you again.' : '',
+      safe: t.blocked ? 'This business is no longer accepting messages from you.' : '',
       onSend: (text) => this.net.send({ t: 'adMsg', threadId: id, text }),
       onClose: () => this.onThreadClosed?.()
     });

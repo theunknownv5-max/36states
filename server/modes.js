@@ -113,7 +113,7 @@ class BombMode extends BaseMode {
     this.carrier = pool.length ? pool[Math.floor(Math.random() * pool.length)].id : null;
     m.broadcast({ t: 'round', round: this.round, phase: 'freeze', ends: this.phaseEnds, carrier: this.carrier, score: m.score });
     const c = m.players.get(this.carrier);
-    if (c) m.toast(c, '💣 Na you carry the bomb! Go plant am for A or B (hold E).', 'streak');
+    if (c) m.toast(c, '💣 You have the bomb! Plant it at A or B (hold E).', 'streak');
   }
 
   frozen() {
@@ -167,7 +167,7 @@ class BombMode extends BaseMode {
     if (kind === 'plant') {
       if (p.id !== this.carrier || this.planted) return;
       const site = this.siteAt(p);
-      if (!site) return p.human && m.toast(p, 'You must dey inside A or B to plant.', 'bad');
+      if (!site) return p.human && m.toast(p, 'You must be inside A or B to plant.', 'bad');
       this.action = { pid: p.id, kind, start: now(), x: p.x, z: p.z, dur: BOMB.plantSecs * 1000, site: site.id };
     } else if (kind === 'defuse') {
       if (p.side !== 'sec' || !this.planted) return;
@@ -223,7 +223,7 @@ class BombMode extends BaseMode {
           this.carrier = p.id;
           this.dropped = null;
           m.broadcast({ t: 'bombPick', id: p.id });
-          if (p.human) m.toast(p, '💣 You don pick the bomb. Go plant am!', 'streak');
+          if (p.human) m.toast(p, '💣 You picked up the bomb. Go plant it!', 'streak');
           break;
         }
       }

@@ -131,7 +131,7 @@ jobs:
           tag_name: native-${{ github.run_number }}
           name: Proof of Duty V0.1 native (Android build ${{ github.run_number }})
           body: |
-            **Proof of Duty V0.1, the native Android game** · developed by Tcee 🇳🇬
+            **Proof of Duty V0.1, the native Android game** · powered by Business Game Experience
             1. Tap **proof-of-duty-native.apk** below (about ${{ env.APK_MB }} MB), not "Source code".
             2. Open it from your Downloads and allow "Install unknown apps" if asked.
             It installs next to the lite app, and both play on the same server with the same account.

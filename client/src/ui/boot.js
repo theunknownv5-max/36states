@@ -1,31 +1,31 @@
-// Cinematic boot: "TCEE PRESENTS", then a burning night skyline with searchlights,
+// Cinematic boot: "POWERED BY BUSINESS GAME EXPERIENCE", then a burning night skyline with searchlights,
 // tracers, artillery flashes and drifting smoke; the POD logo slams in with a shockwave,
 // an ammo belt fills as the game loads and the radio crackles in Pidgin.
 import { GAME } from '../../../shared/config.js';
 
 const TIPS = [
-  'Every advert wall get 💎 life gem. If you take am, nobody fit take am again till 2 minutes.',
-  'If you fall, your person get 10 seconds to revive you. Shout am!',
-  'As spirit, enemy no fit see you. Run go any gem wey dey shine.',
-  'Bullet fit pass through mud, zinc and plank wall. Concrete no gree.',
-  'Red drum wey write PMS na fuel. Shoot am near enemy and watch am burst.',
-  'To run dey make noise. Hold Z make you waka quiet.',
+  'Every advert wall has a 💎 life gem. Once taken, nobody can take it again for 2 minutes.',
+  'If you go down, a teammate has 10 seconds to revive you. Call for help!',
+  'As a spirit, enemies cannot see you. Run to any glowing gem.',
+  'Bullets go through mud, tin and plank walls. Concrete stops them.',
+  'Red drums marked PMS are fuel. Shoot one near enemies and watch it blow.',
+  'Running makes noise. Hold Z to walk quietly.',
   'For Plant & Defuse, one life per round. Plan well before you rush.',
-  'Army fit call artillery after 4 kills. Others na 5.',
-  'Gold beam for map mean say new deposit don show. E carry double point.',
-  'When you dey scope with sniper, hold Shift make your hand steady.',
-  'Campaign stage: clear am without dying make you collect 3 stars.'
+  'The Army can call artillery after 4 kills. Everyone else needs 5.',
+  'A gold beam on the map means a new deposit was found. It is worth double points.',
+  'When scoped with a sniper, hold Shift to steady your aim.',
+  'Campaign stage: clear it without dying to earn 3 stars.'
 ];
 
 const RADIO = [
-  '[RADIO] Alpha One, una don reach Kano? Over.',
-  '[RADIO] Bandits dey move for the creek. Eyes open o!',
+  '[RADIO] Alpha One, have you reached the objective? Over.',
+  '[RADIO] Bandits moving along the creek. Eyes open!',
   '[RADIO] HQ, we need medevac for Sector B. Quick quick!',
   '[RADIO] Who get eyes on the gas flare? Over.',
   '[RADIO] Charlie team, hold that ground. No shaking!',
-  '[RADIO] Drone dey up. Enemy position don show for radar.',
-  '[RADIO] Bomb don plant for site A! Defuse am now now!',
-  '[RADIO] All units: na Proof of Duty be this. Over and out.'
+  '[RADIO] Drone is up. Enemy positions on radar.',
+  '[RADIO] Bomb planted at site A! Defuse it now!',
+  '[RADIO] All units: this is Proof of Duty. Over and out.'
 ];
 
 export class Boot {

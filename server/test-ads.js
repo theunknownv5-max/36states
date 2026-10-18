@@ -293,7 +293,7 @@ try {
     await call('POST', `/api/adv/inbox/${ib.threads[0].id}/block`, {}, auth);
     await new Promise((r) => setTimeout(r, 1300));
     ws.send(JSON.stringify({ t: 'adMsg', threadId: ib.threads[0].id, text: 'hello?' }));
-    check((await waitFor('adChatError')).error.includes('no dey receive'), 'business can block a player');
+    check((await waitFor('adChatError')).error.includes('no longer accepting'), 'business can block a player');
     ws.send(JSON.stringify({ t: 'dailyClaim' }));
     const d1 = await waitFor('daily');
     check(d1.claimed?.reward?.gems === 1 && d1.profile.gems === wel.profile.gems + 1, 'daily login reward: day 1 gives a gem');

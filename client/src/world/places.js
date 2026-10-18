@@ -32,7 +32,7 @@ function graffitiTexture(text, colour, seed) {
   return T.toTexture(c, { repeat: false });
 }
 
-const GRAFFITI = ['NO GO AREA', 'WAHALA DEY', 'NEPA TAKE LIGHT', 'POD', 'GBAS GBOS', 'JAPA', 'SOLDIER GO', 'NAIJA NO DEY CARRY LAST'];
+const GRAFFITI = ['NO GO AREA', 'STAY ALERT', 'POWER OUT AGAIN', 'POD', 'HOLD THE LINE', 'NO SURRENDER', 'SOLDIER ON', 'NEVER LAST'];
 
 export class Places {
   constructor(scene, map) {

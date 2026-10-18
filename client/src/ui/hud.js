@@ -9,7 +9,7 @@ import { AMBULANCE } from '../../../shared/vehicles.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => '₦' + Math.round(n).toLocaleString();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Blood finish', drum: 'Fuel drum', fire: 'Fire burn am', bomb: 'Bomb', c4: 'C4', vehicle: 'Motor jam am', fist: 'Punch', knife: 'Machete', croc: '🐊 Crocodile', dog: '🐕 Guard dog', drown: '🌊 Drowned', tank: 'Fuel tank blast', crush: 'Crushed by a lorry' })[w] || WEAPONS[w]?.name || w || '';
+const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Blood finish', drum: 'Fuel drum', fire: 'Burned', bomb: 'Bomb', c4: 'C4', vehicle: 'Run over', fist: 'Punch', knife: 'Machete', croc: '🐊 Crocodile', dog: '🐕 Guard dog', drown: '🌊 Drowned', tank: 'Fuel tank blast', crush: 'Crushed by a lorry' })[w] || WEAPONS[w]?.name || w || '';
 
 export class Hud {
   constructor() {
@@ -300,11 +300,11 @@ export class Hud {
     if (status === 'dead') {
       $('opt-gems').textContent = m.gems;
       $('opt-gem').disabled = m.gems < RESPAWN.gemCost;
-      $('death-by').innerHTML = info.killer ? `<b>${esc(info.killer)}</b> don kill you · ${esc(WNAME(info.weapon))}${info.head ? ' (headshot)' : ''}` : 'Dem don kill you';
+      $('death-by').innerHTML = info.killer ? `<b>${esc(info.killer)}</b> killed you · ${esc(WNAME(info.weapon))}${info.head ? ' (headshot)' : ''}` : 'You were killed';
       // Modes without respawn (Plant & Defuse) wait for the next round instead.
       $('death-options').hidden = !!this.noRespawn;
       $('death-wait').hidden = !this.noRespawn;
-      $('death').querySelector('h2').textContent = this.noRespawn ? 'YOU DON DIE THIS ROUND' : 'GO BACK TO THE WAR FRONT';
+      $('death').querySelector('h2').textContent = this.noRespawn ? 'YOU ARE OUT THIS ROUND' : 'BACK TO THE FRONT LINE';
     }
   }
 
@@ -312,13 +312,13 @@ export class Hud {
     if (status === 'downed') $('downed-t').textContent = Math.max(0, Math.ceil((m.downedAt + RESPAWN.downedMs - serverNow) / 1000));
     if (status === 'spirit') $('spirit-t').textContent = Math.max(0, Math.ceil((m.spiritUntil - serverNow) / 1000));
     if (status === 'medevac') $('medevac-t').textContent = Math.max(0, Math.ceil((m.medevacAt - serverNow) / 1000));
-    if (status === 'dead' && this.deadSince) $('death-auto').textContent = this.noRespawn ? '' : `Medevac go come by itself in ${Math.max(0, Math.ceil(60 - (performance.now() - this.deadSince) / 1000))} s.`;
+    if (status === 'dead' && this.deadSince) $('death-auto').textContent = this.noRespawn ? '' : `Medevac comes for you automatically in ${Math.max(0, Math.ceil(60 - (performance.now() - this.deadSince) / 1000))} s.`;
   }
 
   // ---------- buy menu ----------
   renderBuy(m, inZone, onBuy) {
     $('buy-money').textContent = fmt(m.money);
-    $('buy-where').textContent = inZone ? 'You fit buy here' : 'Go back to your base (or buy as you just land)';
+    $('buy-where').textContent = inZone ? 'You can buy here' : 'Go back to your base (or buy as you just land)';
     const grid = $('buy-grid');
     grid.innerHTML = '';
     const groups = [
@@ -344,7 +344,7 @@ export class Hud {
         b.className = 'item';
         const locked = w?.unlockLevel && (m.level || 1) < w.unlockLevel;
         b.disabled = !inZone || m.money < price || m.status !== 'alive' || locked;
-        const stats = locked ? `🔒 Opens at rank level ${w.unlockLevel}` : w ? `${w.dmg}${w.pellets ? '×' + w.pellets : ''} dmg · ${w.mag} rds · ${w.rpm} rpm` : id === 'bloodpill' ? `+${g.heal} health over ${g.secs}s, keep moving` : id === 'c4' ? 'Stick on wall or motor (P), blow am (L)' : g.name;
+        const stats = locked ? `🔒 Opens at rank level ${w.unlockLevel}` : w ? `${w.dmg}${w.pellets ? '×' + w.pellets : ''} dmg · ${w.mag} rds · ${w.rpm} rpm` : id === 'bloodpill' ? `+${g.heal} health over ${g.secs}s, keep moving` : id === 'c4' ? 'Stick on a wall or vehicle (P), detonate (L)' : g.name;
         b.innerHTML = `<kbd>${key <= 9 ? key : ''}</kbd><b>${w?.name || g.name}</b><span class="price">${price === 0 ? 'FREE' : fmt(price)}</span>${price < base ? `<span class="old">${fmt(base)}</span>` : ''}<small>${stats}</small>`;
         b.onclick = () => onBuy(id);
         b.dataset.item = id;

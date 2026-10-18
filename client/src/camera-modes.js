@@ -175,7 +175,7 @@ export class CameraModes {
     if (this.mode === 'drone') return this.exitDrone();
     const g = this.g;
     if (!['alive', 'dead', 'medevac'].includes(g.status)) return;
-    if (!this.unlimited() && this.battery < 5) return g.hud.toast(`Drone battery dey charge (${Math.round((this.battery / DRONE.battery) * 100)}%)`, 'bad', 1600);
+    if (!this.unlimited() && this.battery < 5) return g.hud.toast(`Drone battery charging (${Math.round((this.battery / DRONE.battery) * 100)}%)`, 'bad', 1600);
     const b = g.body;
     this.drone = { x: b.x, z: b.z, y: b.y + 3, alt: DRONE.startAlt, yaw: g.yaw, pitch: -0.95, vx: 0, vz: 0, t: 0 };
     this.mode = 'drone';
@@ -185,7 +185,7 @@ export class CameraModes {
     if (!g.touch && g.status !== 'alive') g.input.lock();
     audio.drone?.(true);
     g.touchKey = null;
-    g.hud.toast(g.status === 'alive' ? 'Drone dey air. Your body dey ground, watch your back!' : 'Spectator drone: look round while you wait', 'info', 2200);
+    g.hud.toast(g.status === 'alive' ? 'Drone in the air. Your body is still on the ground, watch your back!' : 'Spectator drone: look round while you wait', 'info', 2200);
   }
 
   exitDrone(reason) {
@@ -202,7 +202,7 @@ export class CameraModes {
   }
 
   onHurt() {
-    if (this.mode === 'drone' && this.g.status === 'alive') this.exitDrone('Drone signal lost: dem dey shoot you!');
+    if (this.mode === 'drone' && this.g.status === 'alive') this.exitDrone('Drone signal lost: you are under fire!');
   }
 
   onStatus(now) {
@@ -304,7 +304,7 @@ export class CameraModes {
     d.t += dt;
     if (!this.unlimited()) {
       this.battery = Math.max(0, this.battery - dt);
-      if (this.battery <= 0) return this.exitDrone('Drone battery don finish. E dey come back.'), false;
+      if (this.battery <= 0) return this.exitDrone('Drone battery empty. It is returning.'), false;
     }
     const inp = g.input;
     const mv = g.anyMenu() ? { x: 0, y: 0 } : inp.move();

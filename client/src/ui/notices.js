@@ -92,7 +92,7 @@ export class Notices {
             return `<div class="note-item ${n.at > seen ? 'new' : ''}"><b>${esc(n.title)}</b><p>${esc(n.body)}</p><small>${ago(n.at)}</small>${url ? ` · <a href="${esc(url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>`;
           })
           .join('')
-      : '<p class="muted">No news yet. When the POD team get update, event or gift, e go show here.</p>';
+      : '<p class="muted">No news yet. Updates, events and gifts from the POD team will show here.</p>';
   }
 
   // ---------- announcement strip, events, maintenance ----------
@@ -138,13 +138,13 @@ export class Notices {
 
   updateScreen() {
     const url = safeUrl(this.control.updateUrl) || 'https://github.com/theunknownv5-max/36states/releases/latest';
-    this.lock('⬆ New version dey', 'This app version don old. Download the new one to keep playing, e get new things wey you go like.', `<a class="btn primary" href="${esc(url)}" target="_blank" rel="noopener">Download update</a>`, 'update');
+    this.lock('⬆ New version available', 'This version of the app is out of date. Download the new one to keep playing; it has new things you will like.', `<a class="btn primary" href="${esc(url)}" target="_blank" rel="noopener">Download update</a>`, 'update');
   }
 
   kicked(reason) {
     this.onKicked?.();
     if (this.control.maintenance) return;
-    toast(`⚠ ${reason || 'You don comot from the battle.'}`);
+    toast(`⚠ ${reason || 'You were removed from the battle.'}`);
   }
 
   // Ban message comes as an authError at sign in; the auth form shows it.
@@ -164,15 +164,15 @@ export class Notices {
     note.textContent = can
       ? sw.checked
         ? 'On. We go tell you about updates, events and gifts, even when the game close.'
-        : 'Off. Turn am on make you no miss double XP weekends and gifts.'
+        : 'Off. Turn them on so you never miss double XP weekends and gifts.'
       : IS_APP
-        ? 'Notifications go work after the next app update.'
-        : 'This browser no support notifications. You go still see news for the 🔔 button.';
+        ? 'Notifications will work after the next app update.'
+        : 'This browser does not support notifications. You will still see news under the 🔔 button.';
   }
 
   pushState(m) {
     this.push.on = m.on;
-    if (m.error) $('push-note').textContent = `No fit turn on: ${m.error}`;
+    if (m.error) $('push-note').textContent = `Could not turn on: ${m.error}`;
   }
 
   async togglePush(on, quiet = false) {
@@ -194,16 +194,16 @@ export class Notices {
       else await this.subscribeWeb(quiet);
       this.store.set('push', '1');
       this.syncPushSwitch();
-      if (!quiet) toast('🔔 Notifications don on');
+      if (!quiet) toast('🔔 Notifications on');
     } catch (e) {
       this.store.set('push', '0');
       this.syncPushSwitch();
-      if (!quiet) note.textContent = e.message || 'Notifications no fit turn on.';
+      if (!quiet) note.textContent = e.message || 'Notifications could not be turned on.';
     }
   }
 
   async subscribeWeb(quiet) {
-    if (Notification.permission === 'denied') throw new Error('You block notifications for this site. Allow am for browser settings first.');
+    if (Notification.permission === 'denied') throw new Error('Notifications are blocked for this site. Allow them in your browser settings first.');
     if (Notification.permission !== 'granted') {
       if (quiet) throw new Error('');
       if ((await Notification.requestPermission()) !== 'granted') throw new Error('You no allow notifications.');
@@ -224,7 +224,7 @@ export class Notices {
       this.appListeners = true;
       await P.createChannel?.({ id: 'pod', name: 'Game news', description: 'Updates, events and gifts', importance: 4 }).catch(() => {});
       P.addListener('registration', (t) => this.net.send({ t: 'pushSub', kind: 'fcm', token: t.value }));
-      P.addListener('registrationError', () => ($('push-note').textContent = 'Notifications no fit start on this phone.'));
+      P.addListener('registrationError', () => ($('push-note').textContent = 'Notifications cannot start on this phone.'));
       P.addListener('pushNotificationReceived', (n) => this.say(`🔔 ${n.title || ''} ${n.body || ''}`, 'info', 6000));
     }
     await P.register();

@@ -48,13 +48,13 @@ export class Social {
   // ---------- friends ----------
   addFriend(me, code) {
     const other = this.byCode(code);
-    if (!other) throw new Error('No soldier get that friend code. Check am well.');
-    if (other === me) throw new Error('Na your own code be that 😄');
+    if (!other) throw new Error('No soldier has that friend code. Check it and try again.');
+    if (other === me) throw new Error('That is your own code 😄');
     me.friends ||= [];
     other.friends ||= [];
     other.requests ||= [];
     me.requests ||= [];
-    if (me.friends.includes(other.token)) throw new Error(`${other.name} don already be your friend.`);
+    if (me.friends.includes(other.token)) throw new Error(`${other.name} is already your friend.`);
     // They already asked you: accept straight away.
     if (me.requests.includes(other.token)) return this.accept(me, this.codeOf(other));
     if (!other.requests.includes(me.token)) other.requests.push(me.token);
@@ -64,7 +64,7 @@ export class Social {
 
   accept(me, code) {
     const other = this.byCode(code);
-    if (!other || !(me.requests || []).includes(other.token)) throw new Error('Request no dey again.');
+    if (!other || !(me.requests || []).includes(other.token)) throw new Error('That request has expired.');
     me.requests = me.requests.filter((t) => t !== other.token);
     me.friends ||= [];
     other.friends ||= [];
@@ -94,8 +94,8 @@ export class Social {
     name = clean(name, 24);
     tag = String(tag || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
     if (name.length < 3) throw new Error('Crew name suppose reach 3 letters.');
-    if (tag.length < 2) throw new Error('Crew tag na 2 to 4 letters or numbers, like GBG.');
-    if (Object.values(this.store.data.crews).some((c) => c.tag === tag)) throw new Error(`Another crew don take [${tag}].`);
+    if (tag.length < 2) throw new Error('A crew tag is 2 to 4 letters or numbers, like GBG.');
+    if (Object.values(this.store.data.crews).some((c) => c.tag === tag)) throw new Error(`Another crew already uses [${tag}].`);
     if (me.crew) this.leaveCrew(me);
     const id = Array.from(randomBytes(5), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
     this.store.data.crews[id] = { id, name, tag, owner: me.token, members: [me.token], created: Date.now() };
@@ -107,8 +107,8 @@ export class Social {
   joinCrew(me, code) {
     const crew = this.store.data.crews[String(code || '').trim().toUpperCase().replace(/^CREW-/, '')];
     if (!crew) throw new Error('No crew get that code.');
-    if (crew.members.length >= 30) throw new Error('That crew don full (30 soldiers).');
-    if (me.crew === crew.id) throw new Error('You don dey this crew already.');
+    if (crew.members.length >= 30) throw new Error('That crew is full (30 soldiers).');
+    if (me.crew === crew.id) throw new Error('You are already in this crew.');
     if (me.crew) this.leaveCrew(me);
     crew.members.push(me.token);
     me.crew = crew.id;

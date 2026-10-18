@@ -1,6 +1,6 @@
 # Proof of Duty (POD) · V0.1
 
-**Shoot • Survive • Win.** Developed by **Tcee** 🇳🇬, built from scratch by one Nigerian developer.
+**Shoot • Survive • Win.** Powered by **[Business Game Experience](https://www.businessgamexp.com)**.
 
 A tactical online first-person shooter played across all 36 states of Nigeria and the FCT. The game text is in Nigerian Pidgin English. You choose a state and choose what you are (Police, Army, Civil Defence or Vigilante Hunters against Bandits, Creek Militants or Smugglers). Then you fight real players for that state's real natural resources.
 
@@ -488,4 +488,4 @@ One server process runs every state's battle. For very large player counts, the 
 
 ## About
 
-**Proof of Duty** V0.1. © Tcee. Official website: https://proofofduty.com Designed and developed solely by Tcee, a Nigerian developer.
+**Proof of Duty** V0.1. © Business Game Experience. Official website: https://proofofduty.com · Powered by Business Game Experience, https://www.businessgamexp.com

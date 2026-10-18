@@ -101,7 +101,7 @@ function authenticate(msg) {
     if (!/^[a-zA-Z0-9_]{3,16}$/.test(u)) return { error: 'Username: 3-16 letters, numbers or _ only' };
     if (typeof msg.password !== 'string' || msg.password.length < 6 || msg.password.length > 64) return { error: 'Password suppose reach at least 6 characters' };
     if (msg.mode === 'register') {
-      if (accounts[key]) return { error: 'Person don already take that username' };
+      if (accounts[key]) return { error: 'That username is already taken' };
       const salt = randomBytes(16).toString('hex');
       const token = randomUUID();
       accounts[key] = { username: u, salt, hash: scryptSync(msg.password, salt, 32).toString('hex'), token, created: Date.now() };
@@ -116,7 +116,7 @@ function authenticate(msg) {
   }
   // Guest: keep the device token, unless it belongs to an account.
   let token = typeof msg.token === 'string' && /^[a-f0-9-]{16,40}$/.test(msg.token) ? msg.token : randomUUID();
-  if (Object.values(accounts).some((a) => a.token === token)) return { error: 'Abeg log in to this account.' };
+  if (Object.values(accounts).some((a) => a.token === token)) return { error: 'Please log in to this account.' };
   const name = String(msg.name || '').replace(/[^\w .'-]/g, '').trim().slice(0, 18) || `Soldier${Math.floor(Math.random() * 9000 + 1000)}`;
   if (!store.data.profiles[token]) store.data.profiles[token] = newProfile(token, name);
   // A name the admin set (e.g. to replace an offensive one) sticks.
@@ -507,7 +507,7 @@ wss.on('connection', (ws) => {
       const ban = control.banInfo(conn.profile);
       if (ban) {
         conn.profile = null;
-        return send({ t: 'authError', error: `You don collect ban${ban.until ? ` till ${new Date(ban.until).toLocaleString('en-NG')}` : ''}: ${ban.reason}`, banned: true });
+        return send({ t: 'authError', error: `You have been banned${ban.until ? ` till ${new Date(ban.until).toLocaleString('en-NG')}` : ''}: ${ban.reason}`, banned: true });
       }
       if (fresh) control.track('newPlayer');
       conn.profile.lastSeen = Date.now();
@@ -534,7 +534,7 @@ wss.on('connection', (ws) => {
       let opts = {};
       if (mode === 'stage') {
         const i = Math.max(0, Math.min(STAGES.length - 1, msg.stage | 0));
-        if (i > (conn.profile.stage || 0)) return send({ t: 'joinError', error: 'You never open this stage. Clear the one before am first.' });
+        if (i > (conn.profile.stage || 0)) return send({ t: 'joinError', error: 'This stage is still locked. Clear the one before it first.' });
         state = STAGES[i].state;
         faction = STAGES[i].ally;
         key = `stage:${conn.profile.token}`;
@@ -569,7 +569,7 @@ wss.on('connection', (ws) => {
     // ---------- chat with businesses on the billboards ----------
     if (msg.t === 'adChatOpen') {
       const ad = ads.ads.find((a) => a.id === msg.adId && a.kind === 'paid' && a.advertiserId && ads.isLive(a));
-      if (!ad) return send({ t: 'adChat', ok: false, reason: 'This advert no get chat.' });
+      if (!ad) return send({ t: 'adChat', ok: false, reason: 'This advert has no chat.' });
       let r = { ok: true, paused: false };
       if (conn.match && conn.player) r = conn.match.setChat(conn.player, true);
       if (!r.ok) return send({ t: 'adChat', ok: false, reason: r.reason });
@@ -590,7 +590,7 @@ wss.on('connection', (ws) => {
           ad = { advertiserId: th.advertiserId, advertiser: th.business, id: th.adId, boardCode: th.boardCode, file: th.image, link: th.link };
         } else {
           ad = ads.ads.find((a) => a.id === msg.adId && a.kind === 'paid' && a.advertiserId);
-          if (!ad) throw new Error('This advert no get chat.');
+          if (!ad) throw new Error('This advert has no chat.');
         }
         const th = inbox.fromPlayer({ token: conn.profile.token, name: conn.profile.name }, ad, msg.text);
         return send({ t: 'thread', thread: threadView(th) });
@@ -621,9 +621,9 @@ wss.on('connection', (ws) => {
     }
     if (msg.t === 'report') {
       const target = conn.match?.players.get(String(msg.id || ''));
-      if (!target?.human || target === conn.player) return send({ t: 'notice', title: 'Report', body: 'You fit report only real players for this battle.' });
+      if (!target?.human || target === conn.player) return send({ t: 'notice', title: 'Report', body: 'You can only report real players in this battle.' });
       control.report({ reporter: { pid: pidOf(conn.profile.token), name: conn.profile.name }, target: { pid: pidOf(target.profile.token), name: target.profile.name }, reason: msg.reason, state: conn.match.stateId, mode: conn.match.modeId });
-      return send({ t: 'notice', title: 'Report don reach', body: `Thank you. The POD team go check ${target.profile.name}.` });
+      return send({ t: 'notice', title: 'Report received', body: `Thank you. The POD team go check ${target.profile.name}.` });
     }
     // ---------- friends, crews, rivals ----------
     const socialReply = (extra = {}) => send({ t: 'social', social: social.view(conn.profile), ...extra });
@@ -636,12 +636,12 @@ wss.on('connection', (ws) => {
       if (msg.t === 'friendAdd') {
         const r = social.addFriend(conn.profile, msg.code);
         pingSocial(r.to);
-        return socialReply({ note: r.sent ? `Friend request don go to ${r.sent}.` : `You and ${r.friend} don be friends now.` });
+        return socialReply({ note: r.sent ? `Friend request sent to ${r.sent}.` : `You and ${r.friend} are now friends.` });
       }
       if (msg.t === 'friendAccept') {
         const r = social.accept(conn.profile, msg.code);
         pingSocial(r.to);
-        return socialReply({ note: `You and ${r.friend} don be friends now.` });
+        return socialReply({ note: `You and ${r.friend} are now friends.` });
       }
       if (msg.t === 'friendDecline') {
         social.decline(conn.profile, msg.code);
@@ -653,7 +653,7 @@ wss.on('connection', (ws) => {
       }
       if (msg.t === 'crewCreate') {
         const c = social.createCrew(conn.profile, msg.name, msg.tag);
-        return socialReply({ note: `Crew [${c.tag}] ${c.name} don start. Share the code make your people join.` });
+        return socialReply({ note: `Crew [${c.tag}] ${c.name} is ready. Share the code so your people can join.` });
       }
       if (msg.t === 'crewJoin') {
         const c = social.joinCrew(conn.profile, msg.code);
@@ -662,10 +662,10 @@ wss.on('connection', (ws) => {
       }
       if (msg.t === 'crewLeave') {
         social.leaveCrew(conn.profile);
-        return socialReply({ note: 'You don comot from the crew.' });
+        return socialReply({ note: 'You have left the crew.' });
       }
       if (msg.t === 'crewChat') {
-        if (control.muted(conn.profile)) return socialReply({ error: 'Admin don mute your chat for now.' });
+        if (control.muted(conn.profile)) return socialReply({ error: 'An admin has muted your chat for now.' });
         const { crew, msg: m } = social.crewChat(conn.profile, msg.text);
         control.logChat({ pid: pidOf(conn.profile.token), name: conn.profile.name, text: m.text, team: true, state: `crew ${crew.tag}`, mode: 'crew' });
         for (const t of crew.members) {
@@ -678,12 +678,12 @@ wss.on('connection', (ws) => {
       if (msg.t === 'crewPlan') {
         const crew = social.crewPlan(conn.profile, msg.text);
         for (const t of crew.members) if (t !== conn.profile.token) pingSocial(t);
-        return socialReply({ note: 'Tactics plan don save. Your crew go see am.' });
+        return socialReply({ note: 'Tactics plan saved. Your crew can see it.' });
       }
       if (msg.t === 'joinFriend') {
         const f = social.byCode(msg.code);
         const where = f && presence(f.token).where;
-        if (!where) return socialReply({ note: 'Your friend no dey any battle now.' });
+        if (!where) return socialReply({ note: 'Your friend is not in a battle right now.' });
         return send({ t: 'friendWhere', ...where, name: f.name });
       }
     } catch (e) {

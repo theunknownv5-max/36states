@@ -11,7 +11,7 @@ signal leave
 signal settings
 signal resume
 
-const QUICK := ["Follow me!", "Enemy dey here!", "I need help o!", "Cover me!", "Hold this place!", "Well done, my guy!"]
+const QUICK := ["Follow me!", "Enemy here!", "I need help o!", "Cover me!", "Hold this place!", "Well done, my guy!"]
 
 var battle: Node
 var cross: Control
@@ -510,18 +510,18 @@ func show_scores(roster: Array, my_id: String) -> void:
 ## You fell: life gem, spirit run or medevac (or wait in practice).
 func show_death(by: String, gems: int, can_respawn: bool, practice: bool) -> void:
 	var v := _overlay("death", 0.35)
-	v.add_child(Kit.title("YOU DON FALL", 30))
-	v.add_child(Kit.para(("Na %s get you." % by) if by != "" else "You don go down.", 17, Kit.TEXT))
+	v.add_child(Kit.title("YOU ARE DOWN", 30))
+	v.add_child(Kit.para(("%s got you." % by) if by != "" else "You went down.", 17, Kit.TEXT))
 	if practice:
-		v.add_child(Kit.para("Practice range: you go stand up again in 3 seconds.", 16))
+		v.add_child(Kit.para("Practice range: you get back up in 3 seconds.", 16))
 		return
 	if not can_respawn:
-		v.add_child(Kit.para("No respawn for this mode. You go enter next round.", 16))
+		v.add_child(Kit.para("No respawn in this mode. You join the next round.", 16))
 		return
 	var row := Kit.hbox(10)
 	v.add_child(row)
 	var resp: Dictionary = Cfg.rules.get("RESPAWN", {})
-	var g := Kit.button("◆ LIFE GEM\nBack now (you get %d)" % gems, true, 17)
+	var g := Kit.button("◆ LIFE GEM\nBack now (you have %d)" % gems, true, 17)
 	g.custom_minimum_size = Vector2(0, 84)
 	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	g.disabled = gems < int(resp.get("gemCost", 1))
@@ -537,7 +537,7 @@ func show_death(by: String, gems: int, can_respawn: bool, practice: bool) -> voi
 	md.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	md.pressed.connect(func(): respawn.emit("medevac"))
 	row.add_child(md)
-	v.add_child(Kit.para("If you no choose, medevac go come carry you after 60 seconds.", 14))
+	v.add_child(Kit.para("If you do not choose, a medevac picks you up after 60 seconds.", 14))
 
 func show_end(m: Dictionary, my_side: String, my_id: String) -> void:
 	var v := _overlay("end", 0.6)
@@ -553,7 +553,7 @@ func show_end(m: Dictionary, my_side: String, my_id: String) -> void:
 	var roster: Array = m.get("roster", [])
 	for r in roster.slice(0, 8):
 		v.add_child(Kit.label("%s  %d kills · %d pts" % [r.name, int(r.kills), int(r.points)], 15, Color.WHITE if r.id == my_id else Kit.MUTED))
-	v.add_child(Kit.para("Next battle dey start soon…", 15))
+	v.add_child(Kit.para("The next battle starts soon…", 15))
 	var l := Kit.button("Leave to the war map")
 	l.pressed.connect(func(): leave.emit())
 	v.add_child(l)
@@ -561,7 +561,7 @@ func show_end(m: Dictionary, my_side: String, my_id: String) -> void:
 func show_pause() -> void:
 	var v := _overlay("pause", 0.6)
 	v.add_child(Kit.title("PAUSED", 30))
-	v.add_child(Kit.para("The battle no dey stop for others. Make it quick!", 15))
+	v.add_child(Kit.para("The battle goes on without you. Make it quick!", 15))
 	var r := Kit.button("Back to the fight", true)
 	r.pressed.connect(func():
 		close_panel()

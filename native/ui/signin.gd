@@ -34,7 +34,7 @@ func _ready() -> void:
 	var t := Kit.title("REPORT FOR DUTY", 34)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
-	var sub := Kit.para("Choose how you go play. Guests fit start sharp sharp; an account keeps your rank on any phone.", 16)
+	var sub := Kit.para("Choose how to play. Guests start straight away; an account keeps your rank on any phone.", 16)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(sub)
 	var row := Kit.hbox(8)
@@ -122,7 +122,7 @@ func _submit() -> void:
 		go.disabled = false
 		_set_mode(mode)
 		if not ok:
-			_err("We no fit reach the game server. Check your network and try again."))
+			_err("We cannot reach the game server. Check your network and try again."))
 
 func _err(t: String) -> void:
 	err_label.text = t

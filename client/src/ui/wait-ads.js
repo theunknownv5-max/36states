@@ -49,12 +49,12 @@ export class WaitAds {
     let title;
     if (st === 'medevac') {
       secs = Math.max(0, Math.ceil((m.medevacAt - sNow) / 1000));
-      title = '🚁 Medevac dey come · sponsors';
+      title = '🚁 Medevac on its way · sponsors';
     } else {
       secs = g.hud.noRespawn ? null : Math.max(0, Math.ceil(60 - (performance.now() - (g.hud.deadSince || performance.now())) / 1000));
       title = g.hud.noRespawn ? '🛸 Watching the round' : '📺 Sponsors on this battlefield';
     }
-    const t = secs == null ? 'You go enter next round' : st === 'medevac' ? `You go land back in <b>${secs}</b>s` : `Medevac go come by itself in <b>${secs}</b>s`;
+    const t = secs == null ? 'You join the next round' : st === 'medevac' ? `You land back in <b>${secs}</b>s` : `Medevac comes for you automatically in <b>${secs}</b>s`;
     const key = `${title}|${t}|${st}|${g.hud.noRespawn}|${m.gems}`;
     if (key !== this.key) {
       this.key = key;
@@ -85,7 +85,7 @@ export class WaitAds {
       const where = { sky: 'Skyline billboard', led: 'LED screen', ground: 'Ground advert', wall: 'Wall banner' }[panel.type] || 'Billboard';
       $('wa-img').hidden = !ad;
       if (ad) $('wa-img').src = ad.image;
-      $('wa-name').textContent = ad ? ad.advertiser || 'Sponsor' : 'Your brand fit dey here';
+      $('wa-name').textContent = ad ? ad.advertiser || 'Sponsor' : 'Your brand could be here';
       $('wa-sub').textContent = `${where} · ${tour.i + 1} of ${tour.list.length}${ad ? '' : ' · advertise: proofofduty.com/advertise'}`;
       $('wa-link').hidden = ad ? !ad.link : false;
       $('wa-link').href = ad ? (ad.link ? (/^https?:\/\//.test(ad.link) ? ad.link : `https://${ad.link}`) : '#') : api('/advertise');
@@ -98,8 +98,8 @@ export class WaitAds {
       this.current = null;
       $('wa-ad').classList.add('house');
       $('wa-img').hidden = true;
-      $('wa-name').textContent = tour ? 'You dey fly the drone' : 'Drone view';
-      $('wa-sub').textContent = tour ? 'Leave the controls for a few seconds and the drone go show you the adverts again.' : 'Watch the battlefield while you wait.';
+      $('wa-name').textContent = tour ? 'You are flying the drone' : 'Drone view';
+      $('wa-sub').textContent = tour ? 'Leave the controls for a few seconds and the drone shows you the adverts again.' : 'Watch the battlefield while you wait.';
       $('wa-link').hidden = true;
       $('wa-chat').hidden = true;
     }

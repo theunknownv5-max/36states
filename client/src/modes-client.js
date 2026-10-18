@@ -46,7 +46,7 @@ function bombModel() {
   return g;
 }
 
-const QUICK = ['Follow me!', 'Enemy dey here!', 'I need help o!', 'Cover me!', 'Hold this place!', 'Well done, my guy!'];
+const QUICK = ['Follow me!', 'Enemy here!', 'I need help o!', 'Cover me!', 'Hold this place!', 'Well done, my guy!'];
 
 export class ModeClient {
   constructor(game) {
@@ -84,7 +84,7 @@ export class ModeClient {
     on('roundEnd', (m) => {
       this.st = { ...this.st, phase: 'post' };
       const ours = m.winner === g.side;
-      const why = { defused: 'Bomb don defuse', exploded: 'Bomb don burst', eliminated: 'Everybody don fall', time: 'Time don finish' }[m.why] || '';
+      const why = { defused: 'Bomb defused', exploded: 'Bomb exploded', eliminated: 'Team wiped out', time: 'Time is up' }[m.why] || '';
       g.hud.callout(ours ? 'ROUND WIN!' : 'ROUND LOSS');
       g.hud.banner(`${why} · ${m.winner === 'sec' ? 'Security' : 'Outlaws'} take round ${m.round}`, 4500);
       this.myAct = null;
@@ -92,17 +92,17 @@ export class ModeClient {
     on('planted', (m) => {
       this.st = { ...this.st, phase: 'planted', planted: { x: m.x, z: m.z, site: m.site, explodeAt: m.explodeAt }, carrier: null, dropped: null };
       this.placeBomb(m.x, m.z, true);
-      g.hud.banner(`💣 BOMB DON PLANT FOR ${m.site}!`, 4000);
+      g.hud.banner(`💣 BOMB PLANTED AT ${m.site}!`, 4000);
       audio.alert();
     });
     on('defused', (m) => {
       if (this.bomb) this.bomb.planted = false;
-      g.hud.toast(`${m.by} don defuse the bomb!`, 'good');
+      g.hud.toast(`${m.by} defused the bomb!`, 'good');
     });
     on('bombDrop', (m) => {
       this.st = { ...this.st, carrier: null, dropped: { x: m.x, z: m.z } };
       this.placeBomb(m.x, m.z, false);
-      if (g.side === 'out') g.hud.toast('Bomb don fall! Go carry am.', 'bad');
+      if (g.side === 'out') g.hud.toast('The bomb was dropped! Go pick it up.', 'bad');
     });
     on('bombPick', (m) => {
       this.st = { ...this.st, carrier: m.id, dropped: null };
@@ -110,7 +110,7 @@ export class ModeClient {
     });
     on('act', (m) => {
       if (m.pid === g.myId) this.myAct = m.kind ? { kind: m.kind, start: m.start, dur: m.dur } : null;
-      if (m.kind === 'defuse' && m.pid !== g.myId && g.side === 'out') g.hud.toast('Dem dey defuse the bomb!', 'bad', 2000);
+      if (m.kind === 'defuse' && m.pid !== g.myId && g.side === 'out') g.hud.toast('They are defusing the bomb!', 'bad', 2000);
     });
     on('wave', (m) => {
       this.st = { ...this.st, wave: m.wave, waves: m.waves, enemiesLeft: m.enemies, nextWaveAt: 0 };
@@ -119,7 +119,7 @@ export class ModeClient {
     });
     on('waveClear', (m) => {
       this.st = { ...this.st, nextWaveAt: m.next };
-      g.hud.banner(`Wave ${m.wave} clear! Next one dey come…`, 4000);
+      g.hud.banner(`Wave ${m.wave} clear! The next one is coming…`, 4000);
     });
   }
 
@@ -128,9 +128,9 @@ export class ModeClient {
     const buy = touch ? 'Tap ₦' : 'Press B';
     switch (this.id) {
       case 'tdm':
-        return `Gbas Gbos! First team to ${this.def.scoreLimit} kills win. ${buy} to buy weapon.`;
+        return `Team Deathmatch! First team to ${this.def.scoreLimit} kills wins. ${buy} to buy weapon.`;
       case 'bomb':
-        return this.game.side === 'out' ? `Outlaws: carry the 💣 go A or B and hold E to plant. ${buy} to buy.` : `Security: stop dem or hold E for the bomb to defuse. ${buy} to buy.`;
+        return this.game.side === 'out' ? `Outlaws: carry the 💣 go A or B and hold E to plant. ${buy} to buy.` : `Security: stop them, or hold E at the bomb to defuse it. ${buy} to buy.`;
       case 'stage': {
         const st = STAGES[this.st.stage || 0];
         return `${st.title}: ${st.story}`;
@@ -176,8 +176,8 @@ export class ModeClient {
   prompt() {
     const k = this.availableAction();
     const key = this.game.touch ? '✚' : 'E';
-    if (k === 'plant') return `<kbd>${key}</kbd> Hold make you plant bomb`;
-    if (k === 'defuse') return `<kbd>${key}</kbd> Hold make you defuse bomb`;
+    if (k === 'plant') return `<kbd>${key}</kbd> Hold to plant the bomb`;
+    if (k === 'defuse') return `<kbd>${key}</kbd> Hold to defuse the bomb`;
     if (this.id === 'bomb' && this.st.carrier === this.game.myId) return '💣 You carry the bomb — go A or B';
     return null;
   }
@@ -186,7 +186,7 @@ export class ModeClient {
   progress(sNow) {
     if (!this.myAct) return null;
     const k = Math.min(1, (sNow - this.myAct.start) / this.myAct.dur);
-    return [k, this.myAct.kind === 'plant' ? 'Dey plant bomb…' : 'Dey defuse bomb…'];
+    return [k, this.myAct.kind === 'plant' ? 'Planting the bomb…' : 'Defusing the bomb…'];
   }
 
   placeBomb(x, z, planted) {
@@ -218,7 +218,7 @@ export class ModeClient {
     } else if (this.id === 'stage') {
       const next = st.nextWaveAt ? ` · next wave ${Math.max(0, Math.ceil((st.nextWaveAt - sNow) / 1000))}s` : '';
       bar = `<span>🎖 Stage ${(st.stage || 0) + 1}</span><span>🌊 Wave ${st.wave || 0}/${st.waves || '?'}</span><span>☠ ${st.enemiesLeft ?? 0} left</span><span>❤ ${st.livesLeft ?? '-'}</span>${next}`;
-    } else if (this.id === 'tdm') bar = `<span>💥 Gbas Gbos · first to ${this.def.scoreLimit} kills</span>`;
+    } else if (this.id === 'tdm') bar = `<span>💥 Team Deathmatch · first to ${this.def.scoreLimit} kills</span>`;
     g.hud.modebar(bar);
     // Planted bomb: blinking light and beeps that speed up.
     if (this.bomb?.planted && st.planted) {

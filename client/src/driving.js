@@ -39,7 +39,7 @@ export class Driving {
     $('veh-hud').hidden = false;
     $('veh-name').textContent = VEHICLES[view.type].name;
     audio.engine?.(true, view.type);
-    g.hud.toast(VEHICLES[view.type].armored ? 'You dey inside the armoured carrier. Bullet no fit touch you. Shoot from the roof gun!' : `${VEHICLES[view.type].name}: W/S to drive, A/D to turn, Space to brake, E to comot.`, 'info', 3200);
+    g.hud.toast(VEHICLES[view.type].armored ? 'You are inside the armoured carrier. Bullets cannot reach you. Use the roof gun!' : `${VEHICLES[view.type].name}: W/S to drive, A/D to turn, Space to brake, E to get out.`, 'info', 3200);
   }
 
   stop() {

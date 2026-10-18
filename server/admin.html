@@ -197,7 +197,7 @@
         <section class="card" data-tab="notify">
           <h2>Send a notification</h2>
           <div class="grid">
-            <div><label>Title</label><input id="nTitle" maxlength="80" placeholder="e.g. Double XP weekend don land!" /></div>
+            <div><label>Title</label><input id="nTitle" maxlength="80" placeholder="e.g. Double XP weekend is here!" /></div>
             <div><label>Link (optional)</label><input id="nUrl" placeholder="/ or https://…" /></div>
           </div>
           <label>Message</label><textarea id="nBody" maxlength="400" rows="3" placeholder="What you want to tell your soldiers"></textarea>
@@ -312,7 +312,7 @@
           <h2>New house / direct campaign</h2>
           <p class="note">For deals you arrange yourself. Paid bookings from the portal (/advertise) appear above automatically.</p>
           <div class="grid">
-            <div><label>Advertiser</label><input id="fAdv" placeholder="e.g. Naija Malt" /></div>
+            <div><label>Advertiser</label><input id="fAdv" placeholder="e.g. Acme Drinks" /></div>
             <div><label>Campaign</label><input id="fTitle" placeholder="e.g. Sallah promo" /></div>
             <div><label>Price paid (₦)</label><input id="fPrice" type="number" min="0" placeholder="500000" /></div>
             <div><label>Link (optional)</label><input id="fLink" placeholder="https://brand.ng" /></div>
@@ -712,7 +712,7 @@
         const put = (path, body) => api(path, { method: 'PUT', body: JSON.stringify(body || {}) });
         let role = 'super';
         let timer = null;
-        const MODE = { conquest: 'Hold Ground', tdm: 'Gbas Gbos', bomb: 'Plant & Defuse', stage: 'Campaign' };
+        const MODE = { conquest: 'Hold Ground', tdm: 'Team Deathmatch', bomb: 'Plant & Defuse', stage: 'Campaign' };
 
         function show(tab) {
           window.TAB = tab;

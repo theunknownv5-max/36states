@@ -8,13 +8,13 @@ export const lagosDay = (t = Date.now()) => new Date(t + 3600000).toISOString().
 export const LOGIN_REWARDS = [{ gems: 1 }, { xp: 150 }, { gems: 1 }, { xp: 300 }, { gems: 2 }, { xp: 500 }, { gems: 5 }];
 
 export const MISSIONS = [
-  { kind: 'kills', goal: 10, title: 'Kpai 10 enemies', reward: { gems: 1 } },
-  { kind: 'kills', goal: 25, title: 'Kpai 25 enemies', reward: { gems: 2, xp: 300 } },
+  { kind: 'kills', goal: 10, title: 'Take down 10 enemies', reward: { gems: 1 } },
+  { kind: 'kills', goal: 25, title: 'Take down 25 enemies', reward: { gems: 2, xp: 300 } },
   { kind: 'headshots', goal: 3, title: 'Land 3 headshots', reward: { xp: 300 } },
-  { kind: 'gems', goal: 2, title: 'Pick 2 life gems from advert walls', reward: { xp: 250 } },
+  { kind: 'gems', goal: 2, title: 'Pick up 2 life gems from advert walls', reward: { xp: 250 } },
   { kind: 'matches', goal: 2, title: 'Finish 2 battles', reward: { gems: 1 } },
   { kind: 'wins', goal: 1, title: 'Win 1 battle', reward: { gems: 2 } },
-  { kind: 'revives', goal: 2, title: 'Revive 2 of your people', reward: { xp: 300 } },
+  { kind: 'revives', goal: 2, title: 'Revive 2 teammates', reward: { xp: 300 } },
   { kind: 'captures', goal: 2, title: 'Capture 2 sites in Hold Ground', reward: { xp: 300 } }
 ];
 

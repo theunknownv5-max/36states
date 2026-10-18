@@ -93,12 +93,12 @@ export class Match {
 
   addHuman(conn, faction, profile) {
     if (!FACTIONS[faction]) faction = 'police';
-    if (this.humans().length >= MATCH.maxHumans) return { error: 'This state don full. Pick another state.' };
+    if (this.humans().length >= MATCH.maxHumans) return { error: 'This battle is full. Pick another region.' };
     const side = FACTIONS[faction].side;
     // Auto-balance real players: no side may have 2+ more humans than the other.
     const other = side === 'sec' ? 'out' : 'sec';
     if (!this.mode.def.solo && this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
-      return { error: `${SIDES[side].label} don get too many people here. Join ${SIDES[other].label}.` };
+      return { error: `${SIDES[side].label} already has too many players here. Join ${SIDES[other].label}.` };
     }
     const tag = this.hooks.social?.tagOf(profile);
     const p = this.newPlayer({ human: true, conn, profile, faction, name: tag ? `[${tag}] ${profile.name}` : profile.name });
@@ -109,7 +109,7 @@ export class Match {
     if (this.mode.id === 'bomb' && this.mode.phase !== 'freeze') {
       p.status = 'dead';
       p.deadAt = now();
-      this.toast(p, 'Round don start already. You go enter next round.', 'info');
+      this.toast(p, 'The round has already started. You will join the next round.', 'info');
       this.syncMe(p);
     }
     this.emptySince = 0;
@@ -428,7 +428,7 @@ export class Match {
       case 'chat': {
         const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
         if (!text) return;
-        if (this.hooks.control?.muted(p.profile)) return this.toast(p, 'Admin don mute your chat for now.', 'bad');
+        if (this.hooks.control?.muted(p.profile)) return this.toast(p, 'An admin has muted your chat for now.', 'bad');
         p.chatTimes = (p.chatTimes || []).filter((x) => x > now() - 30000);
         if (p.chatTimes.length >= 8) return;
         p.chatTimes.push(now());
@@ -501,11 +501,11 @@ export class Match {
       }
       return { ok: true };
     }
-    if (p.status !== 'alive') return { ok: false, reason: 'You fit chat only when you dey alive. Use the Inbox from the menu.' };
+    if (p.status !== 'alive') return { ok: false, reason: 'You can only chat while you are alive. Use the Inbox from the menu.' };
     if (this.mode.frozen()) return { ok: false, reason: 'Wait make the round start first.' };
-    if (t - (p.hurtAt || 0) < 5000) return { ok: false, reason: 'Dem just shoot you! Find cover first, then chat.' };
+    if (t - (p.hurtAt || 0) < 5000) return { ok: false, reason: 'You were just shot! Find cover first, then chat.' };
     if (t - (p.firedAt || 0) < 3000) return { ok: false, reason: 'You just fire gun. Wait small, then chat.' };
-    if (this.mode.carrier === p.id || this.mode.action?.pid === p.id) return { ok: false, reason: 'You dey carry the bomb. Pass am or finish the job first.' };
+    if (this.mode.carrier === p.id || this.mode.action?.pid === p.id) return { ok: false, reason: 'You are carrying the bomb. Pass it on or finish the job first.' };
     p.chatUntil = t + MATCH.chatMs;
     p.chatAt = { x: p.x, z: p.z };
     p.reloadUntil = 0;
@@ -857,7 +857,7 @@ export class Match {
           this.send(killer, { t: 'revenge', name: v.profile.name });
         }
         const rival = this.hooks.social.rivalOf(v.profile);
-        if (rival && rival.token === killer.profile.token) this.toast(v, `Na your rival ${killer.profile.name} again! Pay am back.`, 'bad');
+        if (rival && rival.token === killer.profile.token) this.toast(v, `Your rival ${killer.profile.name} again! Pay them back.`, 'bad');
       }
       if (killer.human && !this.practice) {
         this.hooks.control?.track('kill');
@@ -885,7 +885,7 @@ export class Match {
 
   grantStreak(p, kind) {
     p.streaksAvail[kind] = true;
-    this.toast(p, `${KILLSTREAKS[kind].name} don ready! Press ${kind === 'uav' ? '5' : '6'} to call am.`, 'streak');
+    this.toast(p, `${KILLSTREAKS[kind].name} is ready! Press ${kind === 'uav' ? '5' : '6'} to call it in.`, 'streak');
     if (!p.human) p.bot.useStreak(kind);
   }
 
@@ -893,7 +893,7 @@ export class Match {
   mission(p, kind, n = 1) {
     if (!p.human || !this.hooks.daily || this.practice) return;
     const done = this.hooks.daily.progress(p.profile, kind, n);
-    for (const m of done) this.toast(p, `Mission complete: ${m.title}! Claim am for 🎁 Daily.`, 'streak');
+    for (const m of done) this.toast(p, `Mission complete: ${m.title}! Claim it in 🎁 Daily.`, 'streak');
   }
 
   addXP(p, n) {
@@ -905,7 +905,7 @@ export class Match {
     const after = Math.floor(p.profile.xp / XP.levelEvery);
     if (after > before) {
       p.profile.gems += GEMS.levelUpGems;
-      this.toast(p, `Promotion don land! +${GEMS.levelUpGems} life gems 💎`, 'gem');
+      this.toast(p, `Promoted! +${GEMS.levelUpGems} life gems 💎`, 'gem');
     }
   }
 
@@ -915,13 +915,13 @@ export class Match {
     if (at === 'here' || at === 'base') p.comeBack = at;
     if (!['dead', 'spirit'].includes(p.status)) return;
     if (this.practice) return this.spawn(p);
-    if (!this.mode.canRespawn(p)) return this.toast(p, 'No respawn for this mode. You go enter next round.', 'info');
+    if (!this.mode.canRespawn(p)) return this.toast(p, 'No respawn in this mode. You will join the next round.', 'info');
     if (mode === 'gem') {
-      if (p.profile.gems < RESPAWN.gemCost) return this.toast(p, 'You no get life gem. Try Spirit Run or wait for medevac.', 'bad');
+      if (p.profile.gems < RESPAWN.gemCost) return this.toast(p, 'You have no life gems. Try a Spirit Run or wait for medevac.', 'bad');
       p.profile.gems -= RESPAWN.gemCost;
       this.hooks.saveProfile();
       this.spawn(p);
-      this.toast(p, 'Life gem don work. Back to the front!', 'gem');
+      this.toast(p, 'Life gem used. Back to the front!', 'gem');
     } else if (mode === 'spirit' && p.status === 'dead') {
       p.status = 'spirit';
       p.spiritUntil = now() + RESPAWN.spiritMs;
@@ -972,13 +972,13 @@ export class Match {
 
   onBuy(p, item) {
     if (p.status !== 'alive') return;
-    if (!this.inBuyZone(p)) return this.toast(p, 'You fit buy only for your base or as you just land.', 'bad');
+    if (!this.inBuyZone(p)) return this.toast(p, 'You can only buy at your base or right after you deploy.', 'bad');
     const price = priceFor(item, p.faction);
     const w = WEAPONS[item];
     const g = GEAR[item];
     if (!w && !g) return;
     if (w && (w.melee || item === 'p9' || w.loot)) return;
-    if (w?.unlockLevel && rankFor(p.profile.xp).level < w.unlockLevel) return this.toast(p, `${w.name} go open when you reach rank level ${w.unlockLevel}.`, 'bad');
+    if (w?.unlockLevel && rankFor(p.profile.xp).level < w.unlockLevel) return this.toast(p, `${w.name} unlocks at rank level ${w.unlockLevel}.`, 'bad');
     if (p.money < price) return this.toast(p, 'Your money no reach.', 'bad');
     if (w) {
       if (p.weapons[w.slot] === item) {
@@ -988,17 +988,17 @@ export class Match {
       p.slot = w.slot;
       p.reloadUntil = 0;
     } else if (item === 'vest' || item === 'helmet') {
-      if (p.armor >= 100 && (p.helmet || item === 'vest')) return this.toast(p, 'You don get am already.', 'bad');
+      if (p.armor >= 100 && (p.helmet || item === 'vest')) return this.toast(p, 'You already have it.', 'bad');
       p.armor = 100;
       if (item === 'helmet') p.helmet = true;
     } else if (item === 'medkit') {
-      if (p.medkit >= g.max) return this.toast(p, 'Na only one you fit carry.', 'bad');
+      if (p.medkit >= g.max) return this.toast(p, 'You can only carry one.', 'bad');
       p.medkit++;
     } else if (item === 'bloodpill') {
-      if ((p.bloodpill || 0) >= g.max) return this.toast(p, `Na only ${g.max} pills you fit carry.`, 'bad');
+      if ((p.bloodpill || 0) >= g.max) return this.toast(p, `You can only carry ${g.max} pills.`, 'bad');
       p.bloodpill = (p.bloodpill || 0) + 1;
     } else {
-      if (p[item] >= g.max) return this.toast(p, `Na only ${g.max} you fit carry.`, 'bad');
+      if (p[item] >= g.max) return this.toast(p, `You can only carry ${g.max}.`, 'bad');
       p[item]++;
     }
     p.money -= price;
@@ -1448,7 +1448,7 @@ export class Match {
           p.comeBack = 'here';
           this.spawn(p);
           p.comeBack = pref;
-          this.toast(p, 'The gem don pull your spirit come back!', 'gem');
+          this.toast(p, 'The gem pulled your spirit back!', 'gem');
         } else {
           p.profile.gems++;
           p.health = Math.min(PLAYER.maxHealth, p.health + GEMS.heal);
@@ -1517,13 +1517,13 @@ export class Match {
       if (p.status === 'spirit' && t > p.spiritUntil) {
         p.status = 'dead';
         p.deadAt = t;
-        this.toast(p, 'Your spirit don fade. Use gem or wait for medevac.', 'bad');
+        this.toast(p, 'Your spirit has faded. Use a gem or wait for medevac.', 'bad');
         this.syncMe(p);
       }
       if (p.status === 'medevac' && t >= p.medevacAt) {
         p.money = Math.max(0, p.money - RESPAWN.medevacFee);
         this.spawn(p);
-        this.toast(p, `Medevac don land you. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
+        this.toast(p, `Medevac brought you back. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
       }
       if (this.practice && p.human && p.status === 'dead' && t - p.deadAt > 3000) this.spawn(p);
       // A human who leaves the death screen alone too long gets the medevac.

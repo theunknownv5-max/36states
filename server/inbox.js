@@ -43,7 +43,7 @@ export class Inbox {
       th = { id: randomUUID().slice(0, 12), advertiserId: ad.advertiserId, business: ad.advertiser, player: token, playerName: name, adId: ad.id, boardCode: ad.boardCode, image: ad.file, link: ad.link || null, msgs: [], unreadPlayer: 0, unreadBusiness: 0, blocked: false, created: Date.now() };
       this.threads[th.id] = th;
     }
-    if (th.blocked) throw new Error('This business no dey receive message from you again.');
+    if (th.blocked) throw new Error('This business is no longer accepting messages from you.');
     Object.assign(th, { playerName: name, adId: ad.id, boardCode: ad.boardCode, image: ad.file, link: ad.link || th.link, business: ad.advertiser });
     th.msgs.push({ from: 'player', text, at: Date.now() });
     if (th.msgs.length > MAX_MSGS) th.msgs.splice(0, th.msgs.length - MAX_MSGS);

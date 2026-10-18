@@ -138,8 +138,20 @@ kbd {
   animation: credit 1.8s ease-in-out forwards;
   pointer-events: none;
 }
+.boot-credit > div {
+  text-align: center;
+  padding: 0 16px;
+}
+.boot-credit small {
+  display: block;
+  font-size: 0.6em;
+  opacity: 0.75;
+  margin-bottom: 10px;
+}
 .boot-credit span {
+  display: block;
   color: var(--pod);
+  letter-spacing: 0.3em;
 }
 @keyframes credit {
   0% {

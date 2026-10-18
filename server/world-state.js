@@ -118,7 +118,7 @@ export class WorldState {
     const g = this.graves[i];
     const G = this.map.graves[i];
     if (!g || !p.human || g.dug || p.veh != null || !this.m.canAct(p)) return;
-    if (g.digger && g.digger !== p.id) return this.m.toast(p, 'Somebody dey dig this one already.', 'bad');
+    if (g.digger && g.digger !== p.id) return this.m.toast(p, 'Someone is already digging here.', 'bad');
     if (Math.hypot(p.x - G.x, p.z - G.z) > DIG.reach || Math.abs(p.y - G.y) > 1.3) return;
     if (p.dig) this.stopDig(p, 'switch');
     g.digger = p.id;
@@ -156,9 +156,9 @@ export class WorldState {
     else if (L.kind === 'gems') p.profile.gems += 1;
     this.m.broadcast({ t: 'grave', i: g.i, by: p.name, id: p.id, loot: g.loot });
     this.m.send(p, { t: 'dig', i: -1, reason: 'done' });
-    if (L.kind === 'none') this.m.toast(p, `${G.kind === 'grave' ? 'The grave' : G.kind === 'cache' ? 'The chest' : 'The tomb'} empty. ${L.icon} Na only old bones dey inside.`, 'bad');
+    if (L.kind === 'none') this.m.toast(p, `${G.kind === 'grave' ? 'The grave' : G.kind === 'cache' ? 'The chest' : 'The tomb'} empty. ${L.icon} Only old bones inside.`, 'bad');
     else {
-      this.m.toast(p, `${L.icon} You dig out: ${L.name}!${L.kind === 'weapon' ? ' Relic gun: you go lose am if you die.' : ''}`, 'streak');
+      this.m.toast(p, `${L.icon} You dig out: ${L.name}!${L.kind === 'weapon' ? ' Relic gun: you lose it if you die.' : ''}`, 'streak');
       this.m.addXP(p, DIG.xp);
     }
     this.m.mission?.(p, 'digs');
@@ -182,7 +182,7 @@ export class WorldState {
       // Not that one? Take the nearest one you can actually get into.
       const near = this.vehicles.filter(usable).sort((a, b) => reach(a) - reach(b))[0];
       if (!near) {
-        const why = !v ? 'No motor near you.' : v.state >= BURNING ? 'That motor dey burn!' : v.driver ? 'Somebody dey drive am already.' : 'Go closer to the motor.';
+        const why = !v ? 'No vehicle near you.' : v.state >= BURNING ? 'That vehicle is on fire!' : v.driver ? 'Someone is already driving it.' : 'Get closer to the vehicle.';
         return this.m.toast(p, why, 'bad');
       }
       v = near;
@@ -372,7 +372,7 @@ export class WorldState {
     }
     this.m.explode(v.x, 1.0, v.z, WRECK.blast, WRECK.blastDmg, by, 'vehicle', true);
     if (by?.human) {
-      this.m.toast(by, `💥 You don blow ${d.name}! +${d.armored ? 250 : 60} XP`, 'streak');
+      this.m.toast(by, `💥 You destroyed ${d.name}! +${d.armored ? 250 : 60} XP`, 'streak');
       this.m.addXP(by, d.armored ? 250 : 60);
       this.m.mission?.(by, 'wrecks');
     }
@@ -420,7 +420,7 @@ export class WorldState {
     const by = (h.lastHit && this.m.players.get(h.lastHit)) || null;
     this.m.broadcast({ t: 'house', i: h.i, s: BURNING, by: by?.name || null });
     if (by?.human) {
-      this.m.toast(by, '🔥 That house don catch fire! +80 XP', 'streak');
+      this.m.toast(by, '🔥 That house is on fire! +80 XP', 'streak');
       this.m.addXP(by, 80);
     }
   }
@@ -438,8 +438,8 @@ export class WorldState {
     const pos = msg.pos;
     if (!Array.isArray(pos) || pos.length !== 3 || !pos.every(Number.isFinite)) return;
     const eye = this.shotOrigin(p) || [p.x, p.y + (p.crouch ? PLAYER.crouchEye : PLAYER.eye), p.z];
-    if (Math.hypot(pos[0] - eye[0], pos[1] - eye[1], pos[2] - eye[2]) > C4.reach + (p.veh != null ? 2 : 0)) return this.m.toast(p, 'Too far. Go near the place wey you wan stick am.', 'bad');
-    if (this.charges.filter((c) => c.owner === p.id).length >= C4.maxPlanted) return this.m.toast(p, `Na ${C4.maxPlanted} C4 you fit plant at once. Press L to blow dem first.`, 'bad');
+    if (Math.hypot(pos[0] - eye[0], pos[1] - eye[1], pos[2] - eye[2]) > C4.reach + (p.veh != null ? 2 : 0)) return this.m.toast(p, 'Too far. Get closer to where you want to stick it.', 'bad');
+    if (this.charges.filter((c) => c.owner === p.id).length >= C4.maxPlanted) return this.m.toast(p, `You can only plant ${C4.maxPlanted} C4 at once. Press L to blow them first.`, 'bad');
     const c = { id: ++this.seq, owner: p.id, side: p.side, x: pos[0], y: Math.max(0.05, pos[1]), z: pos[2], veh: null, la: 0, ls: 0 };
     const v = Number.isInteger(msg.veh) ? this.vehicles[msg.veh] : null;
     if (v && v.state < BURNING && insideVehicle(v.type, v.x, v.z, v.yaw, pos[0], pos[2], 0.8)) {
@@ -455,7 +455,7 @@ export class WorldState {
     this.m.broadcast({ t: 'c4', a: 'plant', id: c.id, pos: this.chargePos(c).map(r2), veh: c.veh, by: p.id });
     if (!p.c4Hinted && p.human) {
       p.c4Hinted = true;
-      this.m.toast(p, 'C4 don stick. Comot far, then press L (or 💥) to blow am.', 'info');
+      this.m.toast(p, 'C4 planted. Get clear, then press L (or 💥) to detonate.', 'info');
     }
     this.m.syncMe(p);
   }
@@ -479,11 +479,11 @@ export class WorldState {
   callAmbulance(p) {
     const t = now();
     if (p.status !== 'alive' || this.m.chatting(p)) return;
-    if (p.veh != null) return this.m.toast(p, 'Comot from the motor first make the ambulance see you.', 'bad');
-    if (this.ambulances.some((a) => a.pid === p.id)) return this.m.toast(p, 'Ambulance don already dey come. Hold on!', 'info');
+    if (p.veh != null) return this.m.toast(p, 'Get out of the vehicle first so the ambulance can find you.', 'bad');
+    if (this.ambulances.some((a) => a.pid === p.id)) return this.m.toast(p, 'An ambulance is already on its way. Hold on!', 'info');
     if (p.health > PLAYER.maxHealth - AMBULANCE.minMissing) return this.m.toast(p, 'You never wound reach to call ambulance.', 'bad');
-    if (t < (p.ambReady || 0)) return this.m.toast(p, `Ambulance still dey another call. Try again in ${Math.ceil((p.ambReady - t) / 1000)}s.`, 'bad');
-    if (p.money < AMBULANCE.fee) return this.m.toast(p, `Ambulance na ₦${AMBULANCE.fee.toLocaleString()}. Your money no reach.`, 'bad');
+    if (t < (p.ambReady || 0)) return this.m.toast(p, `The ambulance is on another call. Try again in ${Math.ceil((p.ambReady - t) / 1000)}s.`, 'bad');
+    if (p.money < AMBULANCE.fee) return this.m.toast(p, `The ambulance costs ₦${AMBULANCE.fee.toLocaleString()}. You do not have enough money.`, 'bad');
     const base = this.map.bases[p.side].spawns[0];
     let path = findPath(this.map.nav, base.x, base.z, p.x, p.z) || [[p.x, p.z]];
     // Drop most points (the client smooths the curve), keep the start and end.
@@ -496,7 +496,7 @@ export class WorldState {
     const a = { id: ++this.seq, pid: p.id, side: p.side, path: path.map(([x, z]) => [r2(x), r2(z)]), start: t, at: t + travel, leave: t + travel + AMBULANCE.stayMs, done: false };
     this.ambulances.push(a);
     this.m.broadcast({ t: 'amb', id: a.id, pid: p.id, side: p.side, path: a.path, start: a.start, at: a.at, leave: a.leave });
-    this.m.toast(p, `🚑 Ambulance dey come (${Math.round(travel / 1000)}s). Stay where you dey.`, 'info');
+    this.m.toast(p, `🚑 Ambulance on its way (${Math.round(travel / 1000)}s). Stay where you are.`, 'info');
     this.m.syncMe(p);
   }
 
@@ -580,12 +580,12 @@ export class WorldState {
         p.armor = Math.min(100, (p.armor || 0) + AMBULANCE.armor);
         p.burnUntil = 0;
         p.pillUntil = 0;
-        this.m.toast(p, '🚑 Paramedics don patch you up. Full health!', 'good');
+        this.m.toast(p, '🚑 Paramedics patched you up. Full health!', 'good');
         this.m.broadcast({ t: 'ambHeal', id: a.id, pid: p.id });
         this.m.syncMe(p);
       } else if (p) {
         p.money += Math.round(AMBULANCE.fee / 2);
-        this.m.toast(p, `Ambulance reach but you no dey there. Half your money (₦${Math.round(AMBULANCE.fee / 2).toLocaleString()}) don come back.`, 'bad');
+        this.m.toast(p, `The ambulance arrived but you were gone. Half your money (₦${Math.round(AMBULANCE.fee / 2).toLocaleString()}) has been refunded.`, 'bad');
         this.m.syncMe(p);
       }
     }

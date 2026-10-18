@@ -98,7 +98,7 @@ func _ready() -> void:
 	err = Kit.para("", 15, Kit.BAD)
 	err.visible = false
 	sv.add_child(err)
-	deploy = Kit.button("PICK A STATE ON THE MAP", true, 21)
+	deploy = Kit.button("PICK A REGION ON THE MAP", true, 21)
 	deploy.custom_minimum_size = Vector2(0, 60)
 	deploy.pressed.connect(_deploy)
 	sv.add_child(deploy)
@@ -136,9 +136,9 @@ func _render_info() -> void:
 	var md: Dictionary = defs.get(mode, {})
 	if sid == "":
 		info.add_child(Kit.title("PICK YOUR BATTLEFIELD", 22))
-		info.add_child(Kit.para("Tap any state on the map. Orange glow = real soldiers dey fight there now.", 16))
+		info.add_child(Kit.para("Tap any region on the map. An orange glow means real soldiers are fighting there now.", 16))
 		info.add_child(Kit.para(str(md.get("blurb", "")), 15))
-		deploy.text = "PICK A STATE ON THE MAP"
+		deploy.text = "PICK A REGION ON THE MAP"
 		deploy.disabled = true
 		return
 	Cfg.set_s("last_state", sid)
@@ -163,9 +163,9 @@ func _render_info() -> void:
 	var bots: bool = Cfg.get_s("bots", true)
 	var real_here := int(lv.get("realModes", {}).get(mode, 0))
 	if mode == "practice":
-		kv.add_child(Kit.para("Practice: na only you and your crew. Target dummies no dey shoot back.", 15, Kit.TEXT))
+		kv.add_child(Kit.para("Practice: only you and your crew. Target dummies never shoot back.", 15, Kit.TEXT))
 	elif bots:
-		kv.add_child(Kit.para("You go fight with bots and any real soldier wey dey there (%d now)." % int(lv.get("modes", {}).get(mode, 0)), 15, Kit.TEXT))
+		kv.add_child(Kit.para("You fight alongside bots and any real soldiers there (%d now)." % int(lv.get("modes", {}).get(mode, 0)), 15, Kit.TEXT))
 		var b := Kit.button("Play real players only · %d online" % int(main.online), false, 16)
 		b.pressed.connect(func():
 			Cfg.set_s("bots", false)
@@ -180,7 +180,7 @@ func _render_info() -> void:
 		kv.add_child(b)
 	info.add_child(kind)
 	# Side and faction.
-	info.add_child(Kit.label("WETIN YOU BE?", 18, Kit.POD2, true))
+	info.add_child(Kit.label("CHOOSE YOUR SIDE", 18, Kit.POD2, true))
 	var facs: Dictionary = Cfg.rules.get("FACTIONS", {})
 	for side_id in ["sec", "out"]:
 		var sd: Dictionary = Cfg.rules.get("SIDES", {}).get(side_id, {})
@@ -251,7 +251,7 @@ func _open_about() -> void:
 	var g: Dictionary = Cfg.rules.get("GAME", {})
 	v.add_child(Kit.title("PROOF OF DUTY", 30))
 	v.add_child(Kit.para(str(g.get("about", "")), 16, Kit.TEXT))
-	v.add_child(Kit.para("Version %s · native build %d\nDeveloped by Tcee 🇳🇬".replace(" 🇳🇬", "") % [Cfg.VERSION, Cfg.build], 15))
+	v.add_child(Kit.para("Version %s · native build %d\nPowered by Business Game Experience · businessgamexp.com" % [Cfg.VERSION, Cfg.build], 15))
 	var site := str(g.get("website", "https://proofofduty.com"))
 	var web := Kit.button("Visit the official website · " + site.replace("https://", ""), true, 17)
 	web.pressed.connect(func(): OS.shell_open(site))

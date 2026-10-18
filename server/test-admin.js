@@ -173,18 +173,18 @@ try {
   check(typeof dash.today === 'object' || typeof dash.kpis === 'object' || dash.code === 200, 'dashboard answers');
 
   section('Push + in-app notification to everyone');
-  const n = await call('POST', 'notify', { title: 'Update don land', body: 'New guns for Lagos', url: '/', target: 'all' });
+  const n = await call('POST', 'notify', { title: 'Update is here', body: 'New guns for Lagos', url: '/', target: 'all' });
   check(n.sent === 1 && n.failed === 1 && n.inApp === 1, `one device got it, the dead one failed, one in-app (${JSON.stringify(n)})`);
   const got = received.find((r) => r.path === '/dev/ada');
   check(!!got && got.headers['content-encoding'] === 'aes128gcm', 'push service got an encrypted message');
   check(got && vapidOk(got.headers.authorization, PUSH), 'VAPID signature is valid for the push service');
   const payload = got ? JSON.parse(decrypt(bk, got.body)) : {};
-  check(payload.title === 'Update don land' && payload.body === 'New guns for Lagos', 'the phone decrypts the right title and message');
+  check(payload.title === 'Update is here' && payload.body === 'New guns for Lagos', 'the phone decrypts the right title and message');
   const live = await ada.waitFor('notice');
-  check(live.title === 'Update don land' && !!live.id, 'player online sees it in the game too');
+  check(live.title === 'Update is here' && !!live.id, 'player online sees it in the game too');
   check((await call('GET', 'dashboard')).push.web === 1, 'the dead device (410) is removed');
   const hist = await call('GET', 'notify');
-  check(hist.history?.[0]?.title === 'Update don land', 'notification history kept');
+  check(hist.history?.[0]?.title === 'Update is here', 'notification history kept');
   check((await call('POST', 'notify', { title: '', body: '' })).code === 400, 'empty notification refused');
 
   section('Players');

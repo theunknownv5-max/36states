@@ -62,14 +62,14 @@ let inGame = false;
 let profile = null;
 
 function modal(html) {
-  $('modal-card').innerHTML = html + '<p style="text-align:right;margin:16px 0 0"><button class="btn primary" id="modal-ok">I don hear</button></p>';
+  $('modal-card').innerHTML = html + '<p style="text-align:right;margin:16px 0 0"><button class="btn primary" id="modal-ok">Got it</button></p>';
   $('modal').hidden = false;
   $('modal-ok').onclick = () => ($('modal').hidden = true);
 }
 
 function howToPlay() {
   modal(`<h2>How to play Proof of Duty</h2>
-  <p><b>Pick mode, pick state, pick wetin you be.</b> Security Forces (Police, Army, Civil Defence, Vigilante Hunters) dey fight Outlaws (Bandits, Creek Militants, Smugglers). Bots go fill each side so war always dey.</p>
+  <p><b>Pick a mode, pick a region, pick your side.</b> Security Forces (Police, Army, Civil Defence, Vigilante Hunters) fight the Outlaws (Bandits, Creek Militants, Smugglers). Bots fill each side so there is always a battle.</p>
   <p><b>Game modes:</b></p>
   <ul>
     <li>${MODES.conquest.icon} <b>${MODES.conquest.label}</b> — ${esc(MODES.conquest.blurb)}</li>
@@ -77,13 +77,13 @@ function howToPlay() {
     <li>${MODES.bomb.icon} <b>${MODES.bomb.label}</b> — ${esc(MODES.bomb.blurb)} Hold <b>E</b> to plant (${BOMB.plantSecs}s) or defuse (${BOMB.defuseSecs}s).</li>
     <li>${MODES.stage.icon} <b>${MODES.stage.label}</b> — ${esc(MODES.stage.blurb)}</li>
   </ul>
-  <p><b>💎 Life gems.</b> Every advert wall get gem wey dey shine. Waka enter am: +1 life gem and small health. Once person take am, nobody fit take that one again for <b>${GEMS.cooldownMs / 60000} minutes</b>.</p>
-  <p><b>If you fall</b>, your person get ${RESPAWN.downedMs / 1000} seconds to revive you. If you die, choose how you go come back:</p>
-  <ul><li><b>Life gem</b> — use 1 gem, land back sharp sharp.</li><li><b>Spirit run</b> — ${RESPAWN.spiritMs / 1000} seconds as invisible spirit; touch any gem wey dey shine make you come back free.</li><li><b>Medevac</b> — wait ${RESPAWN.medevacMs / 1000} seconds, pay ₦${RESPAWN.medevacFee.toLocaleString()}.</li></ul>
-  <p><b>Motors and fire:</b> E to enter any car, danfo, keke or okada and drive am. Armoured carrier rare: bullet no fit touch you inside. RPG and C4 (P to stick, L to blow) fit burn motor and house down to charcoal. K call ambulance when you wound (₦1,500).</p>
-  <p><b>Underground and tombs:</b> Find the big dome: stairs inside go down to tunnel wey reach the catacomb under the cemetery. Hold E for grave or tomb to dig am out: Golden AK, Thunder .50, Drum Launcher, Ancestor's Dane Gun or heavy armour fit dey inside (or only bones 💀).</p>
-  <p><b>Fuel drums:</b> red drum wey write PMS go burst if you shoot am. Anybody wey dey near go chop am.</p>
-  <p><b>Controls:</b> WASD waka · Shift run · Ctrl bend down · Z waka quiet · Space jump · Mouse shoot/aim · R reload · 1/2/3 weapons · B buy · G grenade (4 to pick) · X first aid · E revive/plant/defuse · V quick talk · 5 drone · 6 artillery · Tab scores · Y/U chat · Esc menu. For phone, the buttons dey for screen.</p>`);
+  <p><b>💎 Life gems.</b> Every advert wall has a glowing gem. Walk into it: +1 life gem and some health. Once someone takes it, nobody else can take that one for <b>${GEMS.cooldownMs / 60000} minutes</b>.</p>
+  <p><b>If you fall</b>, a teammate has ${RESPAWN.downedMs / 1000} seconds to revive you. If you die, choose how to come back:</p>
+  <ul><li><b>Life gem</b> — use 1 gem and respawn at once.</li><li><b>Spirit run</b> — ${RESPAWN.spiritMs / 1000} seconds as an invisible spirit; touch any glowing gem to come back free.</li><li><b>Medevac</b> — wait ${RESPAWN.medevacMs / 1000} seconds, pay ₦${RESPAWN.medevacFee.toLocaleString()}.</li></ul>
+  <p><b>Vehicles and fire:</b> E to enter any car, bus, tricycle or motorbike and drive it. Armoured carriers are rare: bullets cannot reach you inside. RPGs and C4 (P to stick, L to detonate) can burn vehicles and houses to the ground. K calls an ambulance when you are wounded (₦1,500).</p>
+  <p><b>Underground and tombs:</b> Find the big dome: stairs inside lead down to a tunnel that reaches the catacomb under the cemetery. Hold E at a grave or tomb to dig it out: the Golden AK, Thunder .50, Drum Launcher, Ancestor's Dane Gun or heavy armour could be inside (or only bones 💀).</p>
+  <p><b>Fuel drums:</b> red drums marked PMS explode when shot. Anyone nearby gets caught in the blast.</p>
+  <p><b>Controls:</b> WASD move · Shift sprint · Ctrl crouch · Z walk quietly · Space jump · Mouse shoot/aim · R reload · 1/2/3 weapons · B buy · G grenade (4 to pick) · X first aid · E revive/plant/defuse · V quick talk · 5 drone · 6 artillery · Tab scores · Y/U chat · Esc menu. On phones, the buttons are on screen.</p>`);
 }
 
 function showSheet(id, on = true) {
@@ -109,9 +109,9 @@ async function openLeaderboard() {
       '<tr><th>#</th><th>Soldier</th><th>Rank</th><th>XP</th><th>Kills</th><th>Wins</th></tr>' +
       (top.length
         ? top.map((p, i) => `<tr class="${p.name === profile?.name ? 'me' : ''}"><td>${i + 1}</td><td>${esc(p.name)}</td><td>${esc(p.rank)}</td><td>${p.xp.toLocaleString()}</td><td>${p.kills}</td><td>${p.wins}</td></tr>`).join('')
-        : '<tr><td colspan="6">Nobody never enter list yet. Na your chance be this!</td></tr>');
+        : '<tr><td colspan="6">Nobody is on the list yet. This is your chance!</td></tr>');
   } catch {
-    t.innerHTML = '<tr><td colspan="6">Network wahala. Try again.</td></tr>';
+    t.innerHTML = '<tr><td colspan="6">Network problem. Try again.</td></tr>';
   }
 }
 
@@ -184,7 +184,7 @@ function bindSettings() {
   on('set-bots', 'change', (t) => {
     settings.bots = t.checked;
     saveSettings();
-    $('set-note').textContent = settings.bots ? 'Bots go fill empty places for your next battle.' : 'Next battle: real players only. No bots at all.';
+    $('set-note').textContent = settings.bots ? 'Bots will fill empty places in your next battle.' : 'Next battle: real players only. No bots at all.';
   });
   on('set-invert', 'change', (t) => {
     settings.invertY = t.checked;
@@ -197,7 +197,7 @@ function bindSettings() {
     settings.quality = t.value;
     saveQuality(settings.quality);
     if (game) game.quality = PRESETS[settings.quality];
-    $('set-note').textContent = inGame ? 'New graphics go start from your next deploy.' : 'Saved.';
+    $('set-note').textContent = inGame ? 'New graphics apply from your next deploy.' : 'Saved.';
   });
   // One tap back to how the game came out of the box (notifications are left as they are).
   $('set-reset').onclick = () => {
@@ -221,7 +221,7 @@ function bindSettings() {
     if (game) game.quality = PRESETS[settings.quality];
     warmap?.renderInfo();
     openSettings();
-    $('set-note').textContent = 'All settings don go back to default.';
+    $('set-note').textContent = 'All settings are back to default.';
   };
   $('btn-how').onclick = howToPlay;
   $('btn-about').onclick = openAbout;
@@ -236,7 +236,7 @@ async function preload() {
     renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: PRESETS[settings.quality].antialias, powerPreference: 'high-performance', stencil: false });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
   } catch (e) {
-    modal('<h2>3D graphics no dey work</h2><p>Your browser no fit start WebGL. Try Chrome, Edge or Firefox, and make sure hardware acceleration dey on.</p>');
+    modal('<h2>3D graphics are not working</h2><p>Your browser could not start WebGL. Try Chrome, Edge or Firefox, and make sure hardware acceleration is on.</p>');
     throw e;
   }
   boot.set(0.15);
@@ -297,7 +297,7 @@ function showAuth() {
       const ok = await net.connect(hello);
       $('auth-go').disabled = false;
       if (!ok) {
-        $('auth-error').textContent = 'We no fit reach the game server. Check your network and try again.';
+        $('auth-error').textContent = 'We cannot reach the game server. Check your network and try again.';
         $('auth-error').hidden = false;
         return;
       }
@@ -422,13 +422,13 @@ function setupSquad() {
     if (a === 'add') return net.send({ t: 'friendAdd', code: $('sq-code').value });
     if (a === 'createCrew') return net.send({ t: 'crewCreate', name: $('sq-crew-name').value, tag: $('sq-crew-tag').value });
     if (a === 'joinCrew') return net.send({ t: 'crewJoin', code: $('sq-crew-code').value });
-    if (a === 'crewLeave') return confirm('Comot from this crew?') && net.send({ t: 'crewLeave' });
+    if (a === 'crewLeave') return confirm('Leave this crew?') && net.send({ t: 'crewLeave' });
     net.send({ t: a, code: b.dataset.code });
   });
   net.send({ t: 'social' });
 }
 
-const MODE_NAMES = { conquest: 'Hold Ground', tdm: 'Gbas Gbos', bomb: 'Plant & Defuse', practice: 'Practice Range' };
+const MODE_NAMES = { conquest: 'Hold Ground', tdm: 'Team Deathmatch', bomb: 'Plant & Defuse', practice: 'Practice Range' };
 let crewTab = 'chat';
 const PLAN_IDEAS = ['Rush A together on 3', 'Two snipers on the roofs, rest push B', 'Hold the dome and the tunnel', 'Drive the jeep, drop us by the site', 'Smoke, flash, then entry', 'Everybody stay with the medic'];
 const timeAgo = (t) => {
@@ -439,24 +439,24 @@ const bar = (v, mark) => `<span class="skill-bar"><i style="width:${Math.min(100
 function crewPane(s) {
   const c = s.crew;
   if (crewTab === 'chat')
-    return `<div class="crew-chat" id="crew-chat">${(c.chat || []).length ? c.chat.map((m) => `<div class="cm ${m.mine ? 'mine' : ''}"><b>${esc(m.from)}</b><span>${esc(m.text)}</span><small>${timeAgo(m.at)}</small></div>`).join('') : '<p class="muted">Crew room dey quiet. Talk to your people: plan the next battle, call time, gist.</p>'}</div>
+    return `<div class="crew-chat" id="crew-chat">${(c.chat || []).length ? c.chat.map((m) => `<div class="cm ${m.mine ? 'mine' : ''}"><b>${esc(m.from)}</b><span>${esc(m.text)}</span><small>${timeAgo(m.at)}</small></div>`).join('') : '<p class="muted">The crew room is quiet. Talk to your people: plan the next battle, set a time, catch up.</p>'}</div>
       <form class="sq-row" id="crew-form"><input id="crew-input" maxlength="300" placeholder="Talk to your crew…" autocomplete="off"><button class="btn primary">Send</button></form>`;
   if (crewTab === 'plan')
-    return `<p class="muted">The crew battle plan. Everybody fit see am and edit am.</p>
-      <textarea id="crew-plan" maxlength="1200" rows="6" placeholder="Who go where, who carry wetin, the signal to move…">${esc(c.plan?.text || '')}</textarea>
+    return `<p class="muted">The crew battle plan. Everyone can see it and edit it.</p>
+      <textarea id="crew-plan" maxlength="1200" rows="6" placeholder="Who goes where, who carries what, the signal to move…">${esc(c.plan?.text || '')}</textarea>
       ${c.plan ? `<small class="muted">Last change by ${esc(c.plan.by)} · ${timeAgo(c.plan.at)} ago</small>` : ''}
       <div class="plan-ideas">${PLAN_IDEAS.map((t) => `<button class="btn ghost sm" data-idea="${esc(t)}">+ ${esc(t)}</button>`).join('')}</div>
       <button class="btn primary" data-act="crewPlan">Save plan</button>`;
   if (crewTab === 'train')
     return `<div class="train-me">
-        <div><b>🏊 Swimming</b> ${s.skills.swim}/100 ${bar(s.skills.swim, 30)}<small>${s.skills.swim >= 70 ? 'Strong swimmer: fast in water.' : s.skills.swim >= 30 ? 'You fit swim deep water.' : 'Under 30 you go drown for deep river. Swim near the bank to learn.'}</small></div>
-        <div><b>💪 Fitness</b> ${s.skills.fitness}/100 ${bar(s.skills.fitness)}<small>Sprint to train. Each point = longer sprint and small extra pace.</small></div>
+        <div><b>🏊 Swimming</b> ${s.skills.swim}/100 ${bar(s.skills.swim, 30)}<small>${s.skills.swim >= 70 ? 'Strong swimmer: fast in water.' : s.skills.swim >= 30 ? 'You can swim in deep water.' : 'Under 30 you drown in deep rivers. Swim near the bank to learn.'}</small></div>
+        <div><b>💪 Fitness</b> ${s.skills.fitness}/100 ${bar(s.skills.fitness)}<small>Sprint to train. Each point means a longer sprint and a little extra pace.</small></div>
       </div>
-      <p class="muted">🎯 <b>Practice Range</b>: private ground for your crew only. Target dummies wey no dey shoot back, all guns free, respawn sharp sharp, and training count <b>3x</b>. Spar with your crew mates too. Nothing count for your record.</p>
+      <p class="muted">🎯 <b>Practice Range</b>: private ground for your crew only. Target dummies that never shoot back, all guns free, instant respawn, and training counts <b>3x</b>. Spar with your crew mates too. Nothing counts towards your record.</p>
       <button class="btn primary" data-act="practice">🎯 Open the crew practice range</button>`;
   return c.members
     .sort((a, b) => b.online - a.online)
-    .map((f) => `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${esc(f.name)}</b><small>${esc(f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}` : f.online ? 'Online · for lobby' : 'Offline')} · 🏊 ${f.swim} · 💪 ${f.fitness}</small></div><div class="sq-acts">${f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}</div></div>`)
+    .map((f) => `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${esc(f.name)}</b><small>${esc(f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}` : f.online ? 'Online · in the lobby' : 'Offline')} · 🏊 ${f.swim} · 💪 ${f.fitness}</small></div><div class="sq-acts">${f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}</div></div>`)
     .join('') + '<button class="btn danger" data-act="crewLeave" style="margin-top:12px">Leave crew</button>';
 }
 function renderSquad() {
@@ -467,7 +467,7 @@ function renderSquad() {
     return;
   }
   const person = (f, actions) => {
-    const where = f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}${f.where.real ? ' · real players' : ''}` : f.online ? 'Online · for lobby' : 'Offline';
+    const where = f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}${f.where.real ? ' · real players' : ''}` : f.online ? 'Online · in the lobby' : 'Offline';
     return `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${f.tag ? `[${esc(f.tag)}] ` : ''}${esc(f.name)}</b><small>${esc(where)}</small></div><div class="sq-acts">${actions}</div></div>`;
   };
   if (squadTab === 'friends') {
@@ -476,7 +476,7 @@ function renderSquad() {
       <div class="sq-row"><input id="sq-code" placeholder="Friend code, e.g. POD-7K3QX" maxlength="12" autocomplete="off"><button class="btn primary" data-act="add">Add friend</button></div>
       ${s.requests.length ? `<h4>Requests</h4>${s.requests.map((f) => person(f, `<button class="btn primary" data-act="friendAccept" data-code="${f.code}">Accept</button><button class="btn ghost" data-act="friendDecline" data-code="${f.code}">No</button>`)).join('')}` : ''}
       <h4>Friends (${s.friends.length})</h4>
-      ${s.friends.length ? s.friends.sort((a, b) => b.online - a.online).map((f) => person(f, `${f.where ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}<button class="btn ghost" data-act="friendRemove" data-code="${f.code}" title="Remove">✕</button>`)).join('') : '<p class="muted">Share your code with your people. When they add you, you fit see when dem dey fight and jump into the same battle.</p>'}`;
+      ${s.friends.length ? s.friends.sort((a, b) => b.online - a.online).map((f) => person(f, `${f.where ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}<button class="btn ghost" data-act="friendRemove" data-code="${f.code}" title="Remove">✕</button>`)).join('') : '<p class="muted">Share your code with your people. When they add you, you can see when they are fighting and jump into the same battle.</p>'}`;
   } else if (squadTab === 'crew') {
     const c = s.crew;
     body.innerHTML = c
@@ -487,8 +487,8 @@ function renderSquad() {
          <h4>Join a crew</h4><div class="sq-row"><input id="sq-crew-code" placeholder="Crew code, e.g. CREW-AB12C" maxlength="12"><button class="btn primary" data-act="joinCrew">Join</button></div>`;
   } else {
     body.innerHTML = s.rivals.length
-      ? `<p class="muted">Real soldiers you keep trading kills with. Your top rival get ⚔ mark for battle; kill am back for revenge XP.</p>${s.rivals.map((r) => `<div class="sq-person"><i class="dot rival"></i><div><b>${esc(r.name)}</b><small>Dem kill you ${r.theyKilledMe} · You kill dem ${r.iKilledThem}</small></div><div class="sq-acts">${r.theyKilledMe > r.iKilledThem ? '<span class="tag bad">You owe am</span>' : r.iKilledThem > r.theyKilledMe ? '<span class="tag good">You dey lead</span>' : '<span class="tag">Level</span>'}</div></div>`).join('')}`
-      : '<p class="muted">No rival yet. Rivals na real players wey you trade kills with. Bots no count.</p>';
+      ? `<p class="muted">Real soldiers you keep trading kills with. Your top rival wears a ⚔ mark in battle; take them down for revenge XP.</p>${s.rivals.map((r) => `<div class="sq-person"><i class="dot rival"></i><div><b>${esc(r.name)}</b><small>They killed you ${r.theyKilledMe} · You killed them ${r.iKilledThem}</small></div><div class="sq-acts">${r.theyKilledMe > r.iKilledThem ? '<span class="tag bad">You owe them</span>' : r.iKilledThem > r.theyKilledMe ? '<span class="tag good">You lead</span>' : '<span class="tag">Level</span>'}</div></div>`).join('')}`
+      : '<p class="muted">No rivals yet. Rivals are real players you trade kills with. Bots do not count.</p>';
   }
 }
 
@@ -656,7 +656,7 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     setBots: (on) => {
       settings.bots = on;
       saveSettings();
-      toast(on ? '🤖 Bots go fill empty places for your next battle.' : '👥 Next battle: real players only.');
+      toast(on ? '🤖 Bots will fill empty places in your next battle.' : '👥 Next battle: real players only.');
     }
   });
   if (boot.lobby) warmap.setLobby(boot.lobby);
@@ -760,14 +760,14 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     game.start(m);
     music.play('battle');
     // Tell players plainly whether they are fighting bots or real people.
-    if (m.mode === 'practice') setTimeout(() => inGame && game.hud.toast('🎯 Practice range: dummies no dey shoot back, buy any gun (B), swim and sprint to train. Nothing count for your record.', 'info', 7000), 7600);
+    if (m.mode === 'practice') setTimeout(() => inGame && game.hud.toast('🎯 Practice range: dummies never shoot back, buy any gun (B), swim and sprint to train. Nothing counts towards your record.', 'info', 7000), 7600);
     else if (m.mode !== 'stage') {
       const bots = m.roster.filter((r) => r.bot).length;
       const humans = m.roster.length - bots;
       setTimeout(() => {
         if (!inGame) return;
-        if (bots) game.hud.toast(`🤖 ${bots} bots (marked [BOT]) dey this battle. For real players only, turn off "Fight with bots" for Settings · ${lastOnline} online now.`, 'info', 7000);
-        else if (humans <= 1) game.hud.toast(`👥 Real players only. You never get company yet: ${lastOnline} online, invite your squad (👥) or wait small.`, 'info', 7000);
+        if (bots) game.hud.toast(`🤖 ${bots} bots (marked [BOT]) are in this battle. For real players only, turn off "Fight with bots" in Settings · ${lastOnline} online now.`, 'info', 7000);
+        else if (humans <= 1) game.hud.toast(`👥 Real players only. Nobody else is here yet: ${lastOnline} online, invite your squad (👥) or wait a moment.`, 'info', 7000);
         else game.hud.toast(`👥 Real players only: ${humans} real soldiers for this battle. No bots.`, 'good', 5000);
       }, 7600);
     }

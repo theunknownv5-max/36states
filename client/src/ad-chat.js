@@ -21,7 +21,7 @@ export class AdChat {
     net.on('adChat', (m) => this.onOpened(m));
     net.on('chatEnded', (m) => {
       if (!this.open) return;
-      const why = { moved: 'You waka comot, chat don close. Your Inbox still get am.', time: 'Chat time don finish. Continue for Inbox after the battle.' }[m.reason];
+      const why = { moved: 'You moved away, so the chat closed. It is still in your Inbox.', time: 'Chat time is up. Continue in your Inbox after the battle.' }[m.reason];
       this.close(true);
       if (why) game.hud?.toast(why, 'info', 2600);
     });
@@ -70,7 +70,7 @@ export class AdChat {
   openTarget() {
     if (this.open) return;
     if (!this.target) {
-      if (this.g.cams?.mode === 'drone') this.g.hud.toast('Point the drone reticle on top advert wey get chat', 'info', 1600);
+      if (this.g.cams?.mode === 'drone') this.g.hud.toast('Point the drone reticle at an advert that has chat', 'info', 1600);
       return;
     }
     this.g.net.send({ t: 'adChatOpen', adId: this.target.ad.adId });
@@ -78,14 +78,14 @@ export class AdChat {
 
   onOpened(m) {
     const g = this.g;
-    if (!m.ok) return g.hud?.toast(m.reason || 'Chat no fit open now', 'bad', 2400);
+    if (!m.ok) return g.hud?.toast(m.reason || 'Chat cannot open right now', 'bad', 2400);
     this.open = true;
     this.adId = m.ad.id;
     if (!isTouch()) g.input.unlock();
     g.touchKey = null;
     $('ad-prompt').hidden = true;
     $('chatting-badge').hidden = g.status !== 'alive';
-    const safe = g.status !== 'alive' ? '' : m.paused ? '⏸ Game don pause while you dey chat.' : '🛡 You dey safe while you chat: nobody fit shoot you. If you waka, chat go close.';
+    const safe = g.status !== 'alive' ? '' : m.paused ? '⏸ Game paused while you chat.' : '🛡 You are safe while you chat: nobody can shoot you. If you move, the chat closes.';
     chatPanel.show({
       id: m.thread?.id,
       business: m.ad.business,

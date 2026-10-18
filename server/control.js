@@ -45,7 +45,7 @@ export class Control {
   async load() {
     await this.store.load();
     const d = this.store.data;
-    d.maintenance ||= { on: false, message: 'We dey upgrade the battlefield. Come back soon!' };
+    d.maintenance ||= { on: false, message: 'We are upgrading the battlefield. Come back soon!' };
     d.announcement ||= null;
     d.minBuild ||= 0;
     d.updateUrl ||= '';

@@ -1,24 +1,24 @@
 extends Control
 ## Boot: a burning night skyline with searchlights and tracers, the POD title, loading the
-## game rules from the server, a Pidgin tip, then "Enter".
+## game rules from the server, a tip, then "Enter".
 
 signal done
 
 const TIPS := [
-	"Every advert wall get life gem. If you take am, nobody fit take am again till 2 minutes.",
-	"If you fall, your person get 10 seconds to revive you. Shout am!",
-	"As spirit, enemy no fit see you. Run go any gem wey dey shine.",
-	"Bullet fit pass through mud, zinc and plank wall. Concrete no gree.",
-	"Red drum wey write PMS na fuel. Shoot am near enemy and watch am burst.",
-	"Army fit call artillery after 4 kills. Others na 5.",
-	"Gold beam for map mean say new deposit don show. E carry double point.",
+	"Every advert wall has a life gem. Once taken, nobody can take it again for 2 minutes.",
+	"If you go down, a teammate has 10 seconds to revive you. Call for help!",
+	"As a spirit, enemies cannot see you. Run to any glowing gem.",
+	"Bullets go through mud, tin and plank walls. Concrete stops them.",
+	"Red drums marked PMS are fuel. Shoot one near enemies and watch it blow.",
+	"The Army can call artillery after 4 kills. Everyone else needs 5.",
+	"A gold beam on the map means a new deposit was found. It is worth double points.",
 ]
 const RADIO := [
-	"[RADIO] Alpha One, una don reach Kano? Over.",
-	"[RADIO] Bandits dey move for the creek. Eyes open o!",
-	"[RADIO] HQ, we need medevac for Sector B. Quick quick!",
-	"[RADIO] Drone dey up. Enemy position don show for radar.",
-	"[RADIO] All units: na Proof of Duty be this. Over and out.",
+	"[RADIO] Alpha One, have you reached the objective? Over.",
+	"[RADIO] Bandits moving along the creek. Eyes open!",
+	"[RADIO] HQ, we need medevac in Sector B. Hurry!",
+	"[RADIO] Drone is up. Enemy positions on radar.",
+	"[RADIO] All units: this is Proof of Duty. Over and out.",
 ]
 
 var t := 0.0
@@ -59,7 +59,7 @@ func _ready() -> void:
 	logo.pivot_offset = Vector2(85, 85)
 	v.add_child(logo)
 	logo_node = logo
-	var pres := Kit.label("TCEE PRESENTS", 18, Kit.POD2, true)
+	var pres := Kit.label("POWERED BY BUSINESS GAME EXPERIENCE", 16, Kit.POD2, true)
 	pres.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(pres)
 	var tt := Kit.title("PROOF OF DUTY", 52)
@@ -95,7 +95,7 @@ func _ready() -> void:
 	radio = Kit.label("", 14, Color(0.55, 0.95, 0.6, 0.8))
 	radio.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(radio)
-	var ver := Kit.label("V%s · build %d · Developed by Tcee" % [Cfg.VERSION, Cfg.build], 13, Kit.MUTED.darkened(0.3))
+	var ver := Kit.label("V%s · build %d · Powered by Business Game Experience" % [Cfg.VERSION, Cfg.build], 13, Kit.MUTED.darkened(0.3))
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	ver.position -= Vector2(12, 8)
 	add_child(ver)
@@ -104,11 +104,11 @@ func _ready() -> void:
 func _on_rules(ok: bool) -> void:
 	if ok:
 		loaded = true
-		status.text = "Ready. %d states dey wait for you." % Cfg.rules.get("STATES", []).size()
+		status.text = "Ready. %d regions are waiting for you." % Cfg.rules.get("STATES", []).size()
 		enter.visible = true
 		Sfx.ui("alert")
 	else:
-		status.text = "We no fit reach the game server. Check your network. Trying again…"
+		status.text = "We cannot reach the game server. Check your network. Trying again…"
 		get_tree().create_timer(3.0).timeout.connect(func(): if is_inside_tree(): Cfg.load_rules(_on_rules))
 
 func _process(delta: float) -> void:

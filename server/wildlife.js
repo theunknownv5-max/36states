@@ -187,7 +187,7 @@ export class Wildlife {
           c.biteAt = t;
           this.m.broadcastNear(prey, { t: 'croc', a: 'bite', i: c.i, id: prey.id }, 60);
           this.m.damage(prey, null, CROC.bite, { weapon: 'croc', melee: true, from: [c.x, 0.3, c.z] });
-          if (prey.human && prey.status === 'alive') this.m.toast(prey, '🐊 Crocodile dey bite you! Comot from the water!', 'bad');
+          if (prey.human && prey.status === 'alive') this.m.toast(prey, '🐊 A crocodile is biting you! Get out of the water!', 'bad');
         }
       } else {
         c.state = 'lurk';
@@ -308,7 +308,7 @@ export class Wildlife {
       if (p.sprint && moved > 0.1 && !wet) this.raise(p, 'fitness', SKILLS.fitness.perSec * mult * dt);
       // Deep water without the skill: you start to go under.
       if (wet && deepWater(this.map, p.x, p.z) && sk.swim < SKILLS.swim.canSwimAt) {
-        if (!p.drownT) this.m.toast(p, `🌊 Deep water! You no sabi swim yet (${Math.floor(sk.swim)}/${SKILLS.swim.canSwimAt}). Go back to the bank, or train swimming.`, 'bad');
+        if (!p.drownT) this.m.toast(p, `🌊 Deep water! You cannot swim yet (${Math.floor(sk.swim)}/${SKILLS.swim.canSwimAt}). Go back to the bank, or train swimming.`, 'bad');
         p.drownT = (p.drownT || 0) + dt;
         if (p.drownT > DROWN.graceSecs) {
           p.drownAcc = (p.drownAcc || 0) + DROWN.dps * dt;
@@ -327,9 +327,9 @@ export class Wildlife {
     const before = sk[key] || 0;
     sk[key] = Math.min(SKILLS.max, before + n);
     const crossed = (lvl) => before < lvl && sk[key] >= lvl;
-    if (key === 'swim' && crossed(SKILLS.swim.canSwimAt)) this.m.toast(p, '🏊 You don learn to swim! Deep water no go drown you again.', 'streak');
-    if (key === 'swim' && crossed(SKILLS.swim.fastAt)) this.m.toast(p, '🏊 Strong swimmer: you dey move fast for water now.', 'streak');
-    if (key === 'fitness' && (crossed(25) || crossed(50) || crossed(75) || crossed(100))) this.m.toast(p, `💪 Fitness ${Math.floor(sk.fitness)}: you fit run longer now.`, 'streak');
+    if (key === 'swim' && crossed(SKILLS.swim.canSwimAt)) this.m.toast(p, '🏊 You learned to swim! Deep water will not drown you any more.', 'streak');
+    if (key === 'swim' && crossed(SKILLS.swim.fastAt)) this.m.toast(p, '🏊 Strong swimmer: you move fast in the water now.', 'streak');
+    if (key === 'fitness' && (crossed(25) || crossed(50) || crossed(75) || crossed(100))) this.m.toast(p, `💪 Fitness ${Math.floor(sk.fitness)}: you can run longer now.`, 'streak');
     if (Math.floor(before) !== Math.floor(sk[key])) this.m.hooks.saveProfile?.();
   }
 }

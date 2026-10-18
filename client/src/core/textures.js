@@ -852,15 +852,15 @@ export function advertiseHereTexture(code, typeName, host) {
   ctx.fillStyle = '#ffffff';
   ctx.font = '400 150px "Black Ops One", Impact, sans-serif';
   ctx.fillText('YOUR BRAND', 84, 360, W - 170);
-  ctx.fillText('FIT DEY HERE', 84, 520, W - 170);
+  ctx.fillText('COULD BE HERE', 84, 520, W - 170);
   ctx.fillStyle = '#ffe1c2';
   ctx.font = '600 58px "Rajdhani", sans-serif';
-  ctx.fillText('Thousands of soldiers go see am every day.', 90, 630, W - 180);
+  ctx.fillText('Thousands of soldiers see it every day.', 90, 630, W - 180);
   ctx.fillStyle = '#ff7a1a';
   ctx.fillRect(90, 690, W - 180, 120);
   ctx.fillStyle = '#140a03';
   ctx.font = '700 64px "Rajdhani", sans-serif';
-  ctx.fillText(`Book am: ${host}/advertise`, 120, 772, W - 240);
+  ctx.fillText(`Book it: ${host}/advertise`, 120, 772, W - 240);
   const t = toTexture(c, { repeat: false });
   cache.set(key, t);
   return t;

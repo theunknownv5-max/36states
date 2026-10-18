@@ -6,7 +6,7 @@ config_version=5
 [application]
 
 config/name="Proof of Duty"
-config/description="Nigerian tactical shooter across the 36 states. Developed by Tcee."
+config/description="Proof of Duty: tactical online shooter over real regions of the world. Powered by Business Game Experience."
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
 boot_splash/bg_color=Color(0.0196, 0.0157, 0.0157, 1)

@@ -321,11 +321,11 @@ export class Game {
     on('down', (m) => {
       if (m.id === this.myId) return;
       const r = this.roster.get(m.id);
-      if (r?.side === this.side) this.hud.toast(`${r.name} don fall — run go there, hold E make you revive am`, 'bad');
+      if (r?.side === this.side) this.hud.toast(`${r.name} is down — get there and hold E to revive them`, 'bad');
     });
     on('revived', (m) => {
-      if (m.id === this.myId) this.hud.toast(`${m.by} don revive you! Thank am later.`, 'good');
-      else if (this.roster.get(m.id)?.side === this.side) this.hud.toast(`${m.by} don revive ${this.roster.get(m.id).name}`, 'good');
+      if (m.id === this.myId) this.hud.toast(`${m.by} revived you! Thank them later.`, 'good');
+      else if (this.roster.get(m.id)?.side === this.side) this.hud.toast(`${m.by} revived ${this.roster.get(m.id).name}`, 'good');
     });
     on('toast', (m) => {
       this.hud.toast(m.text, m.kind);
@@ -344,7 +344,7 @@ export class Game {
     on('combo', () => this.hud.callout('COMBO!'));
     on('revenge', (m) => {
       this.hud.callout('REVENGE!');
-      this.hud.toast(`You don pay ${m.name} back! +150 XP`, 'streak', 2400);
+      this.hud.toast(`Revenge on ${m.name}! +150 XP`, 'streak', 2400);
     });
     on('secondWind', () => {
       this.hud.callout('SECOND WIND!');
@@ -378,18 +378,18 @@ export class Game {
     on('uav', (m) => {
       if (m.side === this.side) {
         this.uavUntil = m.until;
-        this.hud.toast(`${m.by} don fly drone: enemy don show for your radar`, 'streak');
+        this.hud.toast(`${m.by} launched a drone: enemies are on your radar`, 'streak');
         audio.drone(true);
         setTimeout(() => audio.drone(false), m.until - this.net.serverNow());
-      } else this.hud.toast('Enemy drone dey sky! Dem don see where you dey', 'bad');
+      } else this.hud.toast('Enemy drone overhead! They can see where you are', 'bad');
     });
     on('artillery', (m) => {
       const a = KILLSTREAKS.artillery;
       this.fx.artillery(m.x, m.z, a.spread, m.delay + a.shells * a.interval + 0.5);
       if (m.side !== this.side) {
-        this.hud.banner('⚠ ARTILLERY DEY COME — RUN!', 3500);
+        this.hud.banner('⚠ ARTILLERY INCOMING — RUN!', 3500);
         audio.alert();
-      } else this.hud.toast(`${m.by} don call artillery`, 'streak');
+      } else this.hud.toast(`${m.by} called in artillery`, 'streak');
     });
     on('incoming', (m) => {
       this.fx.incoming(m.x, m.z);
@@ -428,7 +428,7 @@ export class Game {
       const H = this.map.houses[m.i];
       if (m.s === 2 && H) {
         audio.fire({ x: H.x, y: 1.5, z: H.z }, 14);
-        if (Math.hypot(H.x - this.body.x, H.z - this.body.z) < 60) this.hud.toast('🔥 House don catch fire!', 'info', 1800);
+        if (Math.hypot(H.x - this.body.x, H.z - this.body.z) < 60) this.hud.toast('🔥 A house is on fire!', 'info', 1800);
       }
     });
     on('c4', (m) => {
@@ -450,13 +450,13 @@ export class Game {
       if (m.a === 'bite') {
         this.crocs.bite(m.i);
         if (m.id === this.myId) this.fx.shake = Math.min(1.4, this.fx.shake + 0.8);
-      } else if (m.a === 'dead' && m.by) this.hud.toast(`🐊 ${m.by} don kill crocodile`, 'info', 2000);
+      } else if (m.a === 'dead' && m.by) this.hud.toast(`🐊 ${m.by} killed a crocodile`, 'info', 2000);
     });
     // Digging graves and opening tombs.
     on('dig', (m) => {
       if (m.i >= 0) this.digging = { i: m.i, start: performance.now(), secs: m.secs };
       else {
-        if (this.digging && m.reason === 'moved') this.hud.toast('You move: digging don stop.', 'bad', 1400);
+        if (this.digging && m.reason === 'moved') this.hud.toast('You moved: digging stopped.', 'bad', 1400);
         this.digging = null;
       }
     });
@@ -478,7 +478,7 @@ export class Game {
           setTimeout(() => $('tint').className === 'healed' && ($('tint').className = ''), 900);
           for (let k = 0; k < 30; k++) this.fx.sparks.spawn(new THREE.Vector3(G.x, G.y + 0.8, G.z), { colour: '#ffd66a', size: 0.08, life: 1.2, v: new THREE.Vector3((Math.random() - 0.5) * 3, 2 + Math.random() * 3, (Math.random() - 0.5) * 3), g: 3 });
         }
-      } else if (L.kind === 'weapon') this.hud.toast(`${m.by} don dig out ${L.icon} ${L.name}!`, 'info', 2600);
+      } else if (L.kind === 'weapon') this.hud.toast(`${m.by} dug out ${L.icon} ${L.name}!`, 'info', 2600);
     });
     on('ambHeal', (m) => {
       if (m.pid !== this.myId) return;
@@ -487,10 +487,10 @@ export class Game {
       setTimeout(() => $('tint').className === 'healed' && ($('tint').className = ''), 700);
     });
     on('site', (m) => {
-      if (m.neutral) this.hud.toast(`${m.label} no get owner again`, 'info');
+      if (m.neutral) this.hud.toast(`${m.label} is neutral again`, 'info');
       else {
         const ours = m.owner === this.side;
-        this.hud.banner(`${ours ? 'WE DON HOLD' : 'ENEMY DON TAKE'} ${m.id === 'D' ? 'THE NEW DEPOSIT' : m.id} · ${m.label.toUpperCase()}`, 3200);
+        this.hud.banner(`${ours ? 'WE HOLD' : 'ENEMY TOOK'} ${m.id === 'D' ? 'THE NEW DEPOSIT' : m.id} · ${m.label.toUpperCase()}`, 3200);
         audio.alert();
       }
     });
@@ -512,10 +512,10 @@ export class Game {
       if (this.menus.score) this.hud.scoreboard(this.rosterList, this.myId, this.score);
     });
     on('discovery', (m) => {
-      this.hud.banner(`⛏ ${m.label.toUpperCase()} DON SHOW — DOUBLE POINT`, 4500);
+      this.hud.banner(`⛏ ${m.label.toUpperCase()} FOUND — DOUBLE POINTS`, 4500);
       audio.alert();
     });
-    on('discoveryEnd', (m) => this.hud.toast(`${m.label} don finish`, 'info'));
+    on('discoveryEnd', (m) => this.hud.toast(`${m.label} is over`, 'info'));
     on('bought', (m) => {
       audio.click();
       if (WEAPONS[m.item]) {
@@ -524,7 +524,7 @@ export class Game {
       }
     });
     on('spirit', () => {
-      this.hud.toast('Find any 💎 wey dey shine for advert wall!', 'gem');
+      this.hud.toast('Find any glowing 💎 on an advert wall!', 'gem');
     });
     on('joined', (m) => {
       this.hud.liveCount(m.humans);
@@ -601,7 +601,7 @@ export class Game {
         if (burning !== this.burning) {
           this.burning = burning;
           $('burn').classList.toggle('on', burning);
-          if (burning) this.hud.toast('🔥 Fire dey catch you! Water go quench am.', 'bad', 2500);
+          if (burning) this.hud.toast('🔥 You are on fire! Water puts it out.', 'bad', 2500);
         }
         this.myFlags = flags;
         continue;
@@ -732,10 +732,10 @@ export class Game {
     }
     if (m.killer === this.myId && m.victim !== this.myId) {
       const streak = (this.me?.streak || 0) + 1;
-      const call = ['', '', 'DOUBLE KPAI!', 'TRIPLE KPAI!', 'E DON CASE!', 'NO MERCY!'][Math.min(5, streak)] || 'WAR GENERAL!';
+      const call = ['', '', 'DOUBLE KILL!', 'TRIPLE KILL!', 'RAMPAGE!', 'NO MERCY!'][Math.min(5, streak)] || 'WAR GENERAL!';
       if (streak >= 2) this.hud.callout(call);
       else if (m.head) this.hud.callout('HEADSHOT!');
-      else if (m.w === 'knife') this.hud.callout('MACHETE KPAI!');
+      else if (m.w === 'knife') this.hud.callout('MACHETE KILL!');
     }
     const s = this.soldiers.get(m.victim);
     if (s) this.fx.bloodHit(s.root.position.clone().setY(1.2), null);
@@ -806,7 +806,7 @@ export class Game {
     if (this.artilleryAim && code === 'Mouse0') return this.confirmArtillery();
     switch (code) {
       case 'KeyB':
-        if (this.driving.active) return this.hud.toast('Comot from the motor to buy.', 'bad', 1400);
+        if (this.driving.active) return this.hud.toast('Get out of the vehicle to buy.', 'bad', 1400);
         return this.toggleBuy(true);
       case 'KeyR':
         return this.reload();
@@ -1135,7 +1135,7 @@ export class Game {
 
   cycleNade() {
     const have = ['frag', 'smoke', 'flash'].filter((k) => this.me[k] > 0);
-    if (!have.length) return this.hud.toast('You no get grenade. Buy for armoury.', 'bad', 1500);
+    if (!have.length) return this.hud.toast('You have no grenades. Buy some at the armoury.', 'bad', 1500);
     const i = have.indexOf(this.hud.nadeSel);
     this.hud.nadeSel = have[(i + 1) % have.length];
     this.hud.nades(this.me);
@@ -1144,7 +1144,7 @@ export class Game {
   throwNade() {
     let kind = this.hud.nadeSel;
     if (!(this.me[kind] > 0)) kind = ['frag', 'smoke', 'flash'].find((k) => this.me[k] > 0);
-    if (!kind) return this.hud.toast('You no get grenade. Buy for armoury.', 'bad', 1500);
+    if (!kind) return this.hud.toast('You have no grenades. Buy some at the armoury.', 'bad', 1500);
     this.hud.nadeSel = kind;
     const d = dirFromAngles(this.yaw, this.pitch + 0.12);
     const p = this.camera.position;
@@ -1169,8 +1169,8 @@ export class Game {
 
   // Stick a C4 charge on whatever you are looking at (a wall, a vehicle) or drop it at your feet.
   plantC4() {
-    if (!(this.me?.c4 > 0)) return this.hud.toast('You no get C4. Buy am for the armoury (B).', 'bad', 1600);
-    if (this.driving.active) return this.hud.toast('Comot from the motor to plant C4.', 'bad', 1600);
+    if (!(this.me?.c4 > 0)) return this.hud.toast('You have no C4. Buy it at the armoury (B).', 'bad', 1600);
+    if (this.driving.active) return this.hud.toast('Get out of the vehicle to plant C4.', 'bad', 1600);
     const b = this.body;
     const eye = [b.x, b.y + this.eye, b.z];
     const d = dirFromAngles(this.yaw, this.pitch);
@@ -1201,13 +1201,13 @@ export class Game {
   }
 
   takePill() {
-    if (!(this.me?.bloodpill > 0)) return this.hud.toast('You no get blood pill. Buy for armoury.', 'bad', 1500);
+    if (!(this.me?.bloodpill > 0)) return this.hud.toast('You have no blood pills. Buy some at the armoury.', 'bad', 1500);
     if (this.me.health >= 100) return this.hud.toast('You never wound. Keep the pill.', 'info', 1300);
     this.net.send({ t: 'pill' });
   }
 
   medkit() {
-    if (!(this.me.medkit > 0)) return this.hud.toast('You no get first aid. Buy for armoury.', 'bad', 1500);
+    if (!(this.me.medkit > 0)) return this.hud.toast('You have no first aid. Buy some at the armoury.', 'bad', 1500);
     if (this.me.health >= 100) return;
     this.net.send({ t: 'medkit' });
     this.local.heal = performance.now() + GEAR.medkit.useTime * 1000;
@@ -1233,7 +1233,7 @@ export class Game {
   startArtillery() {
     this.artilleryAim = true;
     this.aimRing.visible = true;
-    this.hud.prompt('Aim for ground, <kbd>click</kbd> make you call artillery · <kbd>Esc</kbd> cancel');
+    this.hud.prompt('Aim at the ground, <kbd>click</kbd> to call artillery · <kbd>Esc</kbd> cancel');
   }
 
   cancelArtillery() {
@@ -1375,7 +1375,7 @@ export class Game {
       this.vehKey = key;
       const p = $('veh-prompt');
       p.hidden = !near; // while driving the vehicle panel already says how to get out
-      p.innerHTML = near ? `<kbd>E</kbd> Enter ${VEHICLES[near.type].name}${VEHICLES[near.type].armored ? ' 🛡' : ''}` : this.driving.active ? '<kbd>E</kbd> Comot' : '';
+      p.innerHTML = near ? `<kbd>E</kbd> Enter ${VEHICLES[near.type].name}${VEHICLES[near.type].armored ? ' 🛡' : ''}` : this.driving.active ? '<kbd>E</kbd> Get out' : '';
       const tb = $('touch')?.querySelector('.t-veh');
       if (tb) tb.hidden = !key;
     }
@@ -1660,8 +1660,8 @@ export class Game {
       $('click-to-play').hidden = ctp;
     }
     // Progress bars: revive, medkit.
-    if (this.reviving && now < this.reviving.until && this.downedMate()?.id === this.reviving.id) this.hud.progress(1 - (this.reviving.until - now) / (RESPAWN.reviveTime * 1000), 'Dey revive am…');
-    else if (this.local.heal > now) this.hud.progress(1 - (this.local.heal - now) / (GEAR.medkit.useTime * 1000), 'Dey use first aid…');
+    if (this.reviving && now < this.reviving.until && this.downedMate()?.id === this.reviving.id) this.hud.progress(1 - (this.reviving.until - now) / (RESPAWN.reviveTime * 1000), 'Reviving…');
+    else if (this.local.heal > now) this.hud.progress(1 - (this.local.heal - now) / (GEAR.medkit.useTime * 1000), 'Using first aid…');
     else if (this.modes.progress(sNow)) this.hud.progress(...this.modes.progress(sNow));
     else this.hud.progress(null);
     if (this.reviving && now > this.reviving.until) this.reviving = null;

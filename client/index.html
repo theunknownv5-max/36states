@@ -18,7 +18,7 @@
     <!-- Cinematic boot -->
     <section id="boot">
       <canvas id="boot-canvas"></canvas>
-      <div class="boot-credit" id="boot-credit"><span>TCEE</span> PRESENTS</div>
+      <div class="boot-credit" id="boot-credit"><div><small>POWERED BY</small><span>BUSINESS GAME EXPERIENCE</span></div></div>
       <div class="boot-stage">
         <div class="boot-logo-wrap" id="boot-logo-wrap">
           <img id="boot-logo" src="/img/pod-logo.webp" alt="Proof of Duty" />
@@ -31,8 +31,8 @@
         <div class="radio" id="boot-radio"><i class="led"></i><span id="boot-radio-text"></span></div>
         <div id="boot-tip" class="boot-tip"></div>
       </div>
-      <button id="boot-enter" class="enter" hidden><span>TAP MAKE YOU ENTER</span><small>THE WAR FRONT DEY WAIT</small></button>
-      <div class="boot-foot"><span id="boot-version">V0.1</span><span>Developed by <b>Tcee</b> 🇳🇬</span></div>
+      <button id="boot-enter" class="enter" hidden><span>TAP TO ENTER</span><small>THE FRONT LINE IS WAITING</small></button>
+      <div class="boot-foot"><span id="boot-version">V0.1</span><span>Powered by <b>Business Game Experience</b></span></div>
     </section>
 
     <!-- Sign in -->
@@ -49,7 +49,7 @@
           <label data-for="guest">Your call sign <input id="guest-name" maxlength="18" placeholder="e.g. Tunde" autocomplete="nickname" /></label>
           <label data-for="account" hidden>Username <input id="acc-user" maxlength="16" autocomplete="username" /></label>
           <label data-for="account" hidden>Password <input id="acc-pass" type="password" maxlength="64" autocomplete="current-password" /></label>
-          <p class="hint" data-for="guest">Guest go keep rank and life gems for this phone only. Open account make you carry am go anywhere.</p>
+          <p class="hint" data-for="guest">Guest rank and life gems stay on this device only. Create an account to take them anywhere.</p>
           <div id="auth-error" class="error" hidden></div>
           <button id="auth-go" class="btn primary big" type="submit">Continue</button>
         </form>
@@ -85,8 +85,8 @@
         <div class="map-wrap" id="map-wrap">
           <svg id="warmap" viewBox="0 0 1000 860" role="img" aria-label="Map of Nigeria 36 states and Abuja"></svg>
           <div class="map-legend">
-            <span><i class="dot live"></i> Battle dey go on</span><span><i class="dot quiet"></i> Na only bots dey</span>
-            <span class="muted">Pick state wey you wan fight for</span>
+            <span><i class="dot live"></i> Battle in progress</span><span><i class="dot quiet"></i> Bots only</span>
+            <span class="muted">Pick the region you want to fight for</span>
           </div>
         </div>
         <div class="stages-wrap" id="stages-wrap" hidden>
@@ -94,8 +94,8 @@
         </div>
         <aside class="state-panel" id="state-panel">
           <div class="empty" id="state-empty">
-            <h3>Choose where you wan fight</h3>
-            <p>Every state na im own war front with im real resources and landmark. Real players dey fight for oil, gold, tin, cocoa and more. Bots go hold the line until people land.</p>
+            <h3>Choose where you want to fight</h3>
+            <p>Every region is its own war front with its real resources and landmarks. Real players fight for oil, gold, tin, cocoa and more. Bots hold the line until people arrive.</p>
           </div>
           <div id="state-info" hidden>
             <div class="zone" id="si-zone"></div>
@@ -105,7 +105,7 @@
             <div class="res" id="si-res"></div>
             <div class="landmark" id="si-landmark"></div>
             <div class="live" id="si-live"></div>
-            <h4>Wetin you be?</h4>
+            <h4>Choose your side</h4>
             <div class="sides" id="si-factions"></div>
             <button class="btn primary big" id="btn-deploy" disabled>DEPLOY</button>
             <div id="join-error" class="error" hidden></div>
@@ -121,7 +121,7 @@
           </div>
         </aside>
       </div>
-      <div class="lobby-foot"><span id="lobby-version">Proof of Duty V0.1</span><span>Developed by Tcee 🇳🇬</span></div>
+      <div class="lobby-foot"><span id="lobby-version">Proof of Duty V0.1</span><span>Powered by Business Game Experience</span></div>
     </section>
 
     <!-- In battle -->
@@ -160,9 +160,9 @@
           <b id="veh-name">Car</b>
           <div class="veh-bar"><i id="veh-hp"></i></div>
           <span id="veh-speed">0 km/h</span>
-          <small>W/S drive · A/D turn · Space brake · E comot</small>
+          <small>W/S drive · A/D turn · Space brake · E get out</small>
         </div>
-        <div id="chatting-badge" class="chatting-badge" hidden>📱 You dey chat · you dey safe</div>
+        <div id="chatting-badge" class="chatting-badge" hidden>📱 Chatting · you are safe</div>
 
         <!-- Scout drone cockpit -->
         <div id="drone-hud" hidden>
@@ -203,34 +203,34 @@
 
         <!-- Down / death / spirit / medevac -->
         <div id="downed" class="overlay-state" hidden>
-          <h2>YOU DON FALL</h2>
-          <p>Your person fit revive you. Blood go finish in <b id="downed-t">10</b>s</p>
+          <h2>YOU ARE DOWN</h2>
+          <p>A teammate can revive you. You bleed out in <b id="downed-t">10</b>s</p>
         </div>
         <div id="death" class="death" hidden>
-          <div class="killed" id="death-by">Dem kill you</div>
+          <div class="killed" id="death-by">You were killed</div>
           <h2>GO BACK TO THE WAR FRONT</h2>
           <div class="options" id="death-options">
-            <button class="opt" id="opt-gem"><div class="ico">💎</div><b>Life gem</b><span>Land back now now. E go use 1 gem. You get <em id="opt-gems">0</em>.</span><kbd>1</kbd></button>
-            <button class="opt" id="opt-spirit"><div class="ico">👻</div><b>Spirit run</b><span>40 seconds as invisible spirit. Touch any gem wey dey shine for advert wall make you come back free.</span><kbd>2</kbd></button>
-            <button class="opt" id="opt-drone"><div class="ico">🛸</div><b>Fly drone</b><span>Look round the battle from sky while you dey decide. E no cost anything.</span><kbd>T</kbd></button>
-            <button class="opt" id="opt-medevac"><div class="ico">🚁</div><b>Medevac</b><span>Wait 25 seconds for helicopter. Fee na ₦1,000.</span><kbd>3</kbd></button>
+            <button class="opt" id="opt-gem"><div class="ico">💎</div><b>Life gem</b><span>Respawn right now for 1 gem. You have <em id="opt-gems">0</em>.</span><kbd>1</kbd></button>
+            <button class="opt" id="opt-spirit"><div class="ico">👻</div><b>Spirit run</b><span>40 seconds as an invisible spirit. Touch any glowing gem on an advert wall to come back free.</span><kbd>2</kbd></button>
+            <button class="opt" id="opt-drone"><div class="ico">🛸</div><b>Fly drone</b><span>Look around the battle from the sky while you decide. It is free.</span><kbd>T</kbd></button>
+            <button class="opt" id="opt-medevac"><div class="ico">🚁</div><b>Medevac</b><span>Wait 25 seconds for a helicopter. Fee ₦1,000.</span><kbd>3</kbd></button>
           </div>
           <div class="comeback" id="comeback">
             <span>Come back:</span>
             <button class="chip on" id="cb-here" type="button">📍 Where I fell</button>
             <button class="chip" id="cb-base" type="button">🏠 Fresh at base</button>
           </div>
-          <div class="wait-round" id="death-wait" hidden>No respawn for this round. Watch your people; you go enter next round.</div>
-          <div class="muted" id="death-auto">Medevac go come by itself in 60 s.</div>
+          <div class="wait-round" id="death-wait" hidden>No respawn this round. Watch your team; you join the next round.</div>
+          <div class="muted" id="death-auto">Medevac comes for you automatically in 60 s.</div>
         </div>
         <div id="spirit" class="overlay-state spirit" hidden>
           <h2>SPIRIT RUN</h2>
-          <p>Reach gem wey dey shine 💎 before you fade · <b id="spirit-t">40</b>s</p>
+          <p>Reach a glowing gem 💎 before you fade · <b id="spirit-t">40</b>s</p>
           <div id="spirit-arrow">➤</div>
         </div>
         <div id="medevac" class="overlay-state" hidden>
-          <h2>MEDEVAC DEY COME</h2>
-          <p>You go land back in <b id="medevac-t">25</b>s</p>
+          <h2>MEDEVAC INBOUND</h2>
+          <p>You land back in <b id="medevac-t">25</b>s</p>
         </div>
         <div id="wait-ads" class="wait-ads" hidden>
           <div class="wa-head"><b id="wa-title">Drone view</b><span id="wa-time"></span></div>
@@ -257,17 +257,17 @@
             <button class="btn" id="btn-settings-game">⚙ Settings</button>
             <button class="btn" id="btn-inbox-game">📨 Inbox <i class="badge" id="inbox-badge-game" hidden></i></button>
             <div class="keys">
-              <div><kbd>WASD</kbd> waka · <kbd>Shift</kbd> run · <kbd>Ctrl</kbd> bend down · <kbd>Z</kbd> waka quiet · <kbd>Space</kbd> jump</div>
+              <div><kbd>WASD</kbd> move · <kbd>Shift</kbd> sprint · <kbd>Ctrl</kbd> crouch · <kbd>Z</kbd> walk quietly · <kbd>Space</kbd> jump</div>
               <div><kbd>Mouse</kbd> shoot / aim · <kbd>R</kbd> reload · <kbd>1 2 3</kbd> weapons · <kbd>4</kbd> pick grenade · <kbd>G</kbd> throw</div>
               <div><kbd>B</kbd> buy · <kbd>E</kbd> revive / plant / defuse · <kbd>X</kbd> first aid · <kbd>5</kbd> drone · <kbd>6</kbd> artillery</div>
               <div><kbd>Tab</kbd> scores · <kbd>Y</kbd>/<kbd>U</kbd> chat · <kbd>V</kbd> quick talk · <kbd>Shift</kbd> (scoped) hold breath</div>
               <div><kbd>F</kbd> punch (3 in a row = heavy blow) · <kbd>3</kbd> machete · <kbd>N</kbd> blood pill</div>
-              <div><kbd>H</kbd> chase cam · <kbd>T</kbd> scout drone · <kbd>J</kbd> chat with the business on the advert you dey look</div>
-              <div><kbd>E</kbd> enter / comot from motor · <kbd>P</kbd> stick C4 · <kbd>L</kbd> blow C4 · <kbd>K</kbd> call ambulance (₦)</div>
-              <div><kbd>E</kbd> (hold) dig a grave or open a tomb: relic guns and heavy armour dey inside</div>
+              <div><kbd>H</kbd> chase cam · <kbd>T</kbd> scout drone · <kbd>J</kbd> chat with the business on the advert you are looking at</div>
+              <div><kbd>E</kbd> enter / leave a vehicle · <kbd>P</kbd> stick C4 · <kbd>L</kbd> blow C4 · <kbd>K</kbd> call ambulance (₦)</div>
+              <div><kbd>E</kbd> (hold) dig a grave or open a tomb: relic guns and heavy armour are inside</div>
             </div>
             <button class="btn" id="btn-report">🚩 Report a player</button>
-            <button class="btn danger" id="btn-leave">Comot from battle</button>
+            <button class="btn danger" id="btn-leave">Leave battle</button>
           </div>
         </div>
         <div id="matchend" class="menu" hidden>
@@ -280,7 +280,7 @@
           <div id="me-actions" class="me-actions"></div>
           <div id="me-next" class="muted"></div>
         </div>
-        <div id="click-to-play" class="click-to-play" hidden>Click make you fight</div>
+        <div id="click-to-play" class="click-to-play" hidden>Click to fight</div>
 
         <!-- Touch controls (phones and tablets, landscape) -->
         <div id="touch" hidden>
@@ -311,7 +311,7 @@
           <button class="tb t-det" data-key="KeyL" aria-label="Blow C4" hidden>💥</button>
           <button class="tb t-amb" data-key="KeyK" aria-label="Call ambulance" hidden>🚑</button>
         </div>
-        <div id="rotate"><div><div class="phone-ico"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10.5 18.5h3"/></svg></div><b>Turn your phone sideways</b><span>Proof of Duty na landscape game</span></div></div>
+        <div id="rotate"><div><div class="phone-ico"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10.5 18.5h3"/></svg></div><b>Turn your phone sideways</b><span>Proof of Duty plays in landscape</span></div></div>
       </div>
     </section>
 
@@ -353,13 +353,13 @@
         <dl class="about-facts">
           <dt>Game</dt><dd>Proof of Duty (POD)</dd>
           <dt>Version</dt><dd id="about-version">V0.1</dd>
-          <dt>Developer</dt><dd><b>Tcee</b> — na im alone build am. Proudly Nigerian 🇳🇬</dd>
+          <dt>Powered by</dt><dd><a href="https://www.businessgamexp.com" target="_blank" rel="noopener"><b>Business Game Experience</b></a></dd>
           <dt>Battlefields</dt><dd>36 states + Abuja (FCT)</dd>
-          <dt>Modes</dt><dd>Hold Ground · Gbas Gbos · Plant &amp; Defuse · Campaign Stages</dd>
+          <dt>Modes</dt><dd>Hold Ground · Team Deathmatch · Plant &amp; Defuse · Campaign Stages</dd>
           <dt>Website</dt><dd><a href="https://proofofduty.com" target="_blank" rel="noopener" class="about-link">proofofduty.com</a></dd>
         </dl>
         <p style="margin:10px 0 0"><a class="btn primary" href="https://proofofduty.com" target="_blank" rel="noopener">🌐 Visit the official website</a></p>
-        <p class="muted small">© Tcee. All rights reserved.</p>
+        <p class="muted small">© Business Game Experience. All rights reserved.</p>
       </div>
     </div>
 
@@ -382,7 +382,7 @@
         <a id="ac-link" class="ac-link" target="_blank" rel="noopener" hidden>🔗 Visit their website</a>
         <div id="ac-msgs" class="ac-msgs"></div>
         <form id="ac-form" class="ac-form"><input id="ac-input" maxlength="400" placeholder="Type message to the business…" autocomplete="off" /><button class="btn primary">Send</button></form>
-        <p class="ac-note">The business sees your soldier name and wetin you write. No send password, PIN or bank details. Replies land for your 📨 Inbox.</p>
+        <p class="ac-note">The business sees your soldier name and what you write. Never send passwords, PINs or bank details. Replies arrive in your 📨 Inbox.</p>
       </div>
     </div>
 
@@ -419,9 +419,9 @@
     <div id="report" class="sheet" hidden>
       <div class="card sheet-card">
         <div class="menu-head"><h2>🚩 Report a player</h2><button class="x" data-close-sheet="report">✕</button></div>
-        <p class="muted small">Only real players for this battle. The POD team go see the report plus their recent chat.</p>
+        <p class="muted small">Only real players for this battle. The POD team will see the report and their recent chat.</p>
         <label class="rep-field">Who <select id="rep-who"></select></label>
-        <label class="rep-field">Wetin happen <select id="rep-why"><option>Cheating or hacking</option><option>Abuse or insult for chat</option><option>Bad name</option><option>Killing own team</option><option>Scam or spam</option><option>Something else</option></select></label>
+        <label class="rep-field">What happened <select id="rep-why"><option>Cheating or hacking</option><option>Abuse or insults in chat</option><option>Bad name</option><option>Killing own team</option><option>Scam or spam</option><option>Something else</option></select></label>
         <input id="rep-more" maxlength="140" placeholder="More details (optional)" autocomplete="off" />
         <p style="text-align:right;margin:12px 0 0"><button class="btn primary" id="rep-send">Send report</button></p>
       </div>

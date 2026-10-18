@@ -2,7 +2,7 @@
   "name": "proof-of-duty",
   "version": "0.1.0",
   "private": true,
-  "description": "Proof of Duty (POD) - tactical multiplayer FPS across all 36 states of Nigeria. Developed by Tcee.",
+  "description": "Proof of Duty (POD) - tactical multiplayer FPS over real regions of the world. Powered by Business Game Experience (www.businessgamexp.com).",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n client,server -c yellow,green \"npm:dev:client\" \"npm:dev:server\"",
@@ -30,5 +30,5 @@
   "engines": {
     "node": ">=20"
   },
-  "author": "Tcee"
+  "author": "Business Game Experience"
 }

@@ -107,7 +107,7 @@ export function adminRoutes(ctx) {
       if (action === 'ban') {
         const hours = Number(body.hours) || 0;
         p.ban = { reason: String(body.reason || 'Rules broken').slice(0, 200), at: Date.now(), until: hours > 0 ? Date.now() + hours * 3600000 : 0, by: who.name };
-        kick(`You don collect ban: ${p.ban.reason}`);
+        kick(`You have been banned: ${p.ban.reason}`);
         for (const c of tokenConns.get(p.token) || []) c.ws.close();
       } else if (action === 'unban') p.ban = null;
       else if (action === 'mute') p.mutedUntil = Date.now() + (Number(body.hours) || 24) * 3600000;

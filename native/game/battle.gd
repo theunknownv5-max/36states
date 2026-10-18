@@ -151,7 +151,7 @@ func _load_map() -> void:
 		if d is Dictionary:
 			_build(d)
 		else:
-			hud.toast("We no fit load this battlefield. Check your network.", "bad", 5)
+			hud.toast("We could not load this battlefield. Check your network.", "bad", 5)
 			get_tree().create_timer(2.0).timeout.connect(func(): if is_inside_tree(): main.leave_battle()))
 	http.request(Cfg.api("/api/native/map/" + state_id))
 	_load_ads()
@@ -190,9 +190,9 @@ func _build(m: Dictionary) -> void:
 	if not me.is_empty():
 		_on_me(me)
 	if mode_id == "practice":
-		hud.toast("Practice range: dummies no dey shoot back. Buy any gun, swim and sprint to train.", "info", 6)
+		hud.toast("Practice range: dummies never shoot back. Buy any gun, swim and sprint to train.", "info", 6)
 	elif Cfg.get_s("bots", true):
-		hud.toast("You dey fight with bots. Turn off bots for the war map to play only real players.", "info", 5)
+		hud.toast("You are fighting alongside bots. Turn bots off on the war map to play real players only.", "info", 5)
 	else:
 		hud.toast("Real players only: no bots for this room.", "good", 4)
 
@@ -213,10 +213,10 @@ func _subscribe() -> void:
 			return
 		var r = roster.get(m.id)
 		if r and r.side == side:
-			hud.toast("%s don fall! Run go there, hold USE make you revive am" % r.name, "bad"))
+			hud.toast("%s is down! Get there and hold USE to revive them" % r.name, "bad"))
 	Net.on("revived", func(m):
 		if str(m.id) == my_id:
-			hud.toast("%s don revive you! Thank am later." % m.by, "good"))
+			hud.toast("%s revived you! Thank them later." % m.by, "good"))
 	Net.on("toast", func(m):
 		hud.toast(str(m.text), str(m.get("kind", "info")))
 		if m.get("kind") == "gem":
@@ -250,15 +250,15 @@ func _subscribe() -> void:
 	Net.on("uav", func(m):
 		if m.side == side:
 			uav_until = float(m.until)
-			hud.toast("%s don fly drone: enemy don show for your radar" % m.by, "streak")
+			hud.toast("%s launched a drone: enemies are on your radar" % m.by, "streak")
 		else:
-			hud.toast("Enemy drone dey sky! Dem don see where you dey", "bad"))
+			hud.toast("Enemy drone overhead! They can see where you are", "bad"))
 	Net.on("artillery", func(m):
 		if m.side != side:
-			hud.show_banner("ARTILLERY DEY COME — RUN!", Kit.BAD, 3.5)
+			hud.show_banner("ARTILLERY INCOMING — RUN!", Kit.BAD, 3.5)
 			Sfx.ui("alert")
 		else:
-			hud.toast("%s don call artillery" % m.by, "streak"))
+			hud.toast("%s called in artillery" % m.by, "streak"))
 	Net.on("incoming", func(m): Sfx.play("incoming", Vector3(m.x, 30, m.z), {"ref": 30.0, "delay": false}))
 	Net.on("boom", _on_boom)
 	Net.on("drum", func(m):
@@ -291,20 +291,20 @@ func _subscribe() -> void:
 			fx.shake = min(1.4, fx.shake + 0.8))
 	Net.on("site", func(m):
 		if m.get("neutral", false):
-			hud.toast("%s no get owner again" % m.label, "info")
+			hud.toast("%s is neutral again" % m.label, "info")
 		else:
 			var ours: bool = m.owner == side
-			hud.show_banner(("WE DON HOLD " if ours else "ENEMY DON TAKE ") + str(m.id), Kit.GOOD if ours else Kit.BAD, 3.0)
+			hud.show_banner(("WE HOLD " if ours else "ENEMY TOOK ") + str(m.id), Kit.GOOD if ours else Kit.BAD, 3.0)
 			Sfx.ui("alert"))
 	Net.on("score", _on_score)
-	Net.on("discovery", func(m): hud.show_banner("NEW DEPOSIT DON SHOW — DOUBLE POINT", Kit.GOLD, 4.0); Sfx.ui("alert"))
+	Net.on("discovery", func(m): hud.show_banner("NEW DEPOSIT FOUND — DOUBLE POINTS", Kit.GOLD, 4.0); Sfx.ui("alert"))
 	Net.on("bought", func(m):
 		Sfx.ui("buy")
 		if not Cfg.weapon(str(m.item)).is_empty():
 			reload_until = 0.0
 		if hud.panel_kind == "buy":
 			hud.call_deferred("show_buy", me, int(me.get("level", 1))))
-	Net.on("spirit", func(_m): hud.toast("Find any gem wey dey shine for advert wall!", "gem", 5))
+	Net.on("spirit", func(_m): hud.toast("Find any glowing gem on an advert wall!", "gem", 5))
 	Net.on("left", func(m):
 		var s = soldiers.get(m.id)
 		if s:
@@ -395,13 +395,13 @@ func _on_status(prev: String, now: String) -> void:
 		hud.status_lbl.text = ""
 	elif now == "downed":
 		hud.close_panel()
-		hud.status_lbl.text = "YOU DON FALL — teammate fit revive you"
+		hud.status_lbl.text = "YOU ARE DOWN — a teammate can revive you"
 	elif now == "spirit":
 		hud.close_panel()
 		hud.status_lbl.text = "SPIRIT RUN: reach any glowing gem"
 	elif now == "medevac":
 		hud.close_panel()
-		hud.status_lbl.text = "MEDEVAC DEY COME…"
+		hud.status_lbl.text = "MEDEVAC INBOUND…"
 	elif now == "alive":
 		hud.status_lbl.text = ""
 		death_by = ""
@@ -510,7 +510,7 @@ func _on_kill(m: Dictionary) -> void:
 			_on_status("alive", "dead")
 	if str(m.get("killer", "")) == my_id and str(m.victim) != my_id:
 		var streak := int(me.get("streak", 0)) + 1
-		var calls := ["", "", "DOUBLE KPAI!", "TRIPLE KPAI!", "E DON CASE!", "NO MERCY!"]
+		var calls := ["", "", "DOUBLE KILL!", "TRIPLE KILL!", "RAMPAGE!", "NO MERCY!"]
 		if streak >= 2:
 			hud.show_banner(calls[min(5, streak)] if streak <= 5 else "WAR GENERAL!", Kit.GOLD, 1.6)
 		elif m.get("head", false):
@@ -832,7 +832,7 @@ func _start_driving(i: int) -> void:
 	yaw = e.yaw
 	pitch = -0.1
 	touch.use_label = "EXIT"
-	hud.toast("%s: stick to drive, JUMP to brake, EXIT to comot." % d.get("name", "Vehicle"), "info", 3)
+	hud.toast("%s: stick to drive, JUMP to brake, EXIT to get out." % d.get("name", "Vehicle"), "info", 3)
 
 func _stop_driving() -> void:
 	if driving == null:
@@ -934,14 +934,14 @@ func _process(delta: float) -> void:
 	match status:
 		"medevac":
 			s_left = (float(me.get("medevacAt", 0)) - s_now) / 1000.0
-			hud.status_lbl.text = "MEDEVAC DEY COME… %ds" % int(max(0.0, s_left))
+			hud.status_lbl.text = "MEDEVAC INBOUND… %ds" % int(max(0.0, s_left))
 		"spirit":
 			s_left = (float(me.get("spiritUntil", 0)) - s_now) / 1000.0
 			hud.status_lbl.text = "SPIRIT RUN: reach any glowing gem · %ds" % int(max(0.0, s_left))
 		"downed":
 			var dm := float(Cfg.rules.get("RESPAWN", {}).get("downedMs", 10000))
 			s_left = (float(me.get("downedAt", 0)) + dm - s_now) / 1000.0
-			hud.status_lbl.text = "YOU DON FALL! Teammate fit revive you · %ds" % int(max(0.0, s_left))
+			hud.status_lbl.text = "YOU ARE DOWN! A teammate can revive you · %ds" % int(max(0.0, s_left))
 	# Birds and distant life.
 	amb_t -= dt
 	if amb_t <= 0.0:
@@ -1044,7 +1044,7 @@ func _open_settings() -> void:
 
 func net_status(on: bool) -> void:
 	if not on:
-		hud.toast("Network don cut. We dey reconnect…", "bad", 3)
+		hud.toast("Connection lost. Reconnecting…", "bad", 3)
 
 func shutdown() -> void:
 	Net.off_owner(self)
@@ -1351,14 +1351,14 @@ func _buttons(now: float) -> void:
 		elif _in_buy_zone():
 			hud.show_buy(me, int(me.get("level", 1)))
 		else:
-			hud.toast("You fit buy only for your base or as you just land.", "bad", 1.5)
+			hud.toast("You can only buy at your base or right after you deploy.", "bad", 1.5)
 	if touch.tapped("pill"):
 		if int(me.get("bloodpill", 0)) > 0 and float(me.get("health", 100)) < 100:
 			Net.send({"t": "pill"})
 		elif int(me.get("medkit", 0)) > 0 and float(me.get("health", 100)) < 100:
 			Net.send({"t": "medkit"})
 		else:
-			hud.toast("You no get blood pill. Buy for armoury.", "bad", 1.5)
+			hud.toast("You have no blood pills. Buy some at the armoury.", "bad", 1.5)
 	if touch.tapped("nade"):
 		_throw()
 	if touch.tapped("use"):
@@ -1384,7 +1384,7 @@ func _throw() -> void:
 			kind = k
 			break
 	if kind == "":
-		hud.toast("You no get grenade. Buy for armoury.", "bad", 1.5)
+		hud.toast("You have no grenades. Buy some at the armoury.", "bad", 1.5)
 		return
 	var d := Phys.dir_from_angles(yaw, pitch + 0.12)
 	var p := cam.global_position

@@ -215,14 +215,14 @@ export class WarMap {
     const bots = this.getBots();
     const realHere = L.realModes?.[this.mode] || 0;
     const live = here
-      ? `🔴 <b>${here}</b> real ${here === 1 ? 'player' : 'players'} dey fight now for ${esc(mode.label)}`
-      : `E quiet for here. Na bots dey hold am. You fit be the first to land.`;
+      ? `🔴 <b>${here}</b> real ${here === 1 ? 'player' : 'players'} fighting now in ${esc(mode.label)}`
+      : `Quiet here. Bots are holding it. You could be the first to land.`;
     // Bots or real players only: say it plainly, with the switch right here.
     const kind = bots
-      ? `<div class="match-kind bots">🤖 <b>With bots:</b> computer soldiers (marked <b>[BOT]</b>) fill empty places so war always dey. <button class="btn ghost sm" id="si-real">Play real players only${this.online ? ` · ${this.online} online` : ''}</button></div>`
+      ? `<div class="match-kind bots">🤖 <b>With bots:</b> computer soldiers (marked <b>[BOT]</b>) fill empty places so there is always a battle. <button class="btn ghost sm" id="si-real">Play real players only${this.online ? ` · ${this.online} online` : ''}</button></div>`
       : `<div class="match-kind real">👥 <b>Real players only</b> · ${this.online} online now · ${realHere} for this battle room. No bots at all. <button class="btn ghost sm" id="si-bots">Add bots</button></div>`;
     $('si-live').innerHTML = mode.practice
-      ? `<div class="match-kind real">🎯 <b>Your private practice range</b> (you and your crew only). Target dummies no dey shoot back, every gun free, swimming and fitness train 3x faster. Nothing count for your record.</div>`
+      ? `<div class="match-kind real">🎯 <b>Your private practice range</b> (you and your crew only). Target dummies never shoot back, every gun is free, swimming and fitness train 3x faster. Nothing counts towards your record.</div>`
       : live + kind;
     const flip = $('si-real') || $('si-bots');
     if (flip)
@@ -253,7 +253,7 @@ export class WarMap {
     }
     const btn = $('btn-deploy');
     btn.disabled = !this.faction;
-    btn.textContent = !this.faction ? 'CHOOSE WETIN YOU BE FIRST' : mode.practice ? `OPEN PRACTICE RANGE IN ${s.name.toUpperCase()}` : `DEPLOY TO ${s.name.toUpperCase()} AS ${FACTIONS[this.faction].label.toUpperCase()}`;
+    btn.textContent = !this.faction ? 'CHOOSE YOUR SIDE FIRST' : mode.practice ? `OPEN PRACTICE RANGE IN ${s.name.toUpperCase()}` : `DEPLOY TO ${s.name.toUpperCase()} AS ${FACTIONS[this.faction].label.toUpperCase()}`;
   }
 
   setProfile(p) {
@@ -287,7 +287,7 @@ export class WarMap {
     $('st-title').textContent = st.title;
     $('st-where').textContent = `${s.name} · ${BIOMES[s.biome].label}`;
     $('st-story').textContent = st.story;
-    const diff = st.diff < 0.3 ? 'Easy' : st.diff < 0.55 ? 'Normal' : st.diff < 0.75 ? 'Hard' : 'Wahala';
+    const diff = st.diff < 0.3 ? 'Easy' : st.diff < 0.55 ? 'Normal' : st.diff < 0.75 ? 'Hard' : 'Brutal';
     $('st-facts').innerHTML = `<span>🌊 ${st.waves} waves</span><span>❤ ${st.lives} lives</span><span>🎯 ${diff}</span><span>🪖 You: ${FACTIONS[st.ally].label}</span><span>☠ Enemy: ${FACTIONS[st.enemy].label}</span><span>🤝 2 bot allies</span>`;
     $('btn-stage').textContent = `START STAGE ${this.stageSel + 1}`;
   }
