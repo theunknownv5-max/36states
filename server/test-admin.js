@@ -230,7 +230,7 @@ try {
   check((await call('GET', 'config')).tunables.find((t) => t.key === 'HEALTH.regenPerSec').value === 12, 'tunable changed live');
   check((await call('PUT', 'config', { overrides: { 'HEALTH.regenPerSec': 999 } })).code >= 400, 'out-of-range value refused');
   await call('PUT', 'config', { overrides: { 'HEALTH.regenPerSec': null } });
-  check((await call('GET', 'config')).tunables.find((t) => t.key === 'HEALTH.regenPerSec').value === 9, 'reset to default');
+  check((await call('GET', 'config')).tunables.find((t) => t.key === 'HEALTH.regenPerSec').value === 14, 'reset to default');
   await call('PUT', 'config', { event: { name: 'Double XP', xpMult: 2, moneyMult: 1, hours: 24 } });
   const ctl = await ok.waitFor('control', 4000, (m) => !!m.event);
   check(ctl.event?.xpMult === 2, 'event reaches players live');

@@ -10,7 +10,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GradeShader } from './fps/grade.js';
 import { generateMap } from '../../shared/map.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
-import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TILE_GEMS } from '../../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TANKS, TILE_GEMS } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
 import { Ambience } from './world/ambience.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
@@ -46,6 +46,22 @@ const lerpAngle = (a, b, t) => {
   return a + d * t;
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const store = {
+  get(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch {
+      /* storage blocked */
+    }
+  }
+};
 
 export class Game {
   constructor({ renderer, net, input, quality, settings, onLeave, onNextStage }) {
@@ -98,6 +114,7 @@ export class Game {
     this.boards.load(info.state);
     this.tileGems = new TileGems(scene, this.map, info.tileGems || []);
     for (const i of info.drums || []) this.arena.killDrum(i);
+    for (const i of info.tanks || []) this.arena.killTank(i);
     this.siteMarkers = new SiteMarkers(scene, this.map);
     this.siteMarkers.apply(info.sites);
     this.fx = new Effects(scene);
@@ -111,7 +128,8 @@ export class Game {
     this.underworld = new Underworld(scene, this.map, this.arena);
     this.crocs = new Crocs(scene, this.fx);
     this.crocs.apply(info.crocs, info.serverTime);
-    this.dogs = new Dogs(scene, this.map);
+    this.dogs = new Dogs(scene, this.fx);
+    this.dogs.apply(info.dogs, info.serverTime);
     this.digging = null;
     this.diggers = new Map();
     this.applyWorld(info.world);
@@ -284,6 +302,11 @@ export class Game {
     on('s', (m) => this.onSnapshot(m));
     on('me', (m) => this.onMe(m));
     on('spawn', (m) => this.onSpawn(m));
+    on('lunge', (m) => {
+      // The server closed the last step of a melee swing: move there.
+      Object.assign(this.body, { x: m.x, z: m.z });
+      this.fx.shake = Math.min(1, this.fx.shake + 0.15);
+    });
     on('correct', (m) => {
       Object.assign(this.body, { x: m.x, y: m.y, z: m.z, vy: 0 });
     });
@@ -374,6 +397,13 @@ export class Game {
     });
     on('boom', (m) => this.onBoom(m));
     on('gem', (m) => this.walls.collected(m.i, m.until));
+    on('tank', (m) => {
+      // A fuel tank goes up: the huge blast itself arrives as a 'boom'; this is the fire after.
+      this.arena.killTank(m.i);
+      for (let k = 0; k < 3; k++) this.fx.burningWreck(m.x + (Math.random() - 0.5) * 4, m.z + (Math.random() - 0.5) * 4, TANKS.fireSecs);
+      audio.fire({ x: m.x, y: 2, z: m.z }, 12);
+      if (Math.hypot(m.x - this.body.x, m.z - this.body.z) < 80) this.hud.banner(m.by ? `💥 ${m.by} blew up a fuel tank!` : '💥 A fuel tank blew up!', 2400);
+    });
     on('drum', (m) => {
       this.arena.killDrum(m.i);
       this.fx.burningWreck(m.x, m.z, DRUMS.fireSecs);
@@ -411,6 +441,11 @@ export class Game {
       if (this.me) this.hud.nades(this.me);
     });
     on('amb', (m) => this.ambulances.add(m));
+    on('dog', (m) => {
+      this.dogs.event(m);
+      if (m.a === 'bite' && m.id === this.myId) this.fx.shake = Math.min(1.2, this.fx.shake + 0.5);
+      if (m.a === 'dead' && m.by) this.hud.toast(`${m.by} put down a guard dog`, 'info', 1800);
+    });
     on('croc', (m) => {
       if (m.a === 'bite') {
         this.crocs.bite(m.i);
@@ -510,6 +545,8 @@ export class Game {
       this.walls.setGems(m.gems);
       this.arena.restoreDrums();
       for (const i of m.drums || []) this.arena.killDrum(i);
+      this.arena.restoreTanks();
+      for (const i of m.tanks || []) this.arena.killTank(i);
       this.driving.stop();
       this.vehicles.reset();
       this.houses.reset();
@@ -567,6 +604,7 @@ export class Game {
     for (const [id, s] of this.soldiers) s.visible = seen.has(id);
     this.vehicles.onSnapshot(m.vh, m.ts, this.driving.active ? this.driving.v.i : -1);
     if (m.ck) this.crocs.apply(m.ck, m.ts);
+    if (m.dg) this.dogs.apply(m.dg, m.ts);
     this.fx.projectiles(m.pr);
     this.fx.syncSmokes(m.sm);
     this.smokes = m.sm.map(([x, z, r]) => ({ x, z, r }));
@@ -696,7 +734,7 @@ export class Game {
     this.scareAnimals(m.x, m.z, 60);
     const p = new THREE.Vector3(m.x, m.y, m.z);
     this.fx.explosion(p, m.r, m.w);
-    audio.explosion(p, m.w === 'artillery' || m.w === 'rpg' ? 1.3 : 1);
+    audio.explosion(p, m.w === 'tank' ? 2 : m.w === 'artillery' || m.w === 'rpg' ? 1.3 : 1);
     const d = p.distanceTo(this.camera.position);
     if (d < 40) music.excite(0.12);
     this.fx.shake = Math.min(1.5, this.fx.shake + Math.max(0, (m.r * 4 - d) / (m.r * 4)) * 1.2);
@@ -810,6 +848,19 @@ export class Game {
   }
 
   bindUi() {
+    // Where to come back: where you fell (if it's safe) or fresh at your base.
+    this.comeBack = store.get('pod.comeBack') === 'base' ? 'base' : 'here';
+    const setBack = (at) => {
+      this.comeBack = at;
+      store.set('pod.comeBack', at);
+      $('cb-here').classList.toggle('on', at === 'here');
+      $('cb-base').classList.toggle('on', at === 'base');
+      this.net.send({ t: 'respawn', at });
+    };
+    $('cb-here').onclick = () => setBack('here');
+    $('cb-base').onclick = () => setBack('base');
+    $('cb-here').classList.toggle('on', this.comeBack === 'here');
+    $('cb-base').classList.toggle('on', this.comeBack === 'base');
     $('opt-gem').onclick = () => this.respawn('gem');
     $('opt-spirit').onclick = () => this.respawn('spirit');
     $('opt-medevac').onclick = () => this.respawn('medevac');
@@ -917,7 +968,7 @@ export class Game {
     audio.unlock();
     this.respawnAt = performance.now();
     $('death').hidden = true;
-    this.net.send({ t: 'respawn', mode });
+    this.net.send({ t: 'respawn', mode, at: this.comeBack || 'here' });
     if (mode !== 'medevac' && !isTouch()) this.input.lock();
   }
 
@@ -1274,7 +1325,7 @@ export class Game {
 
   updateWarzone(dt, sNow) {
     this.crocs.update(dt, sNow, this.arena.time);
-    this.dogs.update(dt, this.arena.time, this.status === 'alive' ? this.body : null);
+    this.dogs.update(dt, sNow, this.arena.time);
     const mine = this.driving.active ? this.driving.v.i : -1;
     this.vehicles.update(dt, sNow, this.arena.time, mine);
     this.houses.update(dt, this.arena.time);

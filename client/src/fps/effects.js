@@ -164,7 +164,7 @@ export class Effects {
   }
 
   explosion(pos, radius = 7, kind = 'frag') {
-    const big = kind === 'artillery' || kind === 'rpg';
+    const big = kind === 'artillery' || kind === 'rpg' || kind === 'tank';
     this.blastLight.position.copy(pos).setY(pos.y + 1.5);
     this.blastLight.intensity = big ? 900 : 500;
     for (let i = 0; i < (big ? 10 : 6); i++) {

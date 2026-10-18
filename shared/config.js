@@ -81,7 +81,7 @@ export const FACTIONS = {
 // Weapons. dmg = damage per bullet at close range; armorPen = share that still hits health through armour.
 // spread values are in radians; kick is upward recoil per shot.
 export const WEAPONS = {
-  knife: { name: 'Machete', slot: 'melee', price: 0, dmg: 55, backstab: 120, range: 2.0, rpm: 90, melee: true, speed: 1.08, kill: 1500 },
+  knife: { name: 'Machete', slot: 'melee', price: 0, dmg: 60, backstab: 130, range: 2.6, lunge: 1.6, rpm: 90, melee: true, speed: 1.08, kill: 1500 },
   p9: { name: 'P9 Pistol', slot: 'secondary', price: 0, dmg: 27, head: 4, armorPen: 0.5, rpm: 400, mag: 13, reserve: 52, reload: 2.1, range: 70, falloff: [20, 60], spread: 0.011, moveSpread: 0.03, adsSpread: 0.004, kick: 0.018, auto: false, speed: 1.0, kill: 300, pen: 0.2, sound: 'pistol' },
   hawk: { name: 'Hawk .50', slot: 'secondary', price: 700, dmg: 58, head: 3.6, armorPen: 0.85, rpm: 150, mag: 7, reserve: 35, reload: 2.2, range: 90, falloff: [30, 80], spread: 0.008, moveSpread: 0.05, adsSpread: 0.002, kick: 0.05, auto: false, speed: 0.98, kill: 300, pen: 0.5, sound: 'magnum' },
   mp5: { name: 'MP5', slot: 'primary', price: 1500, dmg: 24, head: 3, armorPen: 0.6, rpm: 800, mag: 30, reserve: 120, reload: 2.3, range: 80, falloff: [18, 55], spread: 0.018, moveSpread: 0.03, adsSpread: 0.008, kick: 0.011, auto: true, speed: 0.98, kill: 600, pen: 0.3, sound: 'smg' },
@@ -115,19 +115,20 @@ export const GEAR = {
 };
 
 // Bare-hand punch (quick melee, any time). Three hits on the same enemy in a row land a heavy blow.
-export const PUNCH = { dmg: 28, backstab: 55, range: 1.8, cooldownMs: 360, combo: 3, comboWindowMs: 1600, comboBonus: 30 };
+export const PUNCH = { dmg: 30, backstab: 60, range: 2.3, lunge: 1.4, cooldownMs: 360, combo: 3, comboWindowMs: 1600, comboBonus: 30 };
 
 // Staying alive: health comes back after a few seconds out of fire; bots hit humans a bit softer;
 // everyone lands with light armour and one blood pill.
 export const HEALTH = {
-  regenDelayMs: 5000,
-  regenPerSec: 9,
-  botDamageToHumans: 0.7,
-  botMaxHit: 38, // no single bot bullet can one-shot a player (not even a headshot)
-  secondWindHp: 20, // once per life, a hit that would kill you leaves you on this much health
-  secondWindMs: 1500, // with a moment of protection to find cover
-  startArmor: 40,
-  startPills: 1
+  regenDelayMs: 3500,
+  regenPerSec: 14,
+  botDamageToHumans: 0.45,
+  botMaxHit: 24, // no single bot bullet can do much more than a quarter of your health (not even a headshot)
+  botFocus: 2, // at most this many bots shoot at the same real player at once
+  secondWindHp: 30, // once per life, a hit that would kill you leaves you on this much health
+  secondWindMs: 2500, // with a moment of protection to find cover
+  startArmor: 60,
+  startPills: 2
 };
 
 // Gemstones on the ground advert tiles: walk over one to heal (or armour up). They come back after a while.
@@ -156,6 +157,18 @@ export const DRUMS = {
   fireSecs: 9 // how long the wreck keeps burning
 };
 
+// Fuel and gas storage tanks: shoot them enough (bullets do little, explosives a lot) and they go
+// up in a huge fireball that wrecks everything around: soldiers, cars, houses, drums.
+export const TANKS = {
+  health: 320,
+  bulletMult: 0.4,
+  blast: 17,
+  dmg: 320,
+  burnRadius: 10,
+  burnSecs: 6,
+  fireSecs: 40
+};
+
 export const KILLSTREAKS = {
   uav: { name: 'Recon drone', kills: 3, duration: 20 },
   artillery: { name: 'Artillery barrage', kills: 5, shells: 7, spread: 11, delay: 2.6, interval: 0.55, blast: 8, dmg: 170 }
@@ -182,7 +195,7 @@ export const RESPAWN = {
   medevacMs: 25000, // or wait for the medevac
   medevacFee: 1000,
   botRespawnMs: 9000,
-  protectMs: 2500 // spawn protection
+  protectMs: 4000 // spawn protection
 };
 
 export const MATCH = {

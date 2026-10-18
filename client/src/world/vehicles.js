@@ -2,6 +2,7 @@
 // wrecks that cool into charred shells, C4 charges (stuck on walls or vehicles, blinking),
 // and the ambulance that drives in with its siren when someone pays for one.
 import * as THREE from 'three';
+import { audio } from '../core/audio.js';
 import { VEHICLES, WRECK, footprint, forward } from '../../../shared/vehicles.js';
 import { moveBox } from '../../../shared/physics.js';
 import { NET } from '../../../shared/config.js';
@@ -93,6 +94,20 @@ export class Vehicles {
     const v = this.list[i];
     if (!v || v.state === s) return;
     v.state = s;
+    if (s === 4) {
+      // Crushed flat under a lorry.
+      v.g.scale.y = 0.32;
+      v.g.position.y = -0.05;
+      v.g.rotation.z = (Math.random() - 0.5) * 0.12;
+      this.map.boxes[v.box].y1 = 0.45;
+      v.speed = 0;
+      v.buf.length = 0;
+      if (!instant) {
+        audio.crash?.(16);
+        for (let k = 0; k < 14; k++) this.fx.dust.spawn(new THREE.Vector3(v.x, 0.5, v.z), { colour: '#8a7a62', size: 1.2, life: 1.6, v: new THREE.Vector3((Math.random() - 0.5) * 4, 1.5, (Math.random() - 0.5) * 4), grow: 2, opacity: 0.6 });
+      }
+      return;
+    }
     if (s >= 2 && !v.g.userData.charred) {
       v.char = charVehicle(v.g, charMaterial());
       v.g.position.y = -0.2;

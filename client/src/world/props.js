@@ -444,6 +444,7 @@ export function buildProps(arena, rng) {
         g.add(ladder);
         g.position.set(v.x, 0, v.z);
         add(g);
+        if (v.ti !== undefined) (arena.tankMeshes ||= [])[v.ti] = g;
         break;
       }
       case 'pipe': {

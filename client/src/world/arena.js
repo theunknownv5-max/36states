@@ -517,6 +517,46 @@ export class Arena {
     }
   }
 
+  // A fuel tank went up: the tank is gone (its collision box sinks, exactly like the server)
+  // and a charred, buckled stump is left.
+  killTank(i) {
+    const g = this.tankMeshes?.[i];
+    const bi = this.map.tanks?.[i];
+    if (bi !== undefined) {
+      const b = this.map.boxes[bi];
+      if (b.oy1 === undefined || b.y1 > 0) {
+        b.oy0 = b.y0;
+        b.oy1 = b.y1;
+        b.y0 = -3;
+        b.y1 = -2.5;
+      }
+    }
+    if (!g || g.userData.dead) return;
+    g.userData.dead = true;
+    g.userData.scale = g.scale.y;
+    g.scale.y = 0.18;
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      o.userData.mat = o.material;
+      o.material = this.charMat ||= new THREE.MeshStandardMaterial({ color: '#1a1714', roughness: 1 });
+    });
+  }
+
+  restoreTanks() {
+    (this.map.tanks || []).forEach((bi, i) => {
+      const b = this.map.boxes[bi];
+      if (b.oy1 !== undefined) {
+        b.y0 = b.oy0;
+        b.y1 = b.oy1;
+      }
+      const g = this.tankMeshes?.[i];
+      if (!g?.userData.dead) return;
+      g.userData.dead = false;
+      g.scale.y = 1;
+      g.traverse((o) => o.isMesh && o.userData.mat && (o.material = o.userData.mat));
+    });
+  }
+
   // ---------- rivers, creeks, lakes ----------
   buildWater() {
     if (!this.map.water.length) return;

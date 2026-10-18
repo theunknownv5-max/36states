@@ -2,6 +2,7 @@
 // windows with a column of black smoke, the walls char, and it is left as a blackened
 // charcoal shell with embers that slowly cool.
 import * as THREE from 'three';
+import { audio } from '../core/audio.js';
 import { HOUSES } from '../../../shared/vehicles.js';
 import { charMaterial } from './vehicle-models.js';
 import * as T from '../core/textures.js';
@@ -14,6 +15,9 @@ export class Houses {
     this.fx = fx;
     this.state = map.houses.map(() => 0);
     this.burning = [];
+    // Original wall heights, so a house a lorry knocked down stands again next round.
+    this.orig = [];
+    map.boxes.forEach((b, bi) => b.house !== undefined && !b.roof && this.orig.push([bi, b.y1]));
     this.flameMat = new THREE.SpriteMaterial({ map: T.flameTex(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
     this.debrisMat = new THREE.MeshStandardMaterial({ color: '#151210', roughness: 1, metalness: 0.2, side: THREE.DoubleSide });
   }
@@ -26,6 +30,7 @@ export class Houses {
     const H = this.map.houses[i];
     const parts = this.arena.houseParts?.[i];
     if (!H || !parts || this.state[i] >= s) return;
+    if (s === 4) return this.crush(i, H, parts, instant);
     const was = this.state[i];
     this.state[i] = s;
     // The roof caves in, server and client alike.
@@ -48,6 +53,27 @@ export class Houses {
       const f = this.burning.find((x) => x.i === i);
       if (f) f.life = Math.min(f.life, 2.5);
     }
+  }
+
+  // A lorry drove through it: walls knocked down to a low line of rubble, in a cloud of dust.
+  crush(i, H, parts, instant) {
+    this.state[i] = 4;
+    for (const b of this.map.boxes) {
+      if (b.house !== i) continue;
+      if (b.roof) {
+        b.y0 = -3;
+        b.y1 = -2.5;
+      } else b.y1 = Math.min(b.y1, 0.45);
+    }
+    parts.walls.scale.y = 0.14;
+    parts.roof.visible = false;
+    for (const o of parts.props) o.visible = false;
+    if (parts.debris) parts.debris.visible = false;
+    const f = this.burning.find((x) => x.i === i);
+    if (f) f.life = Math.min(f.life, 0.5);
+    if (instant) return;
+    for (let k = 0; k < 26; k++) this.fx.dust.spawn(new THREE.Vector3(H.x + (Math.random() - 0.5) * H.w, 0.6 + Math.random() * H.h * 0.6, H.z + (Math.random() - 0.5) * H.d), { colour: k % 2 ? '#8a7a62' : '#6b5a48', size: 1.6 + Math.random() * 1.5, life: 2.5 + Math.random() * 2, v: new THREE.Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3), grow: 2.5, opacity: 0.75 });
+    audio.crash?.(14);
   }
 
   // Burnt roof sheets and beams lying across the room.
@@ -130,6 +156,7 @@ export class Houses {
       if (!s) continue;
       const parts = this.arena.houseParts[i];
       const H = this.map.houses[i];
+      parts.walls.scale.y = 1;
       parts.roof.visible = true;
       for (const o of parts.props) o.visible = true;
       if (parts.debris) this.scene.remove(parts.debris);
@@ -144,6 +171,7 @@ export class Houses {
         roof.y1 = H.h + 0.12;
       }
     }
+    for (const [bi, y1] of this.orig) this.map.boxes[bi].y1 = y1;
     for (const f of this.burning) {
       if (f.g) this.scene.remove(f.g);
       if (f.light && this.fx.lightUsers.get(f.light) === f) this.fx.releaseFireLight(f.light);

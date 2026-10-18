@@ -13,8 +13,8 @@ export const VEHICLES = {
   danfo: { name: 'Danfo bus', L: 5.0, W: 2.0, H: 2.25, hp: 380, top: 16, accel: 6, brake: 12, turn: 1.5, seatY: 0.6, eye: 1.65, wheels: 4, colours: ['#f2b705'] },
   keke: { name: 'Keke', L: 2.75, W: 1.35, H: 1.8, hp: 150, top: 12, accel: 6, brake: 12, turn: 2.2, seatY: 0.45, eye: 1.4, wheels: 3, open: true, colours: ['#f2c200', '#1f8a3b', '#2d6fd0', '#f2c200'] },
   okada: { name: 'Okada', L: 2.0, W: 0.75, H: 1.15, hp: 90, top: 19, accel: 9, brake: 14, turn: 2.6, seatY: 0.55, eye: 1.55, wheels: 2, open: true, bike: true, colours: ['#b3121b', '#151719', '#1d3f8a', '#c9ccd1'] },
-  lorry: { name: 'Lorry', L: 7.6, W: 2.45, H: 3.1, hp: 620, top: 13, accel: 4.5, brake: 10, turn: 1.25, seatY: 1.0, eye: 2.25, wheels: 6, colours: ['#2f5d9a', '#b3121b', '#e0a21a', '#2f6b3a'] },
-  apc: { name: 'Armoured carrier', L: 6.3, W: 2.6, H: 2.5, hp: 720, top: 13, accel: 5, brake: 11, turn: 1.3, seatY: 2.15, eye: 3.05, wheels: 6, armored: true, colours: ['#4b5432'] }
+  lorry: { name: 'Lorry', L: 7.6, W: 2.45, H: 3.1, hp: 620, top: 13, accel: 4.5, brake: 10, turn: 1.25, seatY: 1.0, eye: 2.25, wheels: 6, crusher: true, colours: ['#2f5d9a', '#b3121b', '#e0a21a', '#2f6b3a'] },
+  apc: { name: 'Armoured carrier', L: 6.3, W: 2.6, H: 2.5, hp: 720, top: 13, accel: 5, brake: 11, turn: 1.3, seatY: 2.15, eye: 3.05, wheels: 6, armored: true, crusher: true, colours: ['#4b5432'] }
 };
 export const VEHICLE_IDS = Object.keys(VEHICLES);
 
@@ -36,6 +36,22 @@ export const WRECK = {
   crashMin: 9, // hitting a wall faster than this damages the vehicle
   crashDmg: 9
 };
+
+// What a heavy vehicle (lorry, armoured carrier) can drive straight through: small cars and kekes,
+// and flimsy mud or plank houses. Never rocks, walls, towers or other big structures.
+export const CRUSH = { cars: ['sedan', 'suv', 'pickup', 'keke', 'okada'], houses: ['mud', 'plank'], slow: 0.7, selfDmg: 18, hurt: 60 };
+export function crushable(type, b, map) {
+  if (!VEHICLES[type]?.crusher || !b) return false;
+  if (b.veh !== undefined) {
+    const v = map.vehicles[b.veh];
+    return !!v && CRUSH.cars.includes(v.type) && b.y1 > 0.5;
+  }
+  if (b.house !== undefined) {
+    const h = map.houses[b.house];
+    return !!h && CRUSH.houses.includes(h.kind);
+  }
+  return false;
+}
 
 // Houses: rockets, grenades and C4 damage them; at zero they burn, the roof caves in, and the
 // walls stay as a black charcoal shell.
@@ -72,7 +88,7 @@ export function insideVehicle(type, x, z, yaw, px, pz, pad = 0) {
 
 const tmp = [];
 // Would the vehicle overlap a wall here? Its outline is a row of circles along its length.
-export function vehicleBlocked(type, x, z, yaw, index, selfBox = -1, shrink = 0) {
+export function vehicleBlocked(type, x, z, yaw, index, selfBox = -1, shrink = 0, canCrush = null) {
   const d = VEHICLES[type];
   const [fx, fz] = forward(yaw);
   const r = Math.max(0.2, (d.W / 2) * 0.95 - shrink);
@@ -87,6 +103,7 @@ export function vehicleBlocked(type, x, z, yaw, index, selfBox = -1, shrink = 0)
       if (i === selfBox) continue;
       const b = index.boxes[i];
       if (b.y1 <= 0.5 || b.y0 >= 1.5) continue; // kerbs you roll over, lintels and roofs above
+      if (canCrush && canCrush(b)) continue; // a lorry rolls straight over small cars and flimsy houses
       const ex = Math.max(b.x0 - cx, 0, cx - b.x1);
       const ez = Math.max(b.z0 - cz, 0, cz - b.z1);
       if (ex * ex + ez * ez < r * r) return true;
@@ -97,7 +114,7 @@ export function vehicleBlocked(type, x, z, yaw, index, selfBox = -1, shrink = 0)
 
 // One step of arcade driving. v: { type, x, z, yaw, speed }. ctl: { throttle, steer, brake }
 // (-1..1, -1..1, bool). Returns the impact speed if we hit something (0 otherwise).
-export function driveStep(v, ctl, dt, index, half, { selfBox = -1, slowAt = null } = {}) {
+export function driveStep(v, ctl, dt, index, half, { selfBox = -1, slowAt = null, canCrush = null } = {}) {
   const d = VEHICLES[v.type];
   const thr = ctl.throttle || 0;
   let acc = 0;
@@ -114,7 +131,7 @@ export function driveStep(v, ctl, dt, index, half, { selfBox = -1, slowAt = null
   const rate = (ctl.steer || 0) * d.turn * grip * (1 - 0.45 * Math.min(1, Math.abs(v.speed) / d.top));
   const oldYaw = v.yaw;
   v.yaw -= rate * Math.sign(v.speed || 1) * dt;
-  if (vehicleBlocked(v.type, v.x, v.z, v.yaw, index, selfBox)) v.yaw = oldYaw;
+  if (vehicleBlocked(v.type, v.x, v.z, v.yaw, index, selfBox, 0, canCrush)) v.yaw = oldYaw;
   const dist = v.speed * dt;
   const steps = Math.max(1, Math.ceil(Math.abs(dist) / 0.3));
   const [fx, fz] = forward(v.yaw);
@@ -122,7 +139,7 @@ export function driveStep(v, ctl, dt, index, half, { selfBox = -1, slowAt = null
   for (let s = 0; s < steps; s++) {
     const nx = v.x + (fx * dist) / steps;
     const nz = v.z + (fz * dist) / steps;
-    if (vehicleBlocked(v.type, nx, nz, v.yaw, index, selfBox)) {
+    if (vehicleBlocked(v.type, nx, nz, v.yaw, index, selfBox, 0, canCrush)) {
       impact = Math.abs(v.speed);
       v.speed = -v.speed * 0.2;
       break;

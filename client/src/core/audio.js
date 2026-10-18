@@ -914,6 +914,14 @@ export class AudioEngine {
     }
   }
 
+  // A hurt dog's yelp.
+  yelp(pos) {
+    if (!this.ready()) return;
+    const o = this.out(pos, { ref: 5, reverb: 0.3 });
+    this.tone(o.input, o.when, { f: 1300, f2: 700, dur: 0.18, gain: 0.25, type: 'triangle', attack: 0.003 });
+    this.tone(o.input, o.when + 0.2, { f: 1100, f2: 650, dur: 0.14, gain: 0.18, type: 'triangle', attack: 0.003 });
+  }
+
   // A crocodile's jaws snapping shut and a splash.
   croc(pos) {
     if (!this.ready()) return;

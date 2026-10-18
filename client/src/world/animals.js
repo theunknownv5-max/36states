@@ -1,9 +1,8 @@
-// Animals: crocodiles in the big rivers (from the server, they bite) and stray dogs that roam
-// the towns, bark at soldiers and bolt when guns go off (cosmetic, on each phone).
+// Animals, all run by the server so every player sees the same ones and can fight them:
+// crocodiles in the big rivers, and stray dogs around the towns (strays bolt at gunfire,
+// guard dogs go for anyone who comes too close).
 import * as THREE from 'three';
 import { NET } from '../../../shared/config.js';
-import { moveBody } from '../../../shared/physics.js';
-import { inWater } from '../../../shared/map.js';
 import { audio } from '../core/audio.js';
 
 const lerpA = (a, b, k) => {
@@ -187,82 +186,93 @@ function dogModel(coat) {
 }
 
 export class Dogs {
-  constructor(scene, map) {
+  constructor(scene, fx) {
     this.scene = scene;
-    this.map = map;
-    this.dogs = [];
-    const homes = map.buildings.filter((b) => !b.solid);
-    const n = Math.min(6, Math.max(2, Math.round(homes.length / 3)));
-    for (let k = 0; k < n && homes.length; k++) {
-      const h = homes[Math.floor(Math.random() * homes.length)];
-      const x = h.x + (h.w / 2 + 2) * (Math.random() < 0.5 ? -1 : 1);
-      const z = h.z + (Math.random() - 0.5) * h.d;
-      const g = dogModel(COATS[k % COATS.length]);
-      g.position.set(x, 0, z);
-      scene.add(g);
-      this.dogs.push({ g, body: { x, y: 0, z, vy: 0, onGround: true, crouch: false }, home: { x, z }, goal: null, speed: 0, fleeUntil: 0, barkAt: 0, phase: Math.random() * 6 });
+    this.fx = fx;
+    this.items = new Map();
+  }
+
+  item(i) {
+    if (!this.items.has(i)) {
+      const g = dogModel(COATS[i % COATS.length]);
+      this.scene.add(g);
+      this.items.set(i, { g, buf: [], state: 0, deadT: 0, speed: 0, phase: Math.random() * 6 });
+    }
+    return this.items.get(i);
+  }
+
+  apply(list, ts) {
+    for (const [i, x, z, yaw, st] of list || []) {
+      const d = this.item(i);
+      d.buf.push({ t: ts, x, z, yaw });
+      if (d.buf.length > 12) d.buf.shift();
+      if (st === 2 && d.state !== 2) d.deadT = 0;
+      if (st !== 2 && d.state === 2) d.g.visible = true;
+      d.state = st;
     }
   }
 
-  // Gunshots and blasts send them running.
-  scare(x, z, r = 30) {
-    const t = performance.now();
-    for (const d of this.dogs)
-      if (Math.hypot(d.body.x - x, d.body.z - z) < r) {
-        d.fleeUntil = t + 4000;
-        d.goal = { x: d.body.x + (d.body.x - x) * 2, z: d.body.z + (d.body.z - z) * 2 };
-      }
+  // Server events: barks, bites, yelps and deaths.
+  event(m) {
+    const d = this.items.get(m.i);
+    if (!d) return;
+    const p = d.g.position;
+    const at = { x: p.x, y: 0.6, z: p.z };
+    if (m.a === 'bark' || m.a === 'bite') audio.bark?.(at);
+    if (m.a === 'bite') d.snap = 1;
+    if (m.a === 'yelp' || m.a === 'dead') audio.yelp?.(at);
+    if (m.a === 'dead' || m.a === 'yelp') {
+      for (let k = 0; k < 8; k++) this.fx.dust.spawn(new THREE.Vector3(p.x, 0.5, p.z), { colour: '#6a0d0d', size: 0.12, life: 0.6, v: new THREE.Vector3((Math.random() - 0.5) * 2, 1 + Math.random(), (Math.random() - 0.5) * 2), g: 7, opacity: 0.9 });
+    }
   }
 
-  update(dt, t, me) {
-    const now = performance.now();
-    for (const d of this.dogs) {
-      const b = d.body;
-      const fleeing = now < d.fleeUntil;
-      const dMe = me ? Math.hypot(me.x - b.x, me.z - b.z) : 99;
-      if (!fleeing && dMe < 7 && now - d.barkAt > 2500 + Math.random() * 2000) {
-        d.barkAt = now;
-        audio.bark?.({ x: b.x, y: 0.6, z: b.z });
-        if (dMe < 3.5) {
-          d.fleeUntil = now + 1500;
-          d.goal = { x: b.x + (b.x - me.x) * 3, z: b.z + (b.z - me.z) * 3 };
+  // (Kept for callers: the server now decides when dogs run from gunfire.)
+  scare() {}
+
+  update(dt, sNow, t) {
+    const rt = sNow - NET.interpDelayMs;
+    for (const d of this.items.values()) {
+      const buf = d.buf;
+      if (!buf.length) continue;
+      let a = buf[0];
+      let b = buf[buf.length - 1];
+      for (let k = buf.length - 1; k > 0; k--)
+        if (buf[k - 1].t <= rt) {
+          a = buf[k - 1];
+          b = buf[k];
+          break;
         }
+      const k = b.t === a.t ? 1 : Math.max(0, Math.min(1, (rt - a.t) / (b.t - a.t)));
+      const g = d.g;
+      const x = a.x + (b.x - a.x) * k;
+      const z = a.z + (b.z - a.z) * k;
+      const moved = Math.hypot(x - g.position.x, z - g.position.z) / Math.max(dt, 1e-3);
+      g.position.x = x;
+      g.position.z = z;
+      g.rotation.y = lerpA(a.yaw, b.yaw, k);
+      const u = g.userData;
+      if (d.state === 2) {
+        // Dead: falls on its side, then fades away.
+        d.deadT += dt;
+        g.rotation.z = Math.min(Math.PI / 2, d.deadT * 6);
+        g.position.y = -Math.max(0, d.deadT - 8) * 0.2;
+        if (d.deadT > 11) g.visible = false;
+        continue;
       }
-      if (!d.goal || Math.hypot(d.goal.x - b.x, d.goal.z - b.z) < 0.4 || (!fleeing && Math.random() < dt * 0.15)) {
-        if (!fleeing) d.goal = Math.random() < 0.4 ? null : { x: d.home.x + (Math.random() - 0.5) * 20, z: d.home.z + (Math.random() - 0.5) * 20 };
-      }
-      let wx = 0;
-      let wz = 0;
-      if (d.goal) {
-        const dx = d.goal.x - b.x;
-        const dz = d.goal.z - b.z;
-        const len = Math.hypot(dx, dz) || 1;
-        const sp = fleeing ? 7 : 1.6;
-        wx = (dx / len) * sp;
-        wz = (dz / len) * sp;
-        d.g.rotation.y = lerpA(d.g.rotation.y, Math.atan2(-dx, -dz), Math.min(1, dt * 8));
-      }
-      if (inWater(this.map, b.x + wx * 0.3, b.z + wz * 0.3)) {
-        wx = -wx;
-        wz = -wz;
-        d.goal = null;
-      }
-      const ox = b.x;
-      const oz = b.z;
-      moveBody(b, wx, wz, dt, this.map.index, this.map.half - 3, false);
-      const moved = Math.hypot(b.x - ox, b.z - oz) / Math.max(dt, 1e-3);
-      d.speed += (moved - d.speed) * Math.min(1, dt * 6);
-      d.g.position.set(b.x, b.y, b.z);
-      const u = d.g.userData;
+      g.rotation.z = 0;
+      g.position.y = 0;
+      d.speed += (Math.min(moved, 9) - d.speed) * Math.min(1, dt * 6);
       d.phase += dt * (2 + d.speed * 3.2);
       const swing = Math.min(0.8, d.speed * 0.18);
       u.legs.forEach((l, n) => (l.rotation.x = Math.sin(d.phase + (n % 2 === 0 ? 0 : Math.PI) + (n > 1 ? Math.PI / 2 : 0)) * swing));
-      u.tail.rotation.z = Math.sin(t * (fleeing ? 4 : 10)) * 0.4;
-      u.head.rotation.x = d.speed < 0.2 ? Math.sin(t * 0.7 + d.phase) * 0.15 + 0.2 : 0;
+      u.tail.rotation.z = Math.sin(t * (d.state === 1 ? 4 : 10)) * 0.4;
+      d.snap = Math.max(0, (d.snap || 0) - dt * 4);
+      u.head.rotation.x = d.state === 3 ? -0.25 + d.snap * 0.5 : d.speed < 0.2 ? Math.sin(t * 0.7 + d.phase) * 0.15 + 0.2 : 0;
     }
   }
 
   dispose() {
-    for (const d of this.dogs) this.scene.remove(d.g);
+    for (const d of this.items.values()) this.scene.remove(d.g);
+    this.items.clear();
   }
 }

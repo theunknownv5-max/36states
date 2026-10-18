@@ -2743,3 +2743,27 @@ body.waiting .wait-ads { bottom: 10px; }
   .wa-actions kbd { display: none; }
 }
 body.waiting .dr-reticle, body.waiting .dr-left { opacity: 0.25; }
+
+/* Where to come back after dying */
+.comeback {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+  color: var(--muted);
+}
+.comeback .chip {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.comeback .chip.on {
+  border-color: var(--pod);
+  background: rgba(255, 122, 26, 0.22);
+}

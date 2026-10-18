@@ -1,7 +1,7 @@
 // Server-side soldiers that fill empty slots so every state always has a fight.
 // They see with line-of-sight (smoke blocks them), react with a human-like delay,
 // spray in bursts with recoil-like error, capture sites, hunt, throw grenades and call streaks.
-import { WEAPONS, PLAYER, KILLSTREAKS, FACTIONS } from '../shared/config.js';
+import { WEAPONS, PLAYER, KILLSTREAKS, FACTIONS, HEALTH, PUNCH } from '../shared/config.js';
 import { moveBody, lineBlocked, spreadDir, normalise } from '../shared/physics.js';
 import { findPath, inWater } from '../shared/map.js';
 
@@ -42,6 +42,8 @@ export class BotBrain {
     this.match = match;
     this.respawnAt = 0;
     this.skill = 0.55 + Math.random() * 0.35; // 0..1, higher = better aim and faster reactions
+    // Some soldiers like it up close: they rush in and fight with fists and machete.
+    this.brawler = Math.random() < 0.22;
   }
 
   onSpawn(p) {
@@ -112,7 +114,13 @@ export class BotBrain {
         if (heard && dist < 30 && !this.target) this.lastSeen = { x: o.x, z: o.z, t };
         continue;
       }
-      const score = dist * (o.status === 'downed' ? 1.6 : 1);
+      let score = dist * (o.status === 'downed' ? 1.6 : 1);
+      // A real player is never mobbed: at most a couple of bots fire at the same one at once.
+      if (o.human && !shotMe && (!this.target || this.target.id !== o.id)) {
+        let focus = 0;
+        for (const q of m.players.values()) if (q.bot && q.bot !== this && q.bot.target?.id === o.id) focus++;
+        if (focus >= HEALTH.botFocus) score += 200;
+      }
       if (score < bestD) {
         bestD = score;
         best = o;
@@ -120,7 +128,7 @@ export class BotBrain {
     }
     if (best) {
       if (!this.target || this.target.id !== best.id) {
-        this.reactAt = t + (650 - this.skill * 380) + Math.random() * 200;
+        this.reactAt = t + (650 - this.skill * 380) + Math.random() * 200 + (best.human ? 300 : 0);
         this.engagedAt = this.reactAt;
       }
       this.target = best;
@@ -245,7 +253,23 @@ export class BotBrain {
         wishX += -Math.sin(p.yaw) * PLAYER.walk * 0.7;
         wishZ += -Math.cos(p.yaw) * PLAYER.walk * 0.7;
       }
-      if (t >= this.reactAt && Math.abs(dy) < 0.2) this.shoot(p, tgt, dist);
+      // Close quarters: brawlers charge anyone within 14 m, everyone closes in under 5 m,
+      // and up close they fight hand to hand.
+      const charge = tgt.status === 'alive' && (dist < 5 || (this.brawler && dist < 14));
+      if (charge) {
+        p.crouch = false;
+        const run = PLAYER.run * 0.95;
+        wishX = (dx / (dist || 1)) * run + sx * 0.6;
+        wishZ = (dz / (dist || 1)) * run + sz * 0.6;
+        if (dist < (p.slot === 'melee' ? WEAPONS.knife.range : PUNCH.range) + 0.3) {
+          wishX = sx * 0.8;
+          wishZ = sz * 0.8;
+          if (t >= this.reactAt && Math.abs(dy) < 0.5) this.brawl(p);
+        } else if (this.brawler && dist < 9 && p.weapons.melee && p.slot !== 'melee' && Math.random() < dt * 2) p.slot = 'melee';
+      } else if (p.slot === 'melee' && dist > 8) p.slot = p.weapons.primary ? 'primary' : 'secondary';
+      if (!charge || dist > 3) {
+        if (t >= this.reactAt && Math.abs(dy) < 0.2 && p.slot !== 'melee') this.shoot(p, tgt, dist);
+      }
     } else {
       p.crouch = false;
       this.burst = 0;
@@ -321,6 +345,14 @@ export class BotBrain {
     moveBody(p, wx, wz, dt, m.map.index, m.map.half, false);
   }
 
+  // Hand to hand: machete if it's out, otherwise fists (combos land heavy blows).
+  brawl(p) {
+    const t = now();
+    if (t - (this.lastSwing || 0) < 450 + Math.random() * 350) return;
+    this.lastSwing = t;
+    this.match.onMelee(p, p.slot === 'melee' && Math.random() < 0.8 ? {} : { kind: 'punch' });
+  }
+
   shoot(p, tgt, dist) {
     const m = this.match;
     const t = now();
@@ -349,7 +381,7 @@ export class BotBrain {
     const dir = normalise([tgt.x - ex, ty - ey, tgt.z - ez]);
     // Aim settles over the first second and a half of a fight; spraying makes it worse.
     const settle = Math.max(0.2, 1 - (t - this.engagedAt) / 1500);
-    const err = (0.006 + 0.05 * settle * (1.2 - this.skill)) * (1 + this.burst * 0.12) + (p.crouch ? 0 : w.moveSpread * 0.25);
+    const err = ((0.006 + 0.05 * settle * (1.2 - this.skill)) * (1 + this.burst * 0.12) + (p.crouch ? 0 : w.moveSpread * 0.25)) * (tgt.human ? 1.35 : 1);
     const shotDir = spreadDir(dir, err);
     p.lastFire = t;
     p.firedAt = t;

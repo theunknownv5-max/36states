@@ -1,7 +1,7 @@
 // One live battle in one state. The server decides every hit, death, revive,
 // gem pickup, capture, explosion and payout. Bots fill empty slots.
 import { randomUUID } from 'node:crypto';
-import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, HEALTH, PUNCH, TILE_GEMS, MODES, priceFor, rankFor } from '../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, TANKS, HEALTH, PUNCH, TILE_GEMS, MODES, priceFor, rankFor } from '../shared/config.js';
 import { generateMap, inWater, tileGemSpots } from '../shared/map.js';
 import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise, holeAt } from '../shared/physics.js';
 import { RESOURCES } from '../shared/states.js';
@@ -55,8 +55,8 @@ export class Match {
     this.smokes = [];
     this.artillery = [];
     this.uav = { sec: 0, out: 0 };
-    // Every drum is back, full, at the start of a round.
-    for (const bi of this.map.drums) {
+    // Every drum and fuel tank is back, full, at the start of a round.
+    for (const bi of [...this.map.drums, ...(this.map.tanks || [])]) {
       const b = this.map.boxes[bi];
       if (b.oy1 !== undefined) {
         b.y0 = b.oy0;
@@ -65,6 +65,8 @@ export class Match {
     }
     this.world.reset();
     this.drumHp = this.map.drums.map(() => DRUMS.health);
+    this.tankHp = (this.map.tanks || []).map(() => TANKS.health);
+    this.tanksDead = [];
     this.drumsDead = [];
     this.drumQueue = [];
     for (const p of this.players.values()) {
@@ -230,6 +232,11 @@ export class Match {
     }
     const custom = this.mode.spawnPoint?.(p);
     if (custom) best = custom;
+    else if (p.human && !first && p.comeBack !== 'base' && p.fellAt) {
+      const here = this.safeSpotNear(p, p.fellAt.x, p.fellAt.z);
+      if (here) best = { x: here.x, z: here.z, yaw: p.yaw };
+    }
+    p.fellAt = null;
     Object.assign(p, { x: best.x, y: 0, z: best.z, yaw: best.yaw, pitch: 0, vy: 0, onGround: true, crouch: false });
     p.anchor = { x: best.x, z: best.z };
     p.health = PLAYER.maxHealth;
@@ -275,6 +282,11 @@ export class Match {
       this.send(p, { t: 'spawn', x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       this.syncMe(p);
     }
+  }
+
+  // Who can hurt whom: the other side, or everyone in a free-for-all mode.
+  enemies(a, b) {
+    return !!a && !!b && a !== b && (this.mode.def.ffa || a.side !== b.side);
   }
 
   protectedNow(p) {
@@ -353,8 +365,10 @@ export class Match {
       gems: this.gems,
       tileGems: this.tileGemView(),
       drums: this.drumsDead,
+      tanks: this.tanksDead,
       world: this.world.view(),
       crocs: this.wildlife.view(),
+      dogs: this.wildlife.dogView(),
       discovery: this.discovery,
       roster: this.roster(),
       serverTime: now()
@@ -406,7 +420,7 @@ export class Match {
       case 'streak':
         return this.onStreak(p, m);
       case 'respawn':
-        return this.onRespawn(p, m.mode);
+        return this.onRespawn(p, m.mode, m.at);
       case 'views':
         return this.hooks.ads.recordViews({ token: p.profile.token, side: p.side, faction: p.faction }, this.stateId, m.slots);
       case 'chat': {
@@ -611,7 +625,7 @@ export class Match {
           const h = hitSoldier(ox, oy, oz, dir[0], dir[1], dir[2], { x: pos.x, y: pos.y, z: pos.z, crouch: pos.crouch, downed: tgt.status === 'downed' });
           if (h && h.t < reach && (!best || h.t < best.h.t)) best = { tgt, h };
         }
-        // Crocodiles take bullets too.
+        // Crocodiles and dogs take bullets too.
         const croc = this.wildlife.rayHit(ox, oy, oz, dir[0], dir[1], dir[2], Math.min(remaining, reach, best ? best.h.t : Infinity));
         if (croc) {
           end = [ox + dir[0] * croc.t, oy + dir[1] * croc.t, oz + dir[2] * croc.t];
@@ -637,6 +651,7 @@ export class Match {
         }
         end = [ox + dir[0] * wall.t, oy + dir[1] * wall.t, oz + dir[2] * wall.t];
         if (box?.fuel) this.hitDrum(wall.box, w.dmg * mult, p);
+        if (box?.tank !== undefined) this.hitTank(box.tank, w.dmg * mult * TANKS.bulletMult, p);
         // Vehicles: bullets dent cars and go through them; armour stops them cold.
         if (veh) {
           const carry = this.world.bulletHit(box, w.dmg * mult, p, id);
@@ -668,6 +683,7 @@ export class Match {
       ends.push(end ? end.map((v) => +v.toFixed(2)) : null);
     }
     this.broadcastNear(p, { t: 'shot', id: p.id, w: id, o: o.map((v) => +v.toFixed(2)), e: ends }, 400);
+    this.wildlife.scare(o[0], o[2], 30, p);
   }
 
   onMelee(p, m) {
@@ -681,21 +697,39 @@ export class Match {
       if (t - p.lastFire < 500) return;
       p.lastFire = t;
     }
-    const w = punch ? { range: PUNCH.range, dmg: PUNCH.dmg, backstab: PUNCH.backstab } : WEAPONS.knife;
+    const w = punch ? { range: PUNCH.range, dmg: PUNCH.dmg, backstab: PUNCH.backstab, lunge: PUNCH.lunge } : WEAPONS.knife;
     const fx = -Math.sin(p.yaw);
     const fz = -Math.cos(p.yaw);
+    // A swing reaches a little further with a lunge: you close the last step onto someone
+    // you're facing, so hand-to-hand fights actually connect.
+    const reach = w.range + (w.lunge || 0);
     let best = null;
     for (const o of this.players.values()) {
-      if (o === p || o.side === p.side || (o.status !== 'alive' && o.status !== 'downed')) continue;
+      if (!this.enemies(p, o) || (o.status !== 'alive' && o.status !== 'downed')) continue;
       const dx = o.x - p.x;
       const dz = o.z - p.z;
       const dist = Math.hypot(dx, dz);
-      if (dist > w.range || Math.abs(o.y - p.y) > 1.2) continue;
-      if ((dx * fx + dz * fz) / (dist || 1) < 0.5) continue;
+      if (dist > reach || Math.abs(o.y - p.y) > 1.2) continue;
+      if ((dx * fx + dz * fz) / (dist || 1) < (dist <= w.range ? 0.45 : 0.75)) continue;
+      if (dist > w.range && lineBlocked(this.map.index, p.x, p.y + 1, p.z, o.x, o.y + 1, o.z)) continue;
       if (!best || dist < best.dist) best = { o, dist, dx, dz };
     }
     this.broadcastNear(p, { t: 'swing', id: p.id, punch }, 30);
-    if (!best) return;
+    if (!best) {
+      // Dogs and crocodiles can be fought hand to hand too.
+      this.wildlife.melee(p, fx, fz, reach, punch ? PUNCH.dmg : w.dmg);
+      return;
+    }
+    if (best.dist > w.range) {
+      const k = (best.dist - w.range * 0.65) / best.dist;
+      const nx = p.x + best.dx * k;
+      const nz = p.z + best.dz * k;
+      if (!insideAnyBox(this.map.index, nx, p.y, nz, p.crouch, (b) => b.veh !== undefined)) {
+        p.x = nx;
+        p.z = nz;
+        this.send(p, { t: 'lunge', x: +nx.toFixed(2), z: +nz.toFixed(2) });
+      }
+    }
     // Backstab: attacker is behind the victim.
     const vfx = -Math.sin(best.o.yaw);
     const vfz = -Math.cos(best.o.yaw);
@@ -792,6 +826,7 @@ export class Match {
     v.status = 'dead';
     v.health = 0;
     v.deadAt = t;
+    if (v.y > -0.5) v.fellAt = { x: v.x, z: v.z };
     v.deaths++;
     v.streak = 0;
     v.reviver = null;
@@ -873,7 +908,9 @@ export class Match {
   }
 
   // ---------- respawning ----------
-  onRespawn(p, mode) {
+  onRespawn(p, mode, at) {
+    // Come back where you fell (if it's safe) or fresh at your base: the player chooses.
+    if (at === 'here' || at === 'base') p.comeBack = at;
     if (!['dead', 'spirit'].includes(p.status)) return;
     if (this.practice) return this.spawn(p);
     if (!this.mode.canRespawn(p)) return this.toast(p, 'No respawn for this mode. You go enter next round.', 'info');
@@ -894,6 +931,28 @@ export class Match {
       p.medevacAt = now() + RESPAWN.medevacMs;
       this.syncMe(p);
     }
+  }
+
+  // Near where you fell, but not in sight of the enemy who got you: a free spot with no living
+  // enemy within 16 m. Null when nowhere close is safe (then you start at base).
+  safeSpotNear(p, x, z) {
+    for (let r = 0; r <= 8; r += 2) {
+      for (let k = 0; k < (r ? 8 : 1); k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const sx = x + Math.cos(a) * r;
+        const sz = z + Math.sin(a) * r;
+        if (!this.freeSpot(sx, sz)) continue;
+        let safe = true;
+        for (const o of this.players.values()) {
+          if (this.enemies(p, o) && o.status === 'alive' && Math.hypot(o.x - sx, o.z - sz) < 16) {
+            safe = false;
+            break;
+          }
+        }
+        if (safe) return { x: sx, z: sz };
+      }
+    }
+    return null;
   }
 
   // Somewhere a soldier can stand (not inside a wall, not in water, not over a stairwell).
@@ -1121,9 +1180,44 @@ export class Match {
       const d = Math.hypot((b.x0 + b.x1) / 2 - x, (b.z0 + b.z1) / 2 - z);
       if (d < radius * 0.85) this.hitDrum(bi, dmg * (1.2 - d / radius), owner);
     }
+    // Fuel tanks caught in a blast.
+    (this.map.tanks || []).forEach((bi, ti) => {
+      const b = this.map.boxes[bi];
+      if (this.tanksDead.includes(ti) || weapon === 'tank' && Math.hypot((b.x0 + b.x1) / 2 - x, (b.z0 + b.z1) / 2 - z) < 1) return;
+      const d = Math.hypot((b.x0 + b.x1) / 2 - x, (b.z0 + b.z1) / 2 - z) - (b.x1 - b.x0) / 2;
+      if (d < radius) this.hitTank(ti, dmg * Math.max(0.3, 1.3 - d / radius), owner);
+    });
     // Vehicles and houses caught in the blast.
     this.world.onBlast(x, y, z, radius, dmg, owner, weapon);
     this.wildlife.onBlast(x, y, z, radius, dmg, owner);
+  }
+
+  // ---------- fuel tanks ----------
+  hitTank(ti, dmg, by) {
+    if (this.tanksDead.includes(ti) || !(dmg > 0)) return;
+    this.tankHp[ti] -= dmg;
+    if (this.tankHp[ti] > 0) return;
+    this.tanksDead.push(ti);
+    const b = this.map.boxes[this.map.tanks[ti]];
+    const x = (b.x0 + b.x1) / 2;
+    const z = (b.z0 + b.z1) / 2;
+    b.oy0 = b.y0;
+    b.oy1 = b.y1;
+    b.y0 = -3;
+    b.y1 = -2.5;
+    this.broadcast({ t: 'tank', i: ti, x: +x.toFixed(2), z: +z.toFixed(2), by: by?.name || null });
+    // A little later than the hit, so chains of tanks go up one after another.
+    setTimeout(() => {
+      if (!this.players) return;
+      this.explode(x, 2, z, TANKS.blast, TANKS.dmg, by && by.status !== undefined ? by : null, 'tank', true);
+      const t = now();
+      for (const o of this.players.values()) {
+        if (o.status !== 'alive' || Math.hypot(o.x - x, o.z - z) > TANKS.burnRadius || o.y > 4) continue;
+        o.burnUntil = Math.max(o.burnUntil || 0, t + TANKS.burnSecs * 1000);
+        o.burnBy = by && by.side !== o.side ? by.id : null;
+        o.burnAcc = o.burnAcc || 0;
+      }
+    }, 120);
   }
 
   // ---------- fuel drums ----------
@@ -1346,7 +1440,12 @@ export class Match {
         this.hooks.ads.recordGem(a.id, spirit);
         this.mission(p, 'gems');
         if (spirit) {
+          // The spirit comes back to life right at the gem it reached.
+          const pref = p.comeBack;
+          p.fellAt = { x: p.x, z: p.z };
+          p.comeBack = 'here';
           this.spawn(p);
+          p.comeBack = pref;
           this.toast(p, 'The gem don pull your spirit come back!', 'gem');
         } else {
           p.profile.gems++;
@@ -1490,6 +1589,7 @@ export class Match {
     const smokes = this.smokes.map((s) => [+s.x.toFixed(1), +s.z.toFixed(1), s.r]);
     const vehicles = this.world.snapshot();
     const crocs = this.wildlife.crocs.length ? this.wildlife.view() : undefined;
+    const dogs = this.wildlife.dogs.length ? this.wildlife.dogView() : undefined;
     for (const me of this.humans()) {
       const uav = this.uav[me.side] > t;
       const list = [];
@@ -1512,7 +1612,7 @@ export class Match {
           (o.veh != null ? 4096 : 0);
         list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
       }
-      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes, vh: vehicles, ck: crocs });
+      this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes, vh: vehicles, ck: crocs, dg: dogs });
     }
   }
 }

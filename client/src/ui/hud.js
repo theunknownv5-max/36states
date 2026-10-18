@@ -9,7 +9,7 @@ import { AMBULANCE } from '../../../shared/vehicles.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => '₦' + Math.round(n).toLocaleString();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Blood finish', drum: 'Fuel drum', fire: 'Fire burn am', bomb: 'Bomb', c4: 'C4', vehicle: 'Motor jam am', fist: 'Punch', knife: 'Machete', croc: '🐊 Crocodile', drown: '🌊 Drowned' })[w] || WEAPONS[w]?.name || w || '';
+const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Blood finish', drum: 'Fuel drum', fire: 'Fire burn am', bomb: 'Bomb', c4: 'C4', vehicle: 'Motor jam am', fist: 'Punch', knife: 'Machete', croc: '🐊 Crocodile', dog: '🐕 Guard dog', drown: '🌊 Drowned', tank: 'Fuel tank blast', crush: 'Crushed by a lorry' })[w] || WEAPONS[w]?.name || w || '';
 
 export class Hud {
   constructor() {

@@ -2,7 +2,7 @@
 // W/S throttle and reverse, A/D steer, Space brake, E to get in or out. The mouse (or right
 // thumb) still looks around and you can shoot out of the window; from the armoured carrier
 // you fire the roof gun and nobody's bullets can reach you.
-import { VEHICLES, driveStep } from '../../shared/vehicles.js';
+import { VEHICLES, driveStep, crushable } from '../../shared/vehicles.js';
 import { inWater } from '../../shared/map.js';
 import { audio } from './core/audio.js';
 
@@ -62,7 +62,9 @@ export class Driving {
     const blocked = g.anyMenu() || g.adChat?.open || g.cams.mode === 'drone';
     const mv = blocked ? { x: 0, y: 0 } : g.input.move();
     const brake = !blocked && (g.input.down('Space') || g.input.touch?.jump);
-    const impact = driveStep(v, { throttle: mv.y, steer: mv.x, brake }, dt, g.map.index, g.map.half, { selfBox: v.box, slowAt: (x, z) => inWater(g.map, x, z) });
+    // Lorries and the armoured carrier drive straight through small cars and flimsy houses.
+    const canCrush = d.crusher ? (b) => crushable(v.type, b, g.map) : null;
+    const impact = driveStep(v, { throttle: mv.y, steer: mv.x, brake }, dt, g.map.index, g.map.half, { selfBox: v.box, slowAt: (x, z) => inWater(g.map, x, z), canCrush });
     if (impact > 7) {
       g.fx.shake = Math.min(1.4, g.fx.shake + impact / 18);
       audio.crash?.(impact);

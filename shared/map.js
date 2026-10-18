@@ -537,6 +537,17 @@ function tryGenerate(state, seed) {
   };
   map.index = buildIndex(boxes, HALF + 2);
   map.index.holes = map.holes;
+  // Fuel and gas storage tanks can be blown up (a huge blast): number them and their visuals.
+  map.tanks = [];
+  map.boxes.forEach((b, i) => {
+    if (b.kind !== 'tank') return;
+    b.tank = map.tanks.length;
+    map.tanks.push(i);
+    const cx = (b.x0 + b.x1) / 2;
+    const cz = (b.z0 + b.z1) / 2;
+    const v = map.visuals.find((q) => q.type === 'tank' && Math.abs(q.x - cx) < 0.01 && Math.abs(q.z - cz) < 0.01);
+    if (v) v.ti = b.tank;
+  });
   map.nav = buildNav(map);
   map.connected = checkConnected(map);
   return map;

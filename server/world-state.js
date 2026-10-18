@@ -1,8 +1,8 @@
 // The living battlefield, on the server: vehicles (enter, drive, run people over, shoot from,
 // blow up), houses that burn down to charcoal shells, C4 charges and the paid ambulance.
 // The Match calls in from its message handler, explosions, hitscan, damage and tick.
-import { VEHICLES, WRECK, HOUSES, C4, AMBULANCE, footprint, insideVehicle, vehicleBlocked, exitSpots, forward } from '../shared/vehicles.js';
-import { moveBox, insideAnyBox } from '../shared/physics.js';
+import { VEHICLES, WRECK, HOUSES, C4, AMBULANCE, CRUSH, crushable, footprint, insideVehicle, vehicleBlocked, exitSpots, forward } from '../shared/vehicles.js';
+import { moveBox, insideAnyBox, query } from '../shared/physics.js';
 import { findPath, inWater } from '../shared/map.js';
 import { PLAYER, WEAPONS, MONEY } from '../shared/config.js';
 import { DIG, LOOT, GRAVE_LOOT, TOMB_LOOT, rollLoot } from '../shared/underworld.js';
@@ -14,6 +14,8 @@ const OK = 0;
 const FIRE = 1;
 const BURNING = 2;
 const ASH = 3;
+// Flattened by a lorry: a crushed car, or a mud/plank house knocked down to rubble.
+const CRUSHED = 4;
 
 export class WorldState {
   constructor(match) {
@@ -28,7 +30,11 @@ export class WorldState {
     for (const h of this.map.houses) {
       const b = this.map.boxes[h.roof];
       if (b) h.origRoof = { y0: b.y0, y1: b.y1 };
+      h.parts = [];
     }
+    this.map.boxes.forEach((b, bi) => {
+      if (b.house !== undefined && this.map.houses[b.house]) this.map.houses[b.house].parts.push({ bi, y0: b.y0, y1: b.y1 });
+    });
     this.reset();
   }
 
@@ -41,6 +47,7 @@ export class WorldState {
       return { i: d.i, type: d.type, x: d.x, z: d.z, yaw: d.yaw, speed: 0, hp: VEHICLES[d.type].hp, state: OK, driver: null, box: d.box, lastHit: null, burnUntil: 0, lastMove: 0 };
     });
     this.houses = map.houses.map((h) => {
+      for (const q of h.parts || []) Object.assign(map.boxes[q.bi], { y0: q.y0, y1: q.y1 });
       const b = map.boxes[h.roof];
       if (b && h.origRoof) Object.assign(b, h.origRoof);
       return { i: h.i, hp: h.hp, state: OK, until: 0, lastHit: null };
@@ -224,7 +231,8 @@ export class WorldState {
     const dt = Math.min(1, Math.max(0.03, (t - (v.lastMove || t - 50)) / 1000));
     const lim = this.map.half - 2;
     const moved = Math.hypot(x - v.x, z - v.z);
-    const bad = moved > d.top * 1.6 * dt + 1.5 || Math.abs(x) > lim || Math.abs(z) > lim || vehicleBlocked(v.type, x, z, yaw, this.map.index, v.box, 0.3);
+    const canCrush = (b) => crushable(v.type, b, this.map);
+    const bad = moved > d.top * 1.6 * dt + 1.5 || Math.abs(x) > lim || Math.abs(z) > lim || vehicleBlocked(v.type, x, z, yaw, this.map.index, v.box, 0.3, canCrush);
     if (bad || v.state >= BURNING) {
       this.m.send(p, { t: 'vcorrect', x: v.x, z: v.z, yaw: v.yaw });
       return true;
@@ -244,7 +252,65 @@ export class WorldState {
     p.z = z;
     p.y = d.seatY;
     p.crouch = true;
+    if (d.crusher && Math.abs(s) > 1.5) this.crushUnder(v, p);
     return true;
+  }
+
+  // ---------- lorries crushing things ----------
+  // Whatever small car or flimsy house the lorry is now driving through gets flattened.
+  crushUnder(v, by) {
+    const fp = footprint(v.type, v.x, v.z, v.yaw);
+    for (const bi of query(this.map.index, fp.x0, fp.z0, fp.x1, fp.z1)) {
+      const b = this.map.boxes[bi];
+      if (bi === v.box || !crushable(v.type, b, this.map)) continue;
+      const cx = Math.max(b.x0, Math.min(v.x, b.x1));
+      const cz = Math.max(b.z0, Math.min(v.z, b.z1));
+      if (!insideVehicle(v.type, v.x, v.z, v.yaw, cx, cz, 0.2)) continue;
+      if (b.veh !== undefined) this.crushVehicle(this.vehicles[b.veh], by, v);
+      else if (b.house !== undefined) this.collapseHouse(this.houses[b.house], by);
+    }
+  }
+
+  crushVehicle(t, by, lorry) {
+    if (!t || t.state >= BURNING) return;
+    const driver = t.driver ? this.m.players.get(t.driver) : null;
+    if (driver) {
+      this.exit(driver);
+      this.m.damage(driver, by, 55, { weapon: 'crush', melee: true, from: [lorry.x, 1, lorry.z] });
+    }
+    t.state = CRUSHED;
+    t.hp = 0;
+    t.speed = 0;
+    this.map.boxes[t.box].y1 = 0.45;
+    this.m.broadcast({ t: 'vstate', i: t.i, s: CRUSHED, by: by?.name || null });
+    this.damageVehicle(lorry, CRUSH.selfDmg, null, 'crash');
+    if (by?.human) {
+      this.m.toast(by, `You crushed a ${VEHICLES[t.type].name.toLowerCase()}! +40 XP`, 'streak');
+      this.m.addXP(by, 40);
+    }
+  }
+
+  collapseHouse(h, by) {
+    if (!h || h.state === CRUSHED) return;
+    const H = this.map.houses[h.i];
+    // Anyone inside is caught under the falling walls.
+    for (const o of this.m.players.values()) {
+      if (o.status !== 'alive' || o.veh != null || o.y > H.h || o.y < -1) continue;
+      if (Math.abs(o.x - H.x) < H.w / 2 && Math.abs(o.z - H.z) < H.d / 2) this.m.damage(o, by, CRUSH.hurt, { weapon: 'crush', explosive: true, from: [H.x, 1, H.z] });
+    }
+    h.state = CRUSHED;
+    for (const q of H.parts) {
+      const b = this.map.boxes[q.bi];
+      if (b.roof) {
+        b.y0 = -3;
+        b.y1 = -2.5;
+      } else b.y1 = Math.min(b.y1, 0.45);
+    }
+    this.m.broadcast({ t: 'house', i: h.i, s: CRUSHED, by: by?.name || null });
+    if (by?.human) {
+      this.m.toast(by, 'You flattened a house! +60 XP', 'streak');
+      this.m.addXP(by, 60);
+    }
   }
 
   // Where a shot from inside a vehicle may start.

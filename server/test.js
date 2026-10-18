@@ -889,6 +889,121 @@ check(true, 'all 37 battlefields ran a tick with bots');
   check(STATES.every((s) => generateMap(s.id).connected), 'billboard poles never block a route');
 }
 
+section('Survival, close combat, dogs, fuel tanks, lorries crushing, coming back where you fell');
+{
+  const { HEALTH, PUNCH, TANKS } = await import('../shared/config.js');
+  const { DOG } = await import('./wildlife.js');
+  const { VEHICLES } = await import('../shared/vehicles.js');
+  // Bots hit softer and never mob one player.
+  check(HEALTH.botDamageToHumans <= 0.5 && HEALTH.botMaxHit <= 25 && HEALTH.botFocus === 2, 'bots hit real players softly and at most two shoot at you at once');
+  const mm = new Match('lagos', hooks);
+  const ws = fakeWs();
+  const A = mm.addHuman(ws, 'army', profile('Brawler')).player;
+  const bots = [...mm.players.values()].filter((o) => !o.human && o.side !== A.side);
+  A.protectUntil = 0;
+  // Melee lunge: an enemy 3.5 m in front gets reached with the machete.
+  const E = bots[0];
+  Object.assign(A, { x: 0, z: 0, y: 0, yaw: 0, status: 'alive' });
+  Object.assign(E, { x: 0, z: -3.6, y: 0, status: 'alive', health: 100, armor: 0 });
+  E.protectUntil = 0;
+  A.lastFire = 0;
+  const ok = mm.map.boxes.every((b) => !(b.x0 < 0.5 && b.x1 > -0.5 && b.z0 < 0 && b.z1 > -4 && b.y1 > 0.2));
+  if (ok) {
+    mm.onMelee(A, {});
+    check(E.health < 100 && ws.log.some((x) => x.t === 'lunge'), 'a machete swing lunges onto an enemy a few steps away');
+  } else check(true, 'spot blocked, lunge skipped');
+  // Bots close in and fight hand to hand.
+  const bb = bots[1];
+  bb.bot.brawler = true;
+  check(typeof bb.bot.brawl === 'function', 'bots can brawl up close');
+  // Dogs: on the map, shootable, and they bite back if they're guard dogs.
+  const dm = [...STATES].map((st) => new Match(st.id, hooks)).find((x) => x.wildlife.dogs.length);
+  check(!!dm, 'stray dogs roam the towns');
+  if (dm) {
+    const dog = dm.wildlife.dogs[0];
+    const ws2 = fakeWs();
+    const H = dm.addHuman(ws2, 'army', profile('DogFighter')).player;
+    const before = dm.wildlife.dogView()[0][4];
+    check(before !== 2, 'dogs are alive at the start');
+    const hit = dm.wildlife.rayHit(dog.body.x, 0.5, dog.body.z + 5, 0, 0, -1, 20);
+    check(hit && hit.c === dog, 'bullets can hit a dog');
+    dm.wildlife.hurt(dog, 999, H);
+    check(dog.state === 'dead' && dm.wildlife.dogView()[0][4] === 2, 'a dog can be killed');
+    const guard = dm.wildlife.dogs.find((d) => d.state !== 'dead');
+    if (guard) {
+      guard.guard = true;
+      Object.assign(H, { x: guard.body.x + 1, z: guard.body.z, y: 0, status: 'alive' });
+      H.protectUntil = 0;
+      const h0 = H.health;
+      run(dm, 3);
+      check(guard.state === 'attack' && H.health < h0, 'a guard dog attacks anyone who comes too close');
+      Object.assign(H, { yaw: Math.atan2(-(guard.body.x - H.x), -(guard.body.z - H.z)) });
+      dm.wildlife.melee(H, -Math.sin(H.yaw), -Math.cos(H.yaw), 2.6, 999);
+      check(guard.state === 'dead', 'you can fight a dog off with the machete');
+    }
+  }
+  // Fuel tanks blow up in a huge blast that wrecks everything around.
+  const tm = STATES.map((st) => new Match(st.id, hooks)).find((x) => x.map.tanks?.length);
+  if (tm) {
+    const bi = tm.map.tanks[0];
+    const b = tm.map.boxes[bi];
+    const cx = (b.x0 + b.x1) / 2;
+    const cz = (b.z0 + b.z1) / 2;
+    const ws3 = fakeWs();
+    const V = tm.addHuman(ws3, 'army', profile('Victim')).player;
+    Object.assign(V, { x: cx + 6, z: cz, y: 0, status: 'alive', health: 100, armor: 0 });
+    V.protectUntil = 0;
+    tm.hitTank(0, 30, null);
+    check(!tm.tanksDead.includes(0), 'a few bullets do not blow a tank');
+    tm.hitTank(0, TANKS.health, null);
+    check(tm.tanksDead.includes(0) && b.y1 < 0, 'enough damage blows the tank (its collision goes too)');
+    await new Promise((r) => realNow && setTimeout(r, 200));
+    check(V.health < 100 || V.status !== 'alive', 'the tank blast hurts anyone nearby');
+    tm.reset();
+    check(!tm.tanksDead.length && b.y1 > 0, 'tanks are back next round');
+  } else check(false, 'no fuel tanks anywhere');
+  // Lorries crush small cars and flimsy houses, not stone.
+  const { crushable } = await import('../shared/vehicles.js');
+  const lm = STATES.map((st) => new Match(st.id, hooks)).find((x) => x.map.vehicles.some((v) => v.type === 'lorry') && x.map.vehicles.some((v) => ['sedan', 'keke', 'suv', 'pickup'].includes(v.type)));
+  if (lm) {
+    const lorry = lm.map.vehicles.find((v) => v.type === 'lorry');
+    const car = lm.map.vehicles.find((v) => ['sedan', 'keke', 'suv', 'pickup'].includes(v.type));
+    const carBox = lm.map.boxes[car.box];
+    check(crushable('lorry', carBox, lm.map) && !crushable('sedan', carBox, lm.map), 'a lorry can crush a small car; a car cannot');
+    const rockBox = lm.map.boxes.find((b) => b.kind === 'rock' || b.kind === 'stone');
+    check(!rockBox || !crushable('lorry', rockBox, lm.map), 'rocks and stone are never crushed');
+    const mud = lm.map.houses.find((h) => h.kind === 'mud' || h.kind === 'plank');
+    const ws4 = fakeWs();
+    const D = lm.addHuman(ws4, 'army', profile('Trucker')).player;
+    const LV = lm.world.vehicles[lorry.i];
+    lm.world.crushVehicle(lm.world.vehicles[car.i], D, LV);
+    check(lm.world.vehicles[car.i].state === 4 && carBox.y1 <= 0.5, 'a crushed car is flattened');
+    if (mud) {
+      lm.world.collapseHouse(lm.world.houses[mud.i], D);
+      const walls = lm.map.boxes.filter((b) => b.house === mud.i && !b.roof);
+      check(lm.world.houses[mud.i].state === 4 && walls.every((b) => b.y1 <= 0.45), 'a mud or plank house is knocked down to rubble');
+      lm.reset();
+      check(walls.every((b) => b.y1 > 1), 'houses stand again next round');
+    }
+  } else check(true, 'no lorry with cars on any map');
+  // Coming back where you fell, or fresh at base.
+  const cm = new Match('kano', hooks, 'tdm');
+  const ws5 = fakeWs();
+  const C = cm.addHuman(ws5, 'army', profile('Returner')).player;
+  for (const o of cm.players.values()) if (!o.human) o.status = 'dead';
+  const spot = [...Array(40).keys()].map((k) => ({ x: -40 + k * 2, z: 10 })).find((q) => cm.freeSpot(q.x, q.z));
+  Object.assign(C, { x: spot.x, z: spot.z, y: 0 });
+  C.protectUntil = 0;
+  cm.damage(C, null, 999, { weapon: 'fire', explosive: true });
+  cm.onRespawn(C, 'gem', 'here');
+  check(C.status === 'alive' && Math.hypot(C.x - spot.x, C.z - spot.z) < 9, 'you can come back where you fell');
+  C.protectUntil = 0;
+  cm.damage(C, null, 999, { weapon: 'fire', explosive: true });
+  cm.onRespawn(C, 'gem', 'base');
+  const bs = cm.map.bases[C.side];
+  check(Math.hypot(C.x - bs.x, C.z - bs.z) < 25, 'or start fresh at your base');
+}
+
 section('Native app data (rules and maps)');
 {
   const { nativeRules, nativeMap } = await import('./native-api.js');
