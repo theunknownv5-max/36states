@@ -128,3 +128,6 @@ func _err(t: String) -> void:
 	err_label.text = t
 	err_label.visible = true
 	Sfx.ui("alert")
+
+func on_back() -> void:
+	ExitDialog.ask(self)

@@ -55,6 +55,11 @@ func _ready() -> void:
 	about.custom_minimum_size = Vector2(0, 48)
 	about.pressed.connect(_open_about)
 	top.add_child(about)
+	var exit_b := Kit.button("Exit")
+	exit_b.custom_minimum_size = Vector2(0, 48)
+	exit_b.add_theme_color_override("font_color", Kit.BAD)
+	exit_b.pressed.connect(func(): ExitDialog.ask(self))
+	top.add_child(exit_b)
 	# Modes.
 	var modes := Kit.hbox(8)
 	col.add_child(modes)
@@ -258,6 +263,13 @@ func _open_about() -> void:
 	add_child(o)
 
 func on_back() -> void:
+	for c in get_children():
+		if c is ExitDialog:
+			c.queue_free()
+			return
+	if not (overlay and is_instance_valid(overlay)):
+		ExitDialog.ask(self)
+		return
 	if overlay and is_instance_valid(overlay):
 		if overlay.has_method("on_back"):
 			overlay.on_back()

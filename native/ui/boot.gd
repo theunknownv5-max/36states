@@ -31,6 +31,7 @@ var bar: ProgressBar
 var radio: Label
 var loaded := false
 var title_box: VBoxContainer
+var logo_node: TextureRect
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -48,10 +49,20 @@ func _ready() -> void:
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	m.add_child(v)
 	title_box = v
+	# The POD logo.
+	var logo := TextureRect.new()
+	logo.texture = load("res://icon-512.png")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(170, 170)
+	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	logo.pivot_offset = Vector2(85, 85)
+	v.add_child(logo)
+	logo_node = logo
 	var pres := Kit.label("TCEE PRESENTS", 18, Kit.POD2, true)
 	pres.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(pres)
-	var tt := Kit.title("PROOF OF DUTY", 64)
+	var tt := Kit.title("PROOF OF DUTY", 52)
 	tt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tt.add_theme_color_override("font_color", Color("#fff3e6"))
 	v.add_child(tt)
@@ -102,6 +113,9 @@ func _on_rules(ok: bool) -> void:
 
 func _process(delta: float) -> void:
 	t += delta
+	if logo_node:
+		var k: float = 1.0 + sin(t * 2.2) * 0.02
+		logo_node.scale = Vector2(k, k)
 	bar.value = move_toward(bar.value, 100.0, delta * 120.0) if loaded else min(90.0, bar.value + delta * 25.0)
 	radio.text = RADIO[int(t / 3.2) % RADIO.size()]
 	if randf() < delta * 3.0:
@@ -152,3 +166,6 @@ func _draw() -> void:
 					draw_rect(Rect2(r.position.x + r.size.x * 0.3, wy, 5, 7), Color(1, 0.75, 0.3, 0.6))
 	# Smoke glow along the ground.
 	draw_rect(Rect2(0, s.y * 0.88, s.x, s.y * 0.12), Color(0.9, 0.35, 0.1, 0.12))
+
+func on_back() -> void:
+	ExitDialog.ask(self)

@@ -45,7 +45,7 @@ func _layout() -> void:
 		{"name": "pill", "label": "PILL", "off": Vector2(370, 60), "r": 30.0},
 		{"name": "use", "label": "USE", "off": Vector2(370, 175), "r": 34.0},
 		{"name": "buy", "label": "BUY", "off": Vector2(-1, -1), "r": 30.0},
-		{"name": "pause", "label": "II", "off": Vector2(-2, -2), "r": 26.0},
+		{"name": "pause", "label": "MENU", "off": Vector2(-2, -2), "r": 30.0},
 		{"name": "scores", "label": "≡", "off": Vector2(-3, -3), "r": 26.0},
 	]
 
