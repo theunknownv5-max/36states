@@ -4,7 +4,7 @@
 //   tdm       Gbas Gbos: team deathmatch
 //   bomb      Plant & Defuse: rounds, one life, outlaws plant at A or B
 //   stage     Campaign: solo waves of enemies, unlocks the next stage
-import { MODES, BOMB, STAGES, WAVE, MATCH, MONEY, RESPAWN } from '../shared/config.js';
+import { MODES, BOMB, STAGES, WAVE, MATCH, MONEY, RESPAWN, PLAYER } from '../shared/config.js';
 import { botName } from './bots.js';
 
 const now = () => Date.now();
@@ -37,6 +37,9 @@ class BaseMode {
   }
   wantBots(side) {
     return Math.max(0, MATCH.minPerSide - this.match.sideCount(side, true));
+  }
+  isWinner(p, winner) {
+    return p.side === winner;
   }
   botGoal() {
     return false;
@@ -134,6 +137,9 @@ class BombMode extends BaseMode {
 
   wantBots(side) {
     return Math.max(0, MATCH.minPerSide - this.match.sideCount(side, true));
+  }
+  isWinner(p, winner) {
+    return p.side === winner;
   }
 
   onKill(v) {
@@ -507,8 +513,132 @@ class PracticeMode extends BaseMode {
   }
 }
 
+// ---------- BRD: Butcher, Raid, Destroy ----------
+// Free-for-all assassin mode seen from above: everyone is an enemy, blades and pistols only,
+// first-aid boxes to raid, quick respawns, first to the kill target wins.
+class BrdMode extends BaseMode {
+  reset() {
+    const m = this.match;
+    this.aid = [];
+    for (let k = 0; k < 400 && this.aid.length < this.def.aidBoxes; k++) {
+      const x = (m.rng() - 0.5) * (m.map.half * 1.5);
+      const z = (m.rng() - 0.5) * (m.map.half * 1.5);
+      if (!m.freeSpot(x, z) || this.aid.some((a) => Math.hypot(a.x - x, a.z - z) < 22)) continue;
+      this.aid.push({ x: +x.toFixed(2), z: +z.toFixed(2), on: true, back: 0 });
+    }
+  }
+  killPoints() {
+    return 0;
+  }
+  wantBots(side) {
+    const m = this.match;
+    const bots = Math.max(0, this.def.fighters - m.humans().length);
+    return side === 'sec' ? Math.floor(bots / 2) : Math.ceil(bots / 2);
+  }
+  botRespawnMs() {
+    return this.def.autoRespawnMs;
+  }
+  // Spawn somewhere quiet: the free spot furthest from everyone alive.
+  spawnPoint(p) {
+    const m = this.match;
+    let best = null;
+    let bestD = -1;
+    for (let k = 0; k < 30; k++) {
+      const x = (m.rng() - 0.5) * (m.map.half * 1.6);
+      const z = (m.rng() - 0.5) * (m.map.half * 1.6);
+      if (!m.freeSpot(x, z)) continue;
+      let d = 60;
+      for (const o of m.players.values()) if (o !== p && o.status === 'alive') d = Math.min(d, Math.hypot(o.x - x, o.z - z));
+      if (d > bestD) {
+        bestD = d;
+        best = { x, z, yaw: m.rng() * Math.PI * 2 };
+      }
+    }
+    return best;
+  }
+  // Blades and a pistol; light armour for everyone.
+  loadout(p) {
+    const m = this.match;
+    p.weapons = { primary: null, secondary: 'p9', melee: 'knife' };
+    p.ammo = {};
+    m.giveWeapon(p, 'p9');
+    p.ammo.knife = { mag: 0, reserve: 0 };
+    p.slot = p.human ? 'melee' : m.rng() < 0.6 ? 'melee' : 'secondary';
+    p.armor = 25;
+    p.frag = 0;
+    p.smoke = 1;
+  }
+  canBuy() {
+    return false;
+  }
+  tick() {
+    const m = this.match;
+    const t = now();
+    this.aid.forEach((a, i) => {
+      if (!a.on) {
+        if (t >= a.back) {
+          a.on = true;
+          m.broadcast({ t: 'aid', i, on: true });
+        }
+        return;
+      }
+      for (const p of m.players.values()) {
+        if (p.status !== 'alive' || p.health >= PLAYER.maxHealth || Math.hypot(p.x - a.x, p.z - a.z) > 1.7) continue;
+        p.health = Math.min(PLAYER.maxHealth, p.health + this.def.aidHeal);
+        a.on = false;
+        a.back = t + this.def.aidRespawnMs;
+        m.broadcast({ t: 'aid', i, on: false, by: p.id });
+        if (p.human) m.syncMe(p);
+        break;
+      }
+    });
+  }
+  // Bots hunt the nearest soldier, or the nearest first-aid box when hurt.
+  botGoal(brain, p) {
+    const m = this.match;
+    if (brain.goal && now() < brain.goal.until && brain.path?.length) return true;
+    if (p.health < 50) {
+      const box = this.aid.filter((a) => a.on).sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+      if (box) {
+        brain.setGoal(p, box.x, box.z, 'aid');
+        brain.goal.until = now() + 9000;
+        return true;
+      }
+    }
+    const others = [...m.players.values()].filter((o) => o !== p && o.status === 'alive').sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+    const e = others[Math.floor(Math.random() * Math.min(2, others.length))];
+    if (!e) return false;
+    brain.setGoal(p, e.x + (Math.random() - 0.5) * 8, e.z + (Math.random() - 0.5) * 8, 'hunt');
+    brain.goal.until = now() + 5000 + Math.random() * 4000;
+    return true;
+  }
+  leader() {
+    let top = null;
+    for (const p of this.match.players.values()) if (!top || p.kills > top.kills) top = p;
+    return top;
+  }
+  checkEnd() {
+    const top = this.leader();
+    return (top && top.kills >= this.def.scoreLimit) || now() - this.match.startedAt >= this.def.timeLimitMs;
+  }
+  winner() {
+    const list = [...this.match.players.values()].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+    if (!list.length || !list[0].kills || (list[1] && list[1].kills === list[0].kills && list[1].deaths === list[0].deaths)) return null;
+    return list[0].id;
+  }
+  isWinner(p, winner) {
+    return !!winner && p.id === winner;
+  }
+  state() {
+    const top = this.leader();
+    return { mode: this.id, ffa: true, target: this.def.scoreLimit, aid: this.aid.map((a) => [a.x, a.z, a.on ? 1 : 0]), leader: top ? { id: top.id, name: top.name, kills: top.kills } : null };
+  }
+}
+
 export function createMode(id, match, opts = {}) {
   switch (id) {
+    case 'brd':
+      return new BrdMode(match, 'brd');
     case 'practice':
       return new PracticeMode(match, 'practice');
     case 'tdm':

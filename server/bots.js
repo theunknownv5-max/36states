@@ -43,7 +43,7 @@ export class BotBrain {
     this.respawnAt = 0;
     this.skill = 0.55 + Math.random() * 0.35; // 0..1, higher = better aim and faster reactions
     // Some soldiers like it up close: they rush in and fight with fists and machete.
-    this.brawler = Math.random() < 0.22;
+    this.brawler = Math.random() < (match.mode?.def?.ffa ? 0.7 : 0.22);
   }
 
   onSpawn(p) {
@@ -100,7 +100,7 @@ export class BotBrain {
     let best = null;
     let bestD = Infinity;
     for (const o of m.players.values()) {
-      if (o.side === p.side || (o.status !== 'alive' && o.status !== 'downed') || m.chatting?.(o)) continue;
+      if (!m.enemies(p, o) || (o.status !== 'alive' && o.status !== 'downed') || m.chatting?.(o)) continue;
       const dx = o.x - p.x;
       const dz = o.z - p.z;
       const dist = Math.hypot(dx, dz);

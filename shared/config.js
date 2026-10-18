@@ -263,6 +263,23 @@ export const MODES = {
     timeLimitMs: 60 * 60 * 1000,
     icon: '🎯'
   },
+  brd: {
+    label: 'BRD: Butcher, Raid, Destroy',
+    short: 'BRD',
+    blurb: 'Assassin mode from the drone above. Every soldier for themselves: butcher up close, raid first-aid boxes, destroy everyone. First to 8 kills wins.',
+    sites: false,
+    respawn: true,
+    ffa: true,
+    topDown: true,
+    scoreLimit: 8, // kills by one soldier
+    fighters: 8, // real players + bots
+    aidBoxes: 8,
+    aidHeal: 50,
+    aidRespawnMs: 25000,
+    autoRespawnMs: 3500,
+    timeLimitMs: 6 * 60 * 1000,
+    icon: '🔪'
+  },
   stage: {
     label: 'Campaign Stages',
     blurb: 'Solo missions against waves of enemies. Clear one stage to unlock the next.',

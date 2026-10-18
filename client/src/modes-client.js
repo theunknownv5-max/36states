@@ -62,10 +62,49 @@ export class ModeClient {
     this.nextBeep = 0;
     this.myAct = null;
     this.buildQuickChat();
+    this.clearAid();
+    if (this.def.ffa) this.drawAid();
   }
 
   apply(state) {
     if (state) this.st = state;
+    if (this.def?.ffa) this.drawAid();
+  }
+
+  // ---------- BRD: first-aid boxes ----------
+  clearAid() {
+    for (const m of this.aidMeshes || []) this.game.scene?.remove(m);
+    this.aidMeshes = [];
+  }
+
+  drawAid() {
+    const g = this.game;
+    const list = this.st.aid || [];
+    if (!g.scene) return;
+    if (this.aidMeshes?.length !== list.length) {
+      this.clearAid();
+      const box = new THREE.BoxGeometry(0.9, 0.55, 0.65);
+      const white = new THREE.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.5, emissive: '#222' });
+      const red = new THREE.MeshStandardMaterial({ color: '#e02424', emissive: '#7a0000', roughness: 0.4 });
+      const bar = new THREE.BoxGeometry(0.5, 0.02, 0.14);
+      for (const [x, z] of list) {
+        const m = new THREE.Group();
+        const b = new THREE.Mesh(box, white);
+        b.position.y = 0.3;
+        b.castShadow = true;
+        m.add(b);
+        for (const r of [0, Math.PI / 2]) {
+          const c = new THREE.Mesh(bar, red);
+          c.position.y = 0.585;
+          c.rotation.y = r;
+          m.add(c);
+        }
+        m.position.set(x, 0, z);
+        g.scene.add(m);
+        this.aidMeshes.push(m);
+      }
+    }
+    list.forEach(([, , on], i) => (this.aidMeshes[i].visible = !!on));
   }
 
   subscribe(on) {
@@ -111,6 +150,14 @@ export class ModeClient {
     on('act', (m) => {
       if (m.pid === g.myId) this.myAct = m.kind ? { kind: m.kind, start: m.start, dur: m.dur } : null;
       if (m.kind === 'defuse' && m.pid !== g.myId && g.side === 'out') g.hud.toast('They are defusing the bomb!', 'bad', 2000);
+    });
+    on('aid', (m) => {
+      if (this.st.aid?.[m.i]) this.st.aid[m.i][2] = m.on ? 1 : 0;
+      this.drawAid();
+      if (m.by === g.myId) {
+        g.hud.toast('✚ First aid: +50 health', 'good', 1500);
+        audio.gem();
+      }
     });
     on('wave', (m) => {
       this.st = { ...this.st, wave: m.wave, waves: m.waves, enemiesLeft: m.enemies, nextWaveAt: 0 };
@@ -219,6 +266,11 @@ export class ModeClient {
       const next = st.nextWaveAt ? ` · next wave ${Math.max(0, Math.ceil((st.nextWaveAt - sNow) / 1000))}s` : '';
       bar = `<span>🎖 Stage ${(st.stage || 0) + 1}</span><span>🌊 Wave ${st.wave || 0}/${st.waves || '?'}</span><span>☠ ${st.enemiesLeft ?? 0} left</span><span>❤ ${st.livesLeft ?? '-'}</span>${next}`;
     } else if (this.id === 'tdm') bar = `<span>💥 Team Deathmatch · first to ${this.def.scoreLimit} kills</span>`;
+    else if (this.def.ffa) {
+      const mine = g.roster.get(g.myId)?.kills || 0;
+      const lead = st.leader && st.leader.id !== g.myId ? `<span>👑 ${String(st.leader.name).replace(/[<>&]/g, '')} ${st.leader.kills}</span>` : st.leader?.kills ? '<span>👑 You lead</span>' : '';
+      bar = `<span class="brd-kills">🔪 ${mine}/${st.target || this.def.scoreLimit}</span>${lead}`;
+    }
     g.hud.modebar(bar);
     // Planted bomb: blinking light and beeps that speed up.
     if (this.bomb?.planted && st.planted) {
@@ -237,6 +289,12 @@ export class ModeClient {
   // World labels: bomb carrier for teammates, dropped / planted bomb.
   labels(items) {
     const g = this.game;
+    if (this.def?.ffa) {
+      (this.st.aid || []).forEach(([x, z, on]) => {
+        if (on) items.push({ x, y: 1.1, z, cls: 'site', html: '<span style="color:#ff5a5a">✚</span>', clamp: false, opacity: 0.9 });
+      });
+      return;
+    }
     if (this.id !== 'bomb') return;
     const st = this.st;
     if (st.carrier && st.carrier !== g.myId && g.side === 'out') {
@@ -284,6 +342,7 @@ export class ModeClient {
 
   stop() {
     this.clearBomb();
+    this.clearAid();
     this.toggleQuick(false);
     this.game.hud.modebar(null);
     document.getElementById('timer').style.color = '';

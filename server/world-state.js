@@ -605,6 +605,6 @@ export class WorldState {
     o.burnUntil = Math.max(o.burnUntil || 0, t + secs * 1000);
     o.burnAcc ||= 0;
     const by = byId && this.m.players.get(byId);
-    o.burnBy = by && by.side !== o.side ? by.id : o.burnBy || null;
+    o.burnBy = by && this.m.enemies(by, o) ? by.id : o.burnBy || null;
   }
 }

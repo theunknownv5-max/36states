@@ -99,7 +99,7 @@ export class Match {
     const side = FACTIONS[faction].side;
     // Auto-balance real players: no side may have 2+ more humans than the other.
     const other = side === 'sec' ? 'out' : 'sec';
-    if (!this.mode.def.solo && this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
+    if (!this.mode.def.solo && !this.mode.def.ffa && this.sideCount(side, true) - this.sideCount(other, true) >= 2) {
       return { error: `${SIDES[side].label} already has too many players here. Join ${SIDES[other].label}.` };
     }
     const tag = this.hooks.social?.tagOf(profile);
@@ -227,7 +227,7 @@ export class Match {
     let bestD = -1;
     for (const s of base.spawns) {
       let d = Infinity;
-      for (const o of this.players.values()) if (o.side !== p.side && o.status === 'alive') d = Math.min(d, Math.hypot(o.x - s.x, o.z - s.z));
+      for (const o of this.players.values()) if (this.enemies(o, p) && o.status === 'alive') d = Math.min(d, Math.hypot(o.x - s.x, o.z - s.z));
       d += this.rng() * 6;
       if (d > bestD) {
         bestD = d;
@@ -267,6 +267,7 @@ export class Match {
       p.armor = 100;
       if (this.rng() < 0.4) p.frag = 1;
     }
+    this.mode.loadout?.(p);
     if (kit) Object.assign(p, kit);
     if (first) p.money = Math.max(p.money, MONEY.start);
     if (this.practice && p.human) p.money = MONEY.max; // practice: everything free to try
@@ -765,11 +766,11 @@ export class Match {
   // ---------- damage, downs, deaths ----------
   damage(v, attacker, amount, { zone = 'body', weapon, explosive = false, melee = false, from = null, wall = false } = {}) {
     if (v.status === 'downed') {
-      if (attacker && attacker.side !== v.side) this.kill(v, attacker, weapon, zone === 'head');
+      if (attacker && this.enemies(attacker, v)) this.kill(v, attacker, weapon, zone === 'head');
       return;
     }
     if (v.status !== 'alive') return;
-    if (attacker && attacker !== v && attacker.side === v.side) return; // no friendly fire
+    if (attacker && attacker !== v && !this.enemies(attacker, v)) return; // no friendly fire
     if (this.protectedNow(v) && attacker !== v) return;
     if (this.chatting(v) && attacker !== v) return;
     if (this.world.armoredSeat(v) && attacker !== v) return; // safe inside the APC
@@ -815,7 +816,7 @@ export class Match {
     }
     if (v.health <= 0) {
       const instant = !v.human || zone === 'head' || explosive || melee;
-      const teammateAlive = [...this.players.values()].some((o) => o !== v && o.human && o.side === v.side && o.status === 'alive');
+      const teammateAlive = !this.mode.def.ffa && [...this.players.values()].some((o) => o !== v && o.human && o.side === v.side && o.status === 'alive');
       if (!instant && teammateAlive) this.down(v, attacker, weapon);
       else this.kill(v, attacker, weapon, zone === 'head');
     } else this.syncMe(v);
@@ -846,7 +847,7 @@ export class Match {
     // Lose bought kit on death (money stays).
     v.weapons.primary = null;
     v.slot = 'secondary';
-    if (killer && killer !== v && killer.side !== v.side) {
+    if (killer && killer !== v && this.enemies(killer, v)) {
       killer.kills++;
       killer.streak++;
       if (headshot) killer.headshots++;
@@ -881,7 +882,7 @@ export class Match {
     for (const [id, rec] of v.damagers) {
       if (killer && id === killer.id) continue;
       const o = this.players.get(id);
-      if (!o || o.side === v.side || rec.dmg < 35 || t - rec.t > 10000) continue;
+      if (!o || !this.enemies(o, v) || rec.dmg < 35 || t - rec.t > 10000) continue;
       o.assists++;
       o.money = Math.min(MONEY.max, o.money + MONEY.assist);
       o.points += 3;
@@ -977,6 +978,7 @@ export class Match {
   // ---------- buying ----------
   inBuyZone(p) {
     if (this.practice) return true;
+    if (this.mode.canBuy && !this.mode.canBuy(p)) return false;
     const b = this.map.bases[p.side];
     return Math.hypot(p.x - b.x, p.z - b.z) < MONEY.buyZoneRadius || now() < p.spawnAt + MONEY.buyWindowMs;
   }
@@ -1178,12 +1180,12 @@ export class Match {
       const cy = o.y + 0.9;
       const dist = Math.hypot(o.x - x, cy - y, o.z - z);
       if (dist > radius) continue;
-      if (!env && owner && o !== owner && o.side === owner.side) continue;
+      if (!env && owner && o !== owner && !this.enemies(o, owner)) continue;
       const blocked = lineBlocked(this.map.index, x, y + 0.25, z, o.x, cy, o.z);
       let hp = dmg * Math.pow(1 - dist / radius, 1.2) * (blocked ? 0.2 : 1);
       if (o === owner) hp *= 0.5;
       if (hp < 1) continue;
-      const attacker = owner && o !== owner && o.side === owner.side ? null : owner;
+      const attacker = owner && o !== owner && !this.enemies(o, owner) ? null : owner;
       this.damage(o, attacker, hp, { zone: 'body', weapon, explosive: true, from: [x, y, z] });
     }
     // Blasts set off fuel drums caught in them.
@@ -1227,7 +1229,7 @@ export class Match {
       for (const o of this.players.values()) {
         if (o.status !== 'alive' || Math.hypot(o.x - x, o.z - z) > TANKS.burnRadius || o.y > 4) continue;
         o.burnUntil = Math.max(o.burnUntil || 0, t + TANKS.burnSecs * 1000);
-        o.burnBy = by && by.side !== o.side ? by.id : null;
+        o.burnBy = by && this.enemies(by, o) ? by.id : null;
         o.burnAcc = o.burnAcc || 0;
       }
     }, 120);
@@ -1264,7 +1266,7 @@ export class Match {
       if (lineBlocked(this.map.index, x, 0.8, z, o.x, o.y + 0.9, o.z)) continue;
       const secs = DRUMS.burnSecs * (1.15 - (d / DRUMS.burnRadius) * 0.6);
       o.burnUntil = Math.max(o.burnUntil || 0, t + secs * 1000);
-      o.burnBy = by && by.side !== o.side ? by.id : null;
+      o.burnBy = by && this.enemies(by, o) ? by.id : null;
       o.burnAcc = o.burnAcc || 0;
     }
   }
@@ -1360,7 +1362,7 @@ export class Match {
   // ---------- reviving teammates ----------
   onRevive(p, targetId) {
     const v = this.players.get(targetId);
-    if (!this.canAct(p) || !v || v.status !== 'downed' || v.side !== p.side) return;
+    if (!this.canAct(p) || !v || v.status !== 'downed' || this.enemies(p, v)) return;
     if (Math.hypot(v.x - p.x, v.z - p.z) > 2.4) return;
     v.reviver = { id: p.id, since: now() };
     this.broadcastNear(p, { t: 'reviving', id: p.id, target: v.id }, 40);
@@ -1537,6 +1539,7 @@ export class Match {
         this.toast(p, `Medevac brought you back. Fee ${cash(RESPAWN.medevacFee, this.cc)}.`, 'info');
       }
       if (this.practice && p.human && p.status === 'dead' && t - p.deadAt > 3000) this.spawn(p);
+      if (this.mode.def.autoRespawnMs && p.human && p.status === 'dead' && t - p.deadAt > this.mode.def.autoRespawnMs) this.spawn(p);
       // A human who leaves the death screen alone too long gets the medevac.
       if (p.human && p.status === 'dead' && t - p.deadAt > 60000 && this.mode.canRespawn(p)) this.onRespawn(p, 'medevac');
       if (!p.human) p.bot.tick(p, dt);
@@ -1580,7 +1583,7 @@ export class Match {
       if (this.practice) continue;
       p.profile.matches++;
       this.mission(p, 'matches');
-      if (p.side === winner) {
+      if (this.mode.isWinner(p, winner)) {
         p.profile.wins++;
         this.addXP(p, XP.win);
         this.mission(p, 'wins');
@@ -1611,7 +1614,7 @@ export class Match {
       const list = [];
       for (const o of this.players.values()) {
         // Spirits are invisible to the enemy.
-        if (o !== me && o.status === 'spirit' && o.side !== me.side) continue;
+        if (o !== me && o.status === 'spirit' && this.enemies(o, me)) continue;
         const flags =
           (o.crouch ? 1 : 0) |
           (o.status === 'downed' ? 2 : 0) |
@@ -1622,11 +1625,11 @@ export class Match {
           (o.reloadUntil > t ? 64 : 0) |
           (o.sprint ? 128 : 0) |
           (o.status === 'dead' || o.status === 'medevac' ? 256 : 0) |
-          (uav && o.side !== me.side ? 512 : 0) |
+          (uav && this.enemies(o, me) ? 512 : 0) |
           (o.burnUntil > t ? 1024 : 0) |
           (this.chatting(o) ? 2048 : 0) |
           (o.veh != null ? 4096 : 0);
-        list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side ? Math.round(o.health) : -1]);
+        list.push([o.id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.yaw.toFixed(3), +o.pitch.toFixed(3), flags, WEAPON_IDS.indexOf(o.weapons[o.slot]), o.side === me.side || this.mode.def.ffa ? Math.round(o.health) : -1]);
       }
       this.send(me, { t: 's', ts: t, p: list, pr: projectiles, sm: smokes, vh: vehicles, ck: crocs, dg: dogs });
     }

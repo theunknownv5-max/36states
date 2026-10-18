@@ -75,7 +75,7 @@ export function nextOrders(stateId, modeId, rng = Math.random) {
 
 // One player's debrief: their medals, what they earned and where the story stands.
 export function debrief(match, p, winner, roster, medals) {
-  const won = !!winner && p.side === winner;
+  const won = !!winner && (match.mode?.isWinner ? match.mode.isWinner(p, winner) : p.side === winner);
   const t = tourOf(p.profile);
   const before = t.chapter;
   t.battles++;

@@ -378,13 +378,27 @@ export class Hud {
   matchEnd(m, mySide, myId, actions = []) {
     $('matchend').hidden = false;
     const stage = m.mode === 'stage';
-    const won = m.winner === mySide;
+    const ffa = !!m.modeState?.ffa;
+    const won = ffa ? m.winner === myId : m.winner === mySide;
     $('me-title').textContent = stage ? (won ? 'STAGE CLEAR!' : 'STAGE FAIL') : !m.winner ? 'DRAW' : won ? 'VICTORY' : 'DEFEAT';
     $('me-title').style.color = !m.winner && !stage ? '#fff' : won ? 'var(--good)' : 'var(--bad)';
-    $('me-sub').textContent = stage ? m.modeState?.title || '' : won ? 'Your unit has proven its duty!' : m.winner ? 'The enemy took this one. Regroup and hit back.' : 'Nobody won. The next one decides it.';
+    const champ = ffa ? m.roster.find((r) => r.id === m.winner)?.name : null;
+    $('me-sub').textContent = stage
+      ? m.modeState?.title || ''
+      : ffa
+        ? won
+          ? 'Last one standing. Nobody butchers like you!'
+          : champ
+            ? `${champ} won the bloodbath. Hunt them next time.`
+            : 'Nobody won. The next one decides it.'
+        : won
+          ? 'Your unit has proven its duty!'
+          : m.winner
+            ? 'The enemy took this one. Regroup and hit back.'
+            : 'Nobody won. The next one decides it.';
     $('me-debrief').hidden = true;
     $('me-debrief').innerHTML = '';
-    $('me-score').innerHTML = stage ? '' : `<span style="color:var(--sec)">${m.score.sec}</span> — <span style="color:var(--out)">${m.score.out}</span>`;
+    $('me-score').innerHTML = stage || ffa ? '' : `<span style="color:var(--sec)">${m.score.sec}</span> — <span style="color:var(--out)">${m.score.out}</span>`;
     const me = m.roster.find((r) => r.id === myId);
     $('me-stats').innerHTML = me
       ? [

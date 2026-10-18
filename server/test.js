@@ -1075,6 +1075,57 @@ section('The whole world: countries, regions, biomes, new orders');
   check(orders.state.startsWith('gh.') && orders.state !== 'gh.ashanti' && orders.name, `new orders stay in the same country (${orders.name})`);
 }
 
+section('BRD: Butcher, Raid, Destroy (free-for-all from above)');
+{
+  const mm = new Match('kano', hooks, 'brd');
+  const wa = fakeWs();
+  const A = mm.addHuman(wa, 'army', profile('Assassin')).player;
+  check(mm.players.size === MODES.brd.fighters, `${mm.players.size} fighters in the arena`);
+  check(A.weapons.melee === 'knife' && A.slot === 'melee' && !A.weapons.primary, 'blades and a pistol only');
+  check(mm.mode.aid.length === MODES.brd.aidBoxes, 'first-aid boxes placed');
+  check(!mm.inBuyZone(A), 'no armoury in BRD');
+  const mate = [...mm.players.values()].find((p) => !p.human && p.side === A.side);
+  check(mate && mm.enemies(A, mate), 'a soldier of your own side is still an enemy');
+  // Raid a first-aid box.
+  A.health = 30;
+  const box = mm.mode.aid[0];
+  Object.assign(A, { x: box.x, z: box.z, y: 0 });
+  run(mm, 0.2);
+  check(A.health >= 80 && A.health < 90 && !box.on, `a first-aid box heals 50 and goes away for a while (${A.health}, ${box.on})`);
+  // Butcher: kill credit between soldiers of the same side.
+  mate.protectUntil = 0;
+  mate.health = 5;
+  mate.armor = 0;
+  Object.assign(mate, { x: A.x + 1, z: A.z, y: 0 });
+  A.yaw = Math.atan2(-1, 0);
+  A.lastMelee = 0;
+  mm.handle(A, { t: 'melee' });
+  check(mate.status !== 'alive' && A.kills === 1, 'killing anyone counts in BRD');
+  check(mm.score.sec === 0 && mm.score.out === 0, 'no team score in free-for-all');
+  // Quick respawn.
+  A.protectUntil = 0;
+  A.health = 1;
+  A.armor = 0;
+  mm.kill(A, mate, 'knife', false);
+  check(A.status === 'dead', 'you can fall');
+  run(mm, MODES.brd.autoRespawnMs / 1000 + 0.6);
+  check(A.status === 'alive', 'you are back in a few seconds, free');
+  const st = mm.mode.state();
+  check(st.ffa && st.target === MODES.brd.scoreLimit && st.aid.length === MODES.brd.aidBoxes && st.leader, 'clients get the kill target, boxes and leader');
+  // Snapshot shows everyone's health (HP bars over heads).
+  wa.log.length = 0;
+  mm.sendSnapshots();
+  const snap = wa.log.find((m) => m.t === 's');
+  check(snap && snap.p.every((r) => r[8] >= 0), 'health of every soldier is sent for the HP bars');
+  // First to the target wins.
+  A.kills = MODES.brd.scoreLimit;
+  run(mm, 0.2);
+  const end = wa.log.find((m) => m.t === 'matchEnd');
+  const dbf = wa.log.find((m) => m.t === 'debrief');
+  check(mm.ended && end?.winner === A.id, 'first to the kill target wins');
+  check(dbf?.won === true, 'the winner gets a winning debrief');
+}
+
 section('Native app data (rules and maps)');
 {
   const { nativeRules, nativeMap } = await import('./native-api.js');

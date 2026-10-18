@@ -6,9 +6,9 @@
 //    while flying and recharges after; it is unlimited while your side's recon drone
 //    streak is up, and while you are dead and waiting to come back.
 import * as THREE from 'three';
-import { raycast, dirFromAngles, hitSoldier } from '../../shared/physics.js';
+import { raycast, dirFromAngles, hitSoldier, lineBlocked } from '../../shared/physics.js';
 import { audio } from './core/audio.js';
-import { WEAPONS } from '../../shared/config.js';
+import { WEAPONS, MODES } from '../../shared/config.js';
 import { VEHICLES } from '../../shared/vehicles.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,6 +36,9 @@ export class CameraModes {
     // Your saved choice in Settings: hands only (first person, default) or full body.
     this.chase = game.settings?.view === 'chase';
     if (this.chase) this.mode = 'chase';
+    // BRD: the assassin drone view from above, all match long.
+    this.top = !!MODES[game.modeId]?.topDown;
+    if (this.top) this.mode = 'top';
     this.climb = 0;
     // Touch buttons on the drone display.
     const hold = (id, v) => {
@@ -54,14 +57,14 @@ export class CameraModes {
 
   // ---------- switching ----------
   toggleChase() {
-    if (this.mode === 'drone') return;
+    if (this.mode === 'drone' || this.top) return;
     this.setView(this.chase ? 'fp' : 'chase');
     this.g.hud.toast(this.chase ? 'Full body view (H to switch back)' : 'Hands only view (H for full body)', 'info', 1400);
   }
 
   setView(view) {
     this.chase = view === 'chase';
-    if (this.mode !== 'drone') this.mode = this.chase ? 'chase' : 'fp';
+    if (this.mode !== 'drone' && !this.top) this.mode = this.chase ? 'chase' : 'fp';
     if (this.g.settings) {
       this.g.settings.view = this.chase ? 'chase' : 'fp';
       this.g.saveSettings?.();
@@ -174,6 +177,7 @@ export class CameraModes {
   toggleDrone() {
     if (this.mode === 'drone') return this.exitDrone();
     const g = this.g;
+    if (this.top && g.status === 'alive') return;
     if (!['alive', 'dead', 'medevac'].includes(g.status)) return;
     if (!this.unlimited() && this.battery < 5) return g.hud.toast(`Drone battery charging (${Math.round((this.battery / DRONE.battery) * 100)}%)`, 'bad', 1600);
     const b = g.body;
@@ -190,7 +194,7 @@ export class CameraModes {
 
   exitDrone(reason) {
     if (this.mode !== 'drone') return;
-    this.mode = this.chase ? 'chase' : 'fp';
+    this.mode = this.top ? 'top' : this.chase ? 'chase' : 'fp';
     this.drone = null;
     this.tour = null;
     $('drone-hud').hidden = true;
@@ -214,6 +218,7 @@ export class CameraModes {
   // Chase cam is on (a sniper scope switches back to your own eyes while aiming).
   thirdPerson() {
     const g = this.g;
+    if (this.top) return ['alive', 'downed'].includes(g.status);
     if (g.driving?.active) return g.status === 'alive';
     return this.mode === 'chase' && !(g.adsOn && WEAPONS[g.weapon()]?.zoom) && ['alive', 'downed'].includes(g.status);
   }
@@ -241,6 +246,7 @@ export class CameraModes {
     const g = this.g;
     const cam = g.camera;
     if (this.mode === 'drone') return this.flyDrone(dt, cam);
+    if (this.top) return this.topCam(dt, cam);
     // Battery recharges whenever the drone is parked.
     this.battery = Math.min(DRONE.battery, this.battery + dt * DRONE.recharge);
     if (!this.thirdPerson()) {
@@ -272,6 +278,49 @@ export class CameraModes {
     // Wall right behind you: fade your own body out instead of filling the screen with it.
     if (g.ownSoldier?.root) g.ownSoldier.root.visible = dist > 0.9;
     return true;
+  }
+
+  // BRD: high above your soldier, looking down (north is up the screen), a little ahead of
+  // where you face so you see who is coming.
+  topCam(dt, cam) {
+    const g = this.g;
+    const b = g.driving?.active ? g.driving.v : g.body;
+    const ahead = 2;
+    const tx = b.x - Math.sin(g.yaw) * ahead;
+    const tz = b.z - Math.cos(g.yaw) * ahead;
+    const target = new THREE.Vector3(tx, (b.y || 0) + 12.5, tz + 5.2);
+    this.smooth ||= target.clone();
+    this.smooth.lerp(target, Math.min(1, dt * 6));
+    cam.position.copy(this.smooth);
+    cam.rotation.set(-1.17, 0, 0);
+    if (g.ownSoldier?.root) g.ownSoldier.root.visible = true;
+    return true;
+  }
+
+  // The enemy best lined up with where you face (BRD aim help), within range and a cone.
+  assistTarget(range = 26, cone = 0.5) {
+    const g = this.g;
+    const b = g.body;
+    const fx = -Math.sin(g.yaw);
+    const fz = -Math.cos(g.yaw);
+    let best = null;
+    let bestScore = Infinity;
+    for (const s of g.soldiers.values()) {
+      if (!s.visible || s.isMate || !s.state || s.state.flags & (256 | 4)) continue;
+      const dx = s.state.x - b.x;
+      const dz = s.state.z - b.z;
+      const d = Math.hypot(dx, dz);
+      if (d > range || d < 0.01) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
+      if (ang > cone) continue;
+      if (lineBlocked(g.map.index, b.x, b.y + 1.4, b.z, s.state.x, s.state.y + 1.2, s.state.z, g.smokes || [])) continue;
+      const score = d * (1 + ang * 2);
+      if (score < bestScore) {
+        bestScore = score;
+        best = s.state;
+      }
+    }
+    return best;
   }
 
   // Behind and above the vehicle, looking where you look (so you can shoot out of it).
@@ -359,6 +408,19 @@ export class CameraModes {
   shot() {
     const g = this.g;
     if (!this.thirdPerson()) return null;
+    if (this.top) {
+      // From above: shots leave your eyes level with the ground, straight at the enemy you face.
+      const b = g.body;
+      const o = [b.x, b.y + g.eye, b.z];
+      const t = this.assistTarget(30, 0.42);
+      let d;
+      if (t) {
+        const v = [t.x - o[0], t.y + (t.flags & 1 ? 0.95 : 1.3) - o[1], t.z - o[2]];
+        const l = Math.hypot(...v) || 1;
+        d = v.map((x) => x / l);
+      } else d = dirFromAngles(g.yaw + g.punch.y, 0);
+      return { o, d, muzzle: new THREE.Vector3(o[0] + d[0] * 0.8, o[1] - 0.25, o[2] + d[2] * 0.8) };
+    }
     const b = g.body;
     const o = [b.x, b.y + g.eye, b.z];
     const cam = g.camera.position;

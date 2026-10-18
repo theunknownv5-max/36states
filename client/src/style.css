@@ -3091,3 +3091,18 @@ body.waiting .dr-reticle, body.waiting .dr-left { opacity: 0.25; }
   fill: rgba(255, 255, 255, 0.55);
   font-size: 12px;
 }
+
+/* BRD (free-for-all from above): no team scores, a big kill counter instead. */
+body.ffa .score .team {
+  visibility: hidden;
+}
+.brd-kills {
+  font-family: var(--title);
+  font-size: 20px;
+  color: #ff5a4f;
+  letter-spacing: 0.06em;
+}
+
+body.topdown #crosshair {
+  display: none;
+}

@@ -11,7 +11,7 @@ import { GradeShader } from './fps/grade.js';
 import { generateMap } from '../../shared/map.js';
 import { registerRegion } from '../../shared/regions.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
-import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TANKS, TILE_GEMS, cashSign } from '../../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TANKS, TILE_GEMS, MODES, cashSign } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
 import { Ambience } from './world/ambience.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
@@ -96,6 +96,10 @@ export class Game {
     this.faction = info.faction;
     this.stateId = info.state;
     this.modeId = info.mode || 'conquest';
+    this.ffa = !!MODES[this.modeId]?.ffa;
+    document.body.classList.toggle('ffa', this.ffa);
+    document.body.classList.toggle('topdown', !!MODES[this.modeId]?.topDown);
+    this.meRing = null;
     if (info.region) registerRegion(info.region);
     this.map = generateMap(info.state);
     const scene = new THREE.Scene();
@@ -219,6 +223,7 @@ export class Game {
 
   stop(silent = false) {
     if (!this.scene) return;
+    document.body.classList.remove('ffa', 'topdown');
     this.modes.stop();
     this.ambience?.dispose();
     this.boards?.dispose();
@@ -941,6 +946,7 @@ export class Game {
   }
 
   inBuyZone() {
+    if (this.ffa) return false;
     const b = this.map.bases[this.side];
     return Math.hypot(this.body.x - b.x, this.body.z - b.z) < MONEY.buyZoneRadius || this.net.serverNow() < (this.me?.buyUntil || 0);
   }
@@ -1045,6 +1051,7 @@ export class Game {
     if (w.melee) {
       if (now - this.local.lastFire < 520) return;
       this.local.lastFire = now;
+      this.meleeAssist();
       this.net.send({ t: 'melee' });
       this.vm.swing();
       audio.swing();
@@ -1197,6 +1204,7 @@ export class Game {
     const now = performance.now();
     if (now - (this.local.lastPunch || 0) < 380) return;
     this.local.lastPunch = now;
+    this.meleeAssist(3.6);
     this.net.send({ t: 'melee', kind: 'punch' });
     this.vm.punch?.();
     audio.swing();
@@ -1275,8 +1283,10 @@ export class Game {
       this.yaw += look.yaw / zoom;
       this.pitch = clamp(this.pitch + look.pitch / zoom, -1.5, 1.5);
     }
+    if (this.cams.top) this.topFacing(dt, now);
     this.move(dt, now);
     this.cameraUpdate(dt, now, look);
+    if (this.cams.top) this.drawMeRing(now);
     // Firing.
     if (st === 'alive' && !this.anyMenu() && !this.cams.blocksFire() && !this.adChat.open && (this.input.locked || isTouch())) {
       if (this.artilleryAim) this.aimArtillery();
@@ -1402,6 +1412,57 @@ export class Game {
     }
   }
 
+  // BRD: you face the enemy closest to where you look; with no enemy near, you face where you run.
+  // Turning with the mouse or right thumb still works and wins for a moment.
+  topFacing(dt, now) {
+    this.pitch = -0.08;
+    if (this.status !== 'alive') return;
+    const b = this.body;
+    const turnTo = (yaw, k) => {
+      let d = yaw - this.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.yaw += d * Math.min(1, dt * k);
+    };
+    if (now - (this.lastLookAt || 0) < 700) return;
+    const t = this.cams.assistTarget(12, Math.PI * 0.75);
+    if (t) return turnTo(Math.atan2(-(t.x - b.x), -(t.z - b.z)), 9);
+    const mv = this.input.move();
+    if (Math.hypot(mv.x, mv.y) > 0.25) turnTo(Math.atan2(-mv.x, mv.y), 8);
+  }
+
+  // BRD: a glowing ring under your soldier and a pointer for where you face, so you never
+  // lose yourself in a crowd seen from above.
+  drawMeRing(now) {
+    if (!this.meRing) {
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.8, 40), new THREE.MeshBasicMaterial({ color: '#39d7ff', transparent: true, opacity: 0.85, depthWrite: false }));
+      ring.rotation.x = -Math.PI / 2;
+      const tip = new THREE.Mesh(new THREE.CircleGeometry(0.22, 3), new THREE.MeshBasicMaterial({ color: '#39d7ff', transparent: true, opacity: 0.9, depthWrite: false }));
+      tip.rotation.x = -Math.PI / 2;
+      tip.position.z = -1.05;
+      g.add(ring, tip);
+      g.renderOrder = 2;
+      this.scene.add(g);
+      this.meRing = g;
+    }
+    const alive = this.status === 'alive';
+    this.meRing.visible = alive;
+    if (!alive) return;
+    this.meRing.position.set(this.body.x, this.body.y + 0.06, this.body.z);
+    this.meRing.rotation.y = this.yaw;
+    this.meRing.children[0].material.opacity = 0.6 + Math.sin(now / 220) * 0.25;
+  }
+
+  // BRD: snap to the nearest enemy in reach before a blade or punch, and tell the server at once.
+  meleeAssist(reach = 4.2) {
+    if (!this.cams.top) return;
+    const t = this.cams.assistTarget(reach, Math.PI);
+    if (!t) return;
+    this.yaw = Math.atan2(-(t.x - this.body.x), -(t.z - this.body.z));
+    this.net.send({ t: 'st', x: +this.body.x.toFixed(2), y: +this.body.y.toFixed(2), z: +this.body.z.toFixed(2), yaw: +this.yaw.toFixed(3), pitch: 0, c: this.body.crouch ? 1 : 0, a: 0, r: 0 });
+  }
+
   anyMenu() {
     return this.menus.buy || this.menus.pause || this.menus.chat || this.ended;
   }
@@ -1425,6 +1486,11 @@ export class Game {
     const cos = Math.cos(this.yaw);
     let wx = mv.x * cos - mv.y * sin;
     let wz = -mv.x * sin - mv.y * cos;
+    // BRD view from above: the stick moves you on the screen (up is north), not where you face.
+    if (this.cams.top) {
+      wx = mv.x;
+      wz = -mv.y;
+    }
     const w = WEAPONS[this.weapon()] || {};
     if (st === 'spirit') {
       // Spirits glide through walls.
@@ -1590,7 +1656,7 @@ export class Game {
       }
       if (!sol) {
         const faction = r?.faction || (b.hp >= 0 ? this.faction : this.side === 'sec' ? 'bandit' : 'police');
-        sol = new Soldier(this.scene, { id, faction }, (r?.side || (b.hp >= 0 ? this.side : null)) === this.side);
+        sol = new Soldier(this.scene, { id, faction }, !this.ffa && (r?.side || (b.hp >= 0 ? this.side : null)) === this.side);
         this.soldiers.set(id, sol);
         sol.last.x = s.x;
         sol.last.z = s.z;
@@ -1741,6 +1807,16 @@ export class Game {
           const cam = this.camera.position;
           if (d < 80 && !lineBlocked(this.map.index, cam.x, cam.y, cam.z, s.state.x, s.state.y + 1.6, s.state.z, this.smokes || [])) items.push({ x: s.state.x, y: s.state.y + 2.15, z: s.state.z, cls: 'lab rival', html: `⚔ RIVAL · ${plain.replace(/[<>&]/g, '')}` });
         }
+      }
+      // BRD: every enemy on screen shows a health bar.
+      if (this.ffa && s.visible && s.state && !(s.state.flags & (256 | 4))) {
+        const d = Math.hypot(s.state.x - me.x, s.state.z - me.z);
+        if (d < 45) {
+          const r = this.roster.get(id);
+          const hp = Math.max(0, s.state.hp ?? 100);
+          items.push({ x: s.state.x, y: s.state.y + 2.05, z: s.state.z, cls: 'lab out', html: `${(r?.name || '').replace(/[<>&]/g, '')} · ${r?.kills || 0}<span class="hpb"><i style="width:${hp}%"></i></span>` });
+        }
+        continue;
       }
       if (!s.visible || !s.state || !s.isMate) continue;
       const r = this.roster.get(id);
