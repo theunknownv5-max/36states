@@ -2,7 +2,7 @@
 // world (planted with a blinking light and beeps, or dropped), plant/defuse with E,
 // buy-time freeze, and end-of-stage choices.
 import * as THREE from 'three';
-import { MODES, BOMB, STAGES } from '../../shared/config.js';
+import { MODES, BOMB, STAGES, cashSign } from '../../shared/config.js';
 import { audio } from './core/audio.js';
 import { softDot } from './core/textures.js';
 
@@ -46,7 +46,7 @@ function bombModel() {
   return g;
 }
 
-const QUICK = ['Follow me!', 'Enemy here!', 'I need help o!', 'Cover me!', 'Hold this place!', 'Well done, my guy!'];
+const QUICK = ['Follow me!', 'Enemy here!', 'I need help!', 'Cover me!', 'Hold this place!', 'Well done, soldier!'];
 
 export class ModeClient {
   constructor(game) {
@@ -125,7 +125,7 @@ export class ModeClient {
 
   introTip() {
     const touch = this.game.touch;
-    const buy = touch ? 'Tap ₦' : 'Press B';
+    const buy = touch ? `Tap ${cashSign(this.game.hud?.cc)}` : 'Press B';
     switch (this.id) {
       case 'tdm':
         return `Team Deathmatch! First team to ${this.def.scoreLimit} kills wins. ${buy} to buy weapon.`;

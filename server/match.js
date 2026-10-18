@@ -2,11 +2,11 @@
 // gem pickup, capture, explosion and payout. Bots fill empty slots.
 import { awards, debrief } from './tour.js';
 import { randomUUID } from 'node:crypto';
-import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, TANKS, HEALTH, PUNCH, TILE_GEMS, MODES, priceFor, rankFor } from '../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONEY, PLAYER, XP, NET, DRUMS, TANKS, HEALTH, PUNCH, TILE_GEMS, MODES, priceFor, rankFor, cash } from '../shared/config.js';
 import { generateMap, inWater, tileGemSpots } from '../shared/map.js';
 import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise, holeAt } from '../shared/physics.js';
 import { RESOURCES } from '../shared/states.js';
-import { regionById } from '../shared/regions.js';
+import { regionById, ccOf } from '../shared/regions.js';
 import { mulberry32 } from '../shared/rng.js';
 import { BotBrain, botName, botLoadout } from './bots.js';
 import { createMode } from './modes.js';
@@ -21,6 +21,7 @@ const DISCOVERY_RES = ['gold', 'lithium', 'crude', 'gemstones', 'tin', 'gas', 't
 export class Match {
   constructor(stateId, hooks, modeId = 'conquest', opts = {}) {
     this.stateId = stateId;
+    this.cc = ccOf(stateId);
     this.modeId = modeId;
     this.opts = opts;
     this.mode = createMode(modeId, this, opts);
@@ -989,7 +990,7 @@ export class Match {
     if (!w && !g) return;
     if (w && (w.melee || item === 'p9' || w.loot)) return;
     if (w?.unlockLevel && rankFor(p.profile.xp).level < w.unlockLevel) return this.toast(p, `${w.name} unlocks at rank level ${w.unlockLevel}.`, 'bad');
-    if (p.money < price) return this.toast(p, 'Your money no reach.', 'bad');
+    if (p.money < price) return this.toast(p, 'You do not have enough money.', 'bad');
     if (w) {
       if (p.weapons[w.slot] === item) {
         // Buying the same gun again refills ammo.
@@ -1533,7 +1534,7 @@ export class Match {
       if (p.status === 'medevac' && t >= p.medevacAt) {
         p.money = Math.max(0, p.money - RESPAWN.medevacFee);
         this.spawn(p);
-        this.toast(p, `Medevac brought you back. Fee ₦${RESPAWN.medevacFee.toLocaleString()}.`, 'info');
+        this.toast(p, `Medevac brought you back. Fee ${cash(RESPAWN.medevacFee, this.cc)}.`, 'info');
       }
       if (this.practice && p.human && p.status === 'dead' && t - p.deadAt > 3000) this.spawn(p);
       // A human who leaves the death screen alone too long gets the medevac.

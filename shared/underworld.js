@@ -22,7 +22,7 @@ export const LOOT = {
   ancestral: { name: "Ancestor's Dane Gun", kind: 'weapon', icon: '🪶' },
   plate: { name: 'Juggernaut plate (200 armour)', kind: 'armor', armor: 200, icon: '🛡' },
   charm: { name: "Warrior's charm armour", kind: 'armor', armor: 150, heal: 25, icon: '🧿' },
-  money: { name: '₦2,500 stash', kind: 'money', icon: '💰' },
+  money: { name: 'Cash stash (2,500)', kind: 'money', icon: '💰' },
   gems: { name: 'Life gem', kind: 'gems', icon: '💎' },
   bones: { name: 'Only old bones', kind: 'none', icon: '💀' }
 };

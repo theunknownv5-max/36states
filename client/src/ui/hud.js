@@ -2,12 +2,13 @@
 // damage arcs, world labels, the death/spirit/medevac screens, buy menu,
 // scoreboard and match end.
 import * as THREE from 'three';
-import { WEAPONS, GEAR, FACTIONS, SIDES, priceFor, RESPAWN, KILLSTREAKS } from '../../../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, SIDES, priceFor, RESPAWN, KILLSTREAKS, cash, cashSign } from '../../../shared/config.js';
 import { regionById, COUNTRY_BY_CC, flagOf } from '../../../shared/regions.js';
 import { AMBULANCE } from '../../../shared/vehicles.js';
 
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => '₦' + Math.round(n).toLocaleString();
+let CC = 'NG';
+const fmt = (n) => cash(n, CC);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const WNAME = (w) => ({ artillery: 'Artillery', frag: 'Grenade', bleed: 'Blood finish', drum: 'Fuel drum', fire: 'Burned', bomb: 'Bomb', c4: 'C4', vehicle: 'Run over', fist: 'Punch', knife: 'Machete', croc: '🐊 Crocodile', dog: '🐕 Guard dog', drown: '🌊 Drowned', tank: 'Fuel tank blast', crush: 'Crushed by a lorry' })[w] || WEAPONS[w]?.name || w || '';
 
@@ -24,6 +25,10 @@ export class Hud {
   setMatch(stateId, side, faction) {
     const s = regionById(stateId);
     const c = COUNTRY_BY_CC[s?.cc || 'NG'];
+    CC = s?.cc || 'NG';
+    this.cc = CC;
+    for (const b of document.querySelectorAll('[data-key=KeyB]')) b.textContent = cashSign(CC);
+    $('opt-medevac-fee').textContent = `Wait ${RESPAWN.medevacMs / 1000} seconds for a helicopter. Fee ${cash(RESPAWN.medevacFee, CC)}.`;
     $('state-tag').textContent = `${flagOf(c?.cc)} ${(s?.name || stateId).toUpperCase()} · ${SIDES[side].label} · ${FACTIONS[faction].label}`;
     $('killfeed').innerHTML = '';
     $('chat-log').innerHTML = '';
@@ -81,7 +86,7 @@ export class Hud {
     if (m.bloodpill > 0) list.push(`<span>💊 ${m.bloodpill} (N)</span>`);
     if (m.c4 > 0) list.push(`<span>🧨 ${m.c4} (P)</span>`);
     if (this.c4Planted > 0) list.push(`<span class="sel">💥 Blow ${this.c4Planted} (L)</span>`);
-    if (m.status === 'alive' && m.health <= 70 && Date.now() >= (m.ambReady || 0) && m.money >= AMBULANCE.fee && m.veh == null) list.push(`<span>🚑 ₦${(AMBULANCE.fee / 1000).toFixed(1)}k (K)</span>`);
+    if (m.status === 'alive' && m.health <= 70 && Date.now() >= (m.ambReady || 0) && m.money >= AMBULANCE.fee && m.veh == null) list.push(`<span>🚑 ${cashSign(CC)}${(AMBULANCE.fee / 1000).toFixed(1)}k (K)</span>`);
     $('nades').innerHTML = list.join('');
   }
 

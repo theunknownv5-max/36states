@@ -11,7 +11,7 @@ signal leave
 signal settings
 signal resume
 
-const QUICK := ["Follow me!", "Enemy here!", "I need help o!", "Cover me!", "Hold this place!", "Well done, my guy!"]
+const QUICK := ["Follow me!", "Enemy here!", "I need help!", "Cover me!", "Hold this place!", "Well done, soldier!"]
 
 var battle: Node
 var cross: Control

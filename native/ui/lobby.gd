@@ -1,6 +1,6 @@
 extends Control
 ## The lobby: your soldier, online count, game modes, the war map of all 36 states + FCT,
-## the state briefing, "wetin you be" (side and faction), bots or real players, and Deploy.
+## the state briefing, your side and faction, bots or real players, and Deploy.
 
 const WarMap = preload("res://ui/warmap.gd")
 const Settings = preload("res://ui/settings.gd")

@@ -11,7 +11,7 @@ import { GradeShader } from './fps/grade.js';
 import { generateMap } from '../../shared/map.js';
 import { registerRegion } from '../../shared/regions.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
-import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TANKS, TILE_GEMS } from '../../shared/config.js';
+import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TANKS, TILE_GEMS, cashSign } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
 import { Ambience } from './world/ambience.js';
 import { AdWalls, SiteMarkers } from './world/markers.js';
@@ -1204,7 +1204,7 @@ export class Game {
 
   takePill() {
     if (!(this.me?.bloodpill > 0)) return this.hud.toast('You have no blood pills. Buy some at the armoury.', 'bad', 1500);
-    if (this.me.health >= 100) return this.hud.toast('You never wound. Keep the pill.', 'info', 1300);
+    if (this.me.health >= 100) return this.hud.toast('You are not hurt. Keep the pill.', 'info', 1300);
     this.net.send({ t: 'pill' });
   }
 
@@ -1645,7 +1645,7 @@ export class Game {
     if (st === 'alive' && !this.artilleryAim) {
       const mate = this.downedMate();
       if (mate) prompt = `<kbd>E</kbd> Revive ${this.roster.get(mate.id)?.name || 'your person'}`;
-      else if (this.inBuyZone() && sNow < (m.buyUntil || 0)) prompt = `<kbd>${isTouch() ? '₦' : 'B'}</kbd> Buy weapon · ${Math.ceil((m.buyUntil - sNow) / 1000)}s`;
+      else if (this.inBuyZone() && sNow < (m.buyUntil || 0)) prompt = `<kbd>${isTouch() ? cashSign(this.hud.cc) : 'B'}</kbd> Buy weapon · ${Math.ceil((m.buyUntil - sNow) / 1000)}s`;
     }
     if (!prompt && st === 'alive') prompt = this.modes.prompt();
     if (st === 'alive' && this.digging) {

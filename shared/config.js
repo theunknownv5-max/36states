@@ -2,6 +2,10 @@
 // life gems, respawning, game modes, stages, scoring, money and networking.
 // Server and client both read it. Player-facing text is in Nigerian Pidgin.
 
+// Battle cash: naira in Nigeria, dollars everywhere else (it is game money, not real money).
+export const cashSign = (cc) => (cc === 'NG' || !cc ? '₦' : '$');
+export const cash = (n, cc) => cashSign(cc) + Math.round(n).toLocaleString('en-US');
+
 export const GAME = {
   name: 'Proof of Duty',
   short: 'POD',

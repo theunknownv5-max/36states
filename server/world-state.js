@@ -4,7 +4,7 @@
 import { VEHICLES, WRECK, HOUSES, C4, AMBULANCE, CRUSH, crushable, footprint, insideVehicle, vehicleBlocked, exitSpots, forward } from '../shared/vehicles.js';
 import { moveBox, insideAnyBox, query } from '../shared/physics.js';
 import { findPath, inWater } from '../shared/map.js';
-import { PLAYER, WEAPONS, MONEY } from '../shared/config.js';
+import { PLAYER, WEAPONS, MONEY, cash } from '../shared/config.js';
 import { DIG, LOOT, GRAVE_LOOT, TOMB_LOOT, rollLoot } from '../shared/underworld.js';
 
 const now = () => Date.now();
@@ -481,9 +481,9 @@ export class WorldState {
     if (p.status !== 'alive' || this.m.chatting(p)) return;
     if (p.veh != null) return this.m.toast(p, 'Get out of the vehicle first so the ambulance can find you.', 'bad');
     if (this.ambulances.some((a) => a.pid === p.id)) return this.m.toast(p, 'An ambulance is already on its way. Hold on!', 'info');
-    if (p.health > PLAYER.maxHealth - AMBULANCE.minMissing) return this.m.toast(p, 'You never wound reach to call ambulance.', 'bad');
+    if (p.health > PLAYER.maxHealth - AMBULANCE.minMissing) return this.m.toast(p, 'You are not hurt enough to call an ambulance.', 'bad');
     if (t < (p.ambReady || 0)) return this.m.toast(p, `The ambulance is on another call. Try again in ${Math.ceil((p.ambReady - t) / 1000)}s.`, 'bad');
-    if (p.money < AMBULANCE.fee) return this.m.toast(p, `The ambulance costs ₦${AMBULANCE.fee.toLocaleString()}. You do not have enough money.`, 'bad');
+    if (p.money < AMBULANCE.fee) return this.m.toast(p, `The ambulance costs ${cash(AMBULANCE.fee, this.m.cc)}. You do not have enough money.`, 'bad');
     const base = this.map.bases[p.side].spawns[0];
     let path = findPath(this.map.nav, base.x, base.z, p.x, p.z) || [[p.x, p.z]];
     // Drop most points (the client smooths the curve), keep the start and end.
@@ -585,7 +585,7 @@ export class WorldState {
         this.m.syncMe(p);
       } else if (p) {
         p.money += Math.round(AMBULANCE.fee / 2);
-        this.m.toast(p, `The ambulance arrived but you were gone. Half your money (₦${Math.round(AMBULANCE.fee / 2).toLocaleString()}) has been refunded.`, 'bad');
+        this.m.toast(p, `The ambulance arrived but you were gone. Half your money (${cash(AMBULANCE.fee / 2, this.m.cc)}) has been refunded.`, 'bad');
         this.m.syncMe(p);
       }
     }
