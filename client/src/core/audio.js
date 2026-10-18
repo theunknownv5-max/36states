@@ -106,23 +106,31 @@ export class AudioEngine {
     if (this.reverbSend) this.reverbSend.gain.value = biome === 'urban' ? 0.5 : biome === 'rainforest' ? 0.38 : 0.26;
   }
 
+  // The recorded sound bank (the same sounds the native app plays), decoded once. Until a
+  // sound has loaded (or if it fails), the live synthesis plays instead.
   async loadSamples() {
     try {
-      const r = await fetch('/sounds/manifest.json');
+      const r = await fetch('sounds/manifest.json');
       if (!r.ok) return;
       const manifest = await r.json();
-      for (const [key, files] of Object.entries(manifest)) {
+      // Ogg Vorbis where the browser plays it (Chrome, Android, Firefox), AAC (.m4a) elsewhere (older iPhones).
+      const ext = new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? '.ogg' : '.m4a';
+      // Guns and footsteps first: they play the most.
+      const keys = Object.keys(manifest).sort((a, b) => (/^(rifle|pistol|smg|step-)/.test(b) ? 1 : 0) - (/^(rifle|pistol|smg|step-)/.test(a) ? 1 : 0));
+      const load = async (key) => {
         const list = [];
-        for (const f of [].concat(files)) {
+        for (const f of [].concat(manifest[key])) {
           try {
-            const buf = await (await fetch(`/sounds/${f}`)).arrayBuffer();
+            const buf = await (await fetch(`sounds/${f.replace(/\.m4a$/, ext)}`)).arrayBuffer();
             list.push(await this.ctx.decodeAudioData(buf));
           } catch {
             /* skip bad file */
           }
         }
         if (list.length) this.samples.set(key, list);
-      }
+      };
+      // A few at a time so the game never stalls while they load.
+      for (let i = 0; i < keys.length; i += 6) await Promise.all(keys.slice(i, i + 6).map(load));
     } catch {
       /* no manifest: synthesis only */
     }
@@ -288,7 +296,8 @@ export class AudioEngine {
     const far = o.dist > 120;
     const g = p.gain * (local ? 0.9 : 1.6);
     const w = o.when;
-    if (this.sample(kind, o.input, w, g)) return;
+    // Your own gun has its own close-up recording; everyone else's is heard through the air.
+    if ((local && this.sample(kind + '-mine', o.input, w, g)) || this.sample(kind, o.input, w, g)) return;
     // Supersonic crack / muzzle blast.
     if (!far) this.noiseHit(o.input, w, { dur: 0.05 + p.body * 0.3, gain: g * 0.9, f: p.crack, q: p.q, attack: 0.0008 });
     this.noiseHit(o.input, w, { dur: p.body, gain: g * 0.8, type: 'lowpass', f: far ? 900 : 5000, f2: 300, attack: 0.001 });
@@ -312,13 +321,14 @@ export class AudioEngine {
   dryFire() {
     if (!this.ready()) return;
     const o = this.out(null, { bus: this.sfx, reverb: 0 });
+    if (this.sample('dry', o.input, o.when, 0.8)) return;
     this.noiseHit(o.input, o.when, { dur: 0.03, gain: 0.35, f: 3200, q: 4 });
   }
 
   reload(kind, pos = null) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 3, reverb: 0.1 });
-    if (this.sample('reload-' + kind, o.input, o.when)) return;
+    if (this.sample('reload-' + kind, o.input, o.when) || (!['danegun', 'rpg', 'pkm'].includes(kind) && this.sample('reload', o.input, o.when))) return;
     const w = o.when;
     const k = (t, f, g = 0.35) => this.noiseHit(o.input, w + t, { dur: 0.035, gain: g, f, q: 3 });
     if (kind === 'danegun') {
@@ -343,6 +353,7 @@ export class AudioEngine {
   swing(pos = null) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 3, reverb: 0.05 });
+    if (this.sample('swing', o.input, o.when, 0.8)) return;
     this.noiseHit(o.input, o.when, { dur: 0.22, gain: 0.4, f: 800, f2: 3000, q: 1.5, attack: 0.04 });
   }
 
@@ -350,6 +361,7 @@ export class AudioEngine {
   impact(surface, pos) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 2, rolloff: 1.4, reverb: 0.15 });
+    if (this.sample('impact-' + (surface === 'mud' || surface === 'sand' || surface === 'gravel' ? 'dirt' : surface), o.input, o.when, 0.7)) return;
     const f = { metal: 3500, wood: 900, concrete: 2200, water: 600, flesh: 400 }[surface] || 1500;
     this.noiseHit(o.input, o.when, { dur: surface === 'water' ? 0.18 : 0.06, gain: 0.5, f, q: surface === 'metal' ? 8 : 1.5 });
     if (surface === 'metal' && Math.random() < 0.4) this.tone(o.input, o.when, { f: 2200 + Math.random() * 1500, f2: 900, dur: 0.35, gain: 0.12 }); // ricochet
@@ -359,6 +371,7 @@ export class AudioEngine {
     // A round cracking past your head.
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 1, reverb: 0 });
+    if (this.sample('whiz', o.input, o.when, 0.7)) return;
     this.noiseHit(o.input, o.when, { dur: 0.09, gain: 0.5, f: 5000, f2: 2500, q: 2 });
   }
 
@@ -366,7 +379,7 @@ export class AudioEngine {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 14, rolloff: 0.7, reverb: 0.7, max: 4000 });
     const w = o.when;
-    if (this.sample('explosion', o.input, w, 1.5 * size)) return;
+    if ((o.dist > 120 && this.sample('explosion-far', o.input, w, 1.6 * size)) || this.sample('explosion', o.input, w, 1.5 * size)) return;
     const far = o.dist > 80;
     this.tone(o.input, w, { f: 70, f2: 22, dur: 1.4 * size, gain: 1.6 * size, attack: 0.004 });
     this.noiseHit(o.input, w, { dur: 1.8 * size, gain: 1.4 * size, type: 'lowpass', f: far ? 700 : 3000, f2: 120, attack: 0.002, buffer: this.brown });
@@ -461,6 +474,7 @@ export class AudioEngine {
   punch(pos, heavy) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 3, reverb: 0.1 });
+    if (this.sample(heavy ? 'punch-heavy' : 'punch', o.input, o.when, 0.9)) return;
     this.tone(o.input, o.when, { f: heavy ? 110 : 150, f2: 50, dur: 0.14, gain: heavy ? 0.8 : 0.55 });
     this.noiseHit(o.input, o.when, { dur: 0.06, gain: heavy ? 0.6 : 0.35, type: 'lowpass', f: 1400, f2: 300 });
   }
@@ -469,6 +483,7 @@ export class AudioEngine {
   heal(pos) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 4, reverb: 0.4 });
+    if (this.sample('heal', o.input, o.when, 0.7)) return;
     [880, 1175, 1568].forEach((f, i) => this.tone(o.input, o.when + i * 0.07, { f, dur: 0.5, gain: 0.12, type: 'triangle' }));
   }
 
@@ -498,6 +513,7 @@ export class AudioEngine {
   grenadeThrow() {
     if (!this.ready()) return;
     const o = this.out(null, { reverb: 0 });
+    if (this.sample('throw', o.input, o.when, 0.8)) return;
     this.noiseHit(o.input, o.when, { dur: 0.04, gain: 0.3, f: 3000, q: 5 }); // pin
     this.noiseHit(o.input, o.when + 0.3, { dur: 0.25, gain: 0.25, f: 600, f2: 1800, q: 1, attack: 0.05 });
   }
@@ -505,13 +521,14 @@ export class AudioEngine {
   bounce(pos) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 2, reverb: 0.1 });
+    if (this.sample('bounce', o.input, o.when, 0.8)) return;
     this.noiseHit(o.input, o.when, { dur: 0.05, gain: 0.3, f: 1800, q: 4 });
   }
 
   flashbang(pos, strength) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 12, reverb: 0.6 });
-    this.noiseHit(o.input, o.when, { dur: 0.6, gain: 1.4, type: 'highpass', f: 800, attack: 0.001 });
+    if (!this.sample('flashbang', o.input, o.when, 1.2)) this.noiseHit(o.input, o.when, { dur: 0.6, gain: 1.4, type: 'highpass', f: 800, attack: 0.001 });
     if (strength > 0.2) {
       // Tinnitus ringing; everything else ducks.
       const r = this.out(null, { bus: this.master, reverb: 0 });
@@ -525,6 +542,7 @@ export class AudioEngine {
   smoke(pos) {
     if (!this.ready()) return;
     const o = this.out(pos, { ref: 5 });
+    if (this.sample('smoke', o.input, o.when, 0.8)) return;
     this.noiseHit(o.input, o.when, { dur: 2.5, gain: 0.35, type: 'bandpass', f: 1800, q: 0.5, attack: 0.1 });
   }
 
@@ -560,6 +578,7 @@ export class AudioEngine {
   hitmarker(head, kill) {
     if (!this.ready()) return;
     const o = this.out(null, { bus: this.ui, reverb: 0 });
+    if (this.sample(kill ? 'kill' : head ? 'headshot' : 'hit', o.input, o.when, 0.8)) return;
     if (head) this.tone(o.input, o.when, { f: 2300, dur: 0.35, gain: 0.35, type: 'triangle', attack: 0.001 });
     else this.noiseHit(o.input, o.when, { dur: 0.04, gain: 0.4, f: 2800, q: 3 });
     if (kill) {
@@ -571,6 +590,7 @@ export class AudioEngine {
   hurt(dmg) {
     if (!this.ready()) return;
     const o = this.out(null, { reverb: 0 });
+    if (this.sample('hurt', o.input, o.when, Math.min(1, 0.4 + dmg / 60))) return;
     this.tone(o.input, o.when, { f: 90, f2: 50, dur: 0.18, gain: Math.min(0.9, 0.2 + dmg / 80) });
     this.noiseHit(o.input, o.when, { dur: 0.08, gain: 0.3, f: 500, q: 1 });
   }
@@ -585,6 +605,7 @@ export class AudioEngine {
   gem() {
     if (!this.ready()) return;
     const o = this.out(null, { bus: this.ui, reverb: 0.4 });
+    if (this.sample('gem', o.input, o.when, 0.8)) return;
     [1046, 1318, 1568, 2093].forEach((f, i) => this.tone(o.input, o.when + i * 0.07, { f, dur: 0.6, gain: 0.18, type: 'triangle' }));
   }
 

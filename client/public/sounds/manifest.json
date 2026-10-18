@@ -1,0 +1,200 @@
+{
+ "beep": [
+  "beep.m4a"
+ ],
+ "bounce": [
+  "bounce.m4a"
+ ],
+ "dry": [
+  "dry.m4a"
+ ],
+ "explosion": [
+  "explosion_0.m4a",
+  "explosion_1.m4a"
+ ],
+ "explosion-far": [
+  "explosion_far.m4a"
+ ],
+ "flashbang": [
+  "flashbang.m4a"
+ ],
+ "gem": [
+  "gem.m4a"
+ ],
+ "battle": [
+  "gun_battle_0.m4a",
+  "gun_battle_1.m4a"
+ ],
+ "battle-mine": [
+  "gun_battle_mine_0.m4a",
+  "gun_battle_mine_1.m4a"
+ ],
+ "magnum": [
+  "gun_magnum_0.m4a",
+  "gun_magnum_1.m4a"
+ ],
+ "magnum-mine": [
+  "gun_magnum_mine_0.m4a",
+  "gun_magnum_mine_1.m4a"
+ ],
+ "mg": [
+  "gun_mg_0.m4a",
+  "gun_mg_1.m4a"
+ ],
+ "mg-mine": [
+  "gun_mg_mine_0.m4a",
+  "gun_mg_mine_1.m4a"
+ ],
+ "pistol": [
+  "gun_pistol_0.m4a",
+  "gun_pistol_1.m4a"
+ ],
+ "pistol-mine": [
+  "gun_pistol_mine_0.m4a",
+  "gun_pistol_mine_1.m4a"
+ ],
+ "rifle": [
+  "gun_rifle_0.m4a",
+  "gun_rifle_1.m4a"
+ ],
+ "rifle-mine": [
+  "gun_rifle_mine_0.m4a",
+  "gun_rifle_mine_1.m4a"
+ ],
+ "shotgun": [
+  "gun_shotgun_0.m4a",
+  "gun_shotgun_1.m4a"
+ ],
+ "shotgun-mine": [
+  "gun_shotgun_mine_0.m4a",
+  "gun_shotgun_mine_1.m4a"
+ ],
+ "smg": [
+  "gun_smg_0.m4a",
+  "gun_smg_1.m4a"
+ ],
+ "smg-mine": [
+  "gun_smg_mine_0.m4a",
+  "gun_smg_mine_1.m4a"
+ ],
+ "sniper": [
+  "gun_sniper_0.m4a",
+  "gun_sniper_1.m4a"
+ ],
+ "sniper-mine": [
+  "gun_sniper_mine_0.m4a",
+  "gun_sniper_mine_1.m4a"
+ ],
+ "headshot": [
+  "headshot.m4a"
+ ],
+ "heal": [
+  "heal.m4a"
+ ],
+ "hit": [
+  "hit.m4a"
+ ],
+ "hurt": [
+  "hurt.m4a"
+ ],
+ "impact-concrete": [
+  "impact_concrete.m4a"
+ ],
+ "impact-dirt": [
+  "impact_dirt.m4a"
+ ],
+ "impact-flesh": [
+  "impact_flesh.m4a"
+ ],
+ "impact-metal": [
+  "impact_metal.m4a"
+ ],
+ "impact-water": [
+  "impact_water.m4a"
+ ],
+ "impact-wood": [
+  "impact_wood.m4a"
+ ],
+ "incoming": [
+  "incoming.m4a"
+ ],
+ "jump": [
+  "jump.m4a"
+ ],
+ "kill": [
+  "kill.m4a"
+ ],
+ "punch": [
+  "punch.m4a"
+ ],
+ "punch-heavy": [
+  "punch_heavy.m4a"
+ ],
+ "reload": [
+  "reload.m4a"
+ ],
+ "reload-danegun": [
+  "reload_danegun.m4a"
+ ],
+ "reload-pkm": [
+  "reload_pkm.m4a"
+ ],
+ "reload-rpg": [
+  "reload_rpg.m4a"
+ ],
+ "rpg": [
+  "rpg.m4a"
+ ],
+ "smoke": [
+  "smoke.m4a"
+ ],
+ "step-concrete": [
+  "step_concrete_0.m4a",
+  "step_concrete_1.m4a",
+  "step_concrete_2.m4a"
+ ],
+ "step-dirt": [
+  "step_dirt_0.m4a",
+  "step_dirt_1.m4a",
+  "step_dirt_2.m4a"
+ ],
+ "step-gravel": [
+  "step_gravel_0.m4a",
+  "step_gravel_1.m4a",
+  "step_gravel_2.m4a"
+ ],
+ "step-metal": [
+  "step_metal_0.m4a",
+  "step_metal_1.m4a",
+  "step_metal_2.m4a"
+ ],
+ "step-mud": [
+  "step_mud_0.m4a",
+  "step_mud_1.m4a",
+  "step_mud_2.m4a"
+ ],
+ "step-sand": [
+  "step_sand_0.m4a",
+  "step_sand_1.m4a",
+  "step_sand_2.m4a"
+ ],
+ "step-water": [
+  "step_water_0.m4a",
+  "step_water_1.m4a",
+  "step_water_2.m4a"
+ ],
+ "step-wood": [
+  "step_wood_0.m4a",
+  "step_wood_1.m4a",
+  "step_wood_2.m4a"
+ ],
+ "swing": [
+  "swing.m4a"
+ ],
+ "throw": [
+  "throw.m4a"
+ ],
+ "whiz": [
+  "whiz.m4a"
+ ]
+}

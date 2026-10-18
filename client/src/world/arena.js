@@ -269,7 +269,8 @@ export class Arena {
     const opens = (map.openings || []).slice(0, 4).map((o) => new THREE.Vector4(o.x0, o.z0, o.x1, o.z1));
     while (opens.length < 4) opens.push(new THREE.Vector4(1e5, 1e5, 1e5, 1e5));
     mat.onBeforeCompile = (sh) => {
-      sh.uniforms.uPatch = { value: patchTex };
+      mat.userData.shader = sh;
+      sh.uniforms.uPatch = { value: mat.userData.patch || patchTex };
       sh.uniforms.uMask = { value: mask };
       sh.uniforms.uOpen = { value: opens };
       sh.fragmentShader = 'uniform sampler2D uPatch;\nuniform sampler2D uMask;\nuniform vec4 uOpen[4];\n' + sh.fragmentShader.replace(
@@ -341,6 +342,38 @@ export class Arena {
     const inner = (map.half + 10) * 2;
     this.ground = patch(inner, Math.round(inner / 1.25), 0);
     patch(700, 120, 0.04);
+    // Medium graphics and up: swap in photo-scanned ground (Poly Haven, CC0) once it loads.
+    if (this.quality.textureSize >= 1024) this.photoGround(mat);
+  }
+
+  photoGround(mat) {
+    const look = this.map.lookId || this.map.biome;
+    const pick = { sahel: ['ground_sand', 'ground_dirt'], desert: ['ground_sand', 'ground_sand'], savanna: ['ground_red', 'grass'], plateau: ['ground_gravel', 'grass'], rainforest: ['grass', 'ground_red'], creeks: ['ground_mud', 'grass'], urban: ['paving', 'ground_dirt'], temperate: ['grass', 'ground_dirt'] }[look];
+    if (!pick) return; // snow keeps its painted look
+    const loader = new THREE.TextureLoader();
+    const aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy?.() || 1);
+    const load = (name, srgb) =>
+      new Promise((ok) =>
+        loader.load(
+          `tex/${name}.webp`,
+          (t) => {
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.anisotropy = aniso;
+            if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+            ok(t);
+          },
+          undefined,
+          () => ok(null)
+        )
+      );
+    Promise.all([load(`${pick[0]}_albedo`, true), load(`${pick[0]}_normal`, false), load(`${pick[1]}_albedo`, true)]).then(([a, nrm, patchA]) => {
+      if (!a || !this.ground) return;
+      mat.map = a;
+      if (nrm) mat.normalMap = nrm;
+      mat.color.set('#ffffff');
+      if (patchA) mat.userData.patch = patchA;
+      mat.needsUpdate = true;
+    });
   }
 
   // ---------- every collision box, merged per material ----------
