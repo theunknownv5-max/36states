@@ -48,6 +48,20 @@ func _build() -> void:
 			_build())
 		q.add_child(c)
 	rows.add_child(q)
+	var sch := Kit.vbox(6)
+	sch.add_child(Kit.label("Touch controls", 19))
+	var row := Kit.hbox(8)
+	for k in [["classic", "Classic"], ["tap", "Tap to shoot"], ["swipe", "Swipe to move"]]:
+		var c := Kit.chip(k[1], str(Cfg.get_s("scheme", "classic")) == k[0])
+		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		c.pressed.connect(func():
+			Cfg.set_s("scheme", k[0])
+			_build())
+		row.add_child(c)
+	sch.add_child(row)
+	var why := {"classic": "Stick on the left, drag the right side to look, fire button.", "tap": "Tap anywhere on the right side to shoot; drag to look.", "swipe": "One finger anywhere moves you; twist two fingers to turn; tap to shoot."}
+	sch.add_child(Kit.para(why.get(str(Cfg.get_s("scheme", "classic")), ""), 15, Kit.MUTED))
+	rows.add_child(sch)
 	_toggle("Aim assist (touch)", "aim_assist")
 	_toggle("Fire button on the left", "left_hand_fire")
 	_toggle("Fight with bots", "bots")

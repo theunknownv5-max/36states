@@ -143,6 +143,25 @@ export class Input {
     return d;
   }
 
+  // Touch control scheme: classic (stick + drag to look), tap (tap the right side to fire) or
+  // swipe (one finger anywhere moves, two fingers twist to turn, a tap fires).
+  setScheme(s) {
+    this.scheme = ['classic', 'tap', 'swipe'].includes(s) ? s : 'classic';
+    document.body.classList.toggle('scheme-swipe', this.scheme === 'swipe');
+    document.body.classList.toggle('scheme-tap', this.scheme === 'tap');
+  }
+
+  // A short tap fires one quick burst.
+  tapFire() {
+    this.touch.fire = true;
+    this.tapShot = true;
+    clearTimeout(this.tapT);
+    this.tapT = setTimeout(() => {
+      this.tapShot = false;
+      this.touch.fire = false;
+    }, 110);
+  }
+
   // ---------- touch controls (built over the HUD) ----------
   bindTouch(root) {
     const zone = root.querySelector('#t-move');
@@ -204,22 +223,75 @@ export class Input {
     zone.addEventListener('touchend', endStick);
     zone.addEventListener('touchcancel', endStick);
     // Look: drag anywhere on the right half. Several fingers can look at once.
+    // (Swipe scheme: the whole screen; one finger moves, two fingers twist to turn.)
     const lookIds = new Map();
+    const starts = new Map();
+    let twist = null;
+    const pair = () => {
+      const ids = [...lookIds.keys()];
+      if (ids.length < 2) return null;
+      const [a, b] = [lookIds.get(ids[0]), lookIds.get(ids[1])];
+      return { ang: Math.atan2(b[1] - a[1], b[0] - a[0]), my: (a[1] + b[1]) / 2 };
+    };
     const lookStart = (e) => {
-      for (const t of e.changedTouches) lookIds.set(t.identifier, [t.clientX, t.clientY]);
+      for (const t of e.changedTouches) {
+        lookIds.set(t.identifier, [t.clientX, t.clientY]);
+        starts.set(t.identifier, { x: t.clientX, y: t.clientY, at: performance.now(), moved: 0 });
+      }
+      if (this.scheme === 'swipe') {
+        twist = pair();
+        if (lookIds.size === 1 && !twist) {
+          const t = e.changedTouches[0];
+          this.swipe = { id: t.identifier, x: t.clientX, y: t.clientY };
+        } else this.swipeStop();
+      }
     };
     const lookMove = (e) => {
       for (const t of e.changedTouches) {
         const p = lookIds.get(t.identifier);
         if (!p) continue;
-        this.mouse.dx += (t.clientX - p[0]) * 1.5 * this.touchSens;
-        this.mouse.dy += (t.clientY - p[1]) * 1.5 * this.touchSens;
+        const s = starts.get(t.identifier);
+        if (s) s.moved = Math.max(s.moved, Math.hypot(t.clientX - s.x, t.clientY - s.y));
+        if (this.scheme !== 'swipe') {
+          this.mouse.dx += (t.clientX - p[0]) * 1.5 * this.touchSens;
+          this.mouse.dy += (t.clientY - p[1]) * 1.5 * this.touchSens;
+        } else if (this.swipe?.id === t.identifier) {
+          // One finger: a floating stick wherever it landed.
+          const dx = t.clientX - this.swipe.x;
+          const dy = t.clientY - this.swipe.y;
+          const l = Math.min(60, Math.hypot(dx, dy));
+          const k = l < 8 ? 0 : (l - 8) / 52;
+          const a = Math.atan2(dy, dx);
+          this.touch.moveX = Math.cos(a) * k;
+          this.touch.moveY = -Math.sin(a) * k;
+          this.touch.sprint = Math.hypot(dx, dy) > 75 && this.touch.moveY > 0.75;
+        }
         lookIds.set(t.identifier, [t.clientX, t.clientY]);
+      }
+      if (this.scheme === 'swipe' && twist) {
+        // Two fingers: twist to turn, slide both up or down to look up or down.
+        const now = pair();
+        if (now) {
+          let da = now.ang - twist.ang;
+          while (da > Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          this.mouse.dx += da * 420 * this.touchSens;
+          this.mouse.dy += (now.my - twist.my) * 1.5 * this.touchSens;
+          twist = now;
+        }
       }
       e.preventDefault();
     };
     const lookEnd = (e) => {
-      for (const t of e.changedTouches) lookIds.delete(t.identifier);
+      for (const t of e.changedTouches) {
+        lookIds.delete(t.identifier);
+        const s = starts.get(t.identifier);
+        starts.delete(t.identifier);
+        // A quick tap fires (tap and swipe schemes).
+        if (s && this.scheme !== 'classic' && s.moved < 14 && performance.now() - s.at < 260) this.tapFire();
+        if (this.swipe?.id === t.identifier) this.swipeStop();
+      }
+      if (this.scheme === 'swipe') twist = pair();
     };
     look.addEventListener('touchstart', lookStart);
     look.addEventListener('touchmove', lookMove);
@@ -285,6 +357,12 @@ export class Input {
       b.addEventListener('touchend', up);
       b.addEventListener('touchcancel', up);
     }
+  }
+
+  swipeStop() {
+    this.swipe = null;
+    this.touch.moveX = this.touch.moveY = 0;
+    this.touch.sprint = false;
   }
 
   // Forget touch state (e.g. after dying or opening a menu).

@@ -22,6 +22,7 @@ var settings := {
 	"fov": 75.0,
 	"aim_assist": true,
 	"left_hand_fire": false,
+	"scheme": "classic",
 }
 
 signal rules_loaded
@@ -55,8 +56,8 @@ func set_s(k: String, v) -> void:
 	save()
 
 func reset_settings() -> void:
-	for k in ["sens", "volume", "music", "quality", "fov", "aim_assist", "left_hand_fire"]:
-		settings[k] = {"sens": 1.0, "volume": 0.9, "music": 0.5, "quality": "medium", "fov": 75.0, "aim_assist": true, "left_hand_fire": false}[k]
+	for k in ["sens", "volume", "music", "quality", "fov", "aim_assist", "left_hand_fire", "scheme"]:
+		settings[k] = {"sens": 1.0, "volume": 0.9, "music": 0.5, "quality": "medium", "fov": 75.0, "aim_assist": true, "left_hand_fire": false, "scheme": "classic"}[k]
 	save()
 
 func ws_url() -> String:

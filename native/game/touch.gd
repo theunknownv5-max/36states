@@ -23,6 +23,10 @@ var show_use := false
 var use_label := "USE"
 var enabled := true
 var left_fire := false
+var scheme := "classic"     # classic | tap | swipe
+var starts := {}            # finger index -> {pos, t, moved}
+var tap_until := 0
+var twist_prev = null
 
 const STICK_R := 70.0
 
@@ -30,6 +34,7 @@ func _ready() -> void:
 	Kit.fill(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left_fire = bool(Cfg.get_s("left_hand_fire", false))
+	scheme = str(Cfg.get_s("scheme", "classic"))
 	_layout()
 
 func _layout() -> void:
@@ -126,6 +131,27 @@ func _press(i: int, p: Vector2) -> void:
 				Input.vibrate_handheld(12)
 			get_viewport().set_input_as_handled()
 			return
+	starts[i] = {"pos": p, "t": Time.get_ticks_msec(), "moved": 0.0}
+	if scheme == "swipe":
+		# One finger anywhere is a floating stick; a second finger turns it into a two-finger twist.
+		var sticks := fingers.values().filter(func(f): return f.role == "stick")
+		if sticks.is_empty() and not fingers.values().any(func(f): return f.role == "twist"):
+			fingers[i] = {"role": "stick", "pos": p}
+			stick_center = p
+			stick_pos = p
+			stick_on = true
+			move = Vector2.ZERO
+		else:
+			for k in fingers:
+				if fingers[k].role == "stick":
+					fingers[k].role = "twist"
+			fingers[i] = {"role": "twist", "pos": p}
+			stick_on = false
+			move = Vector2.ZERO
+			sprint = false
+			twist_prev = _twist()
+		get_viewport().set_input_as_handled()
+		return
 	if p.x < size.x * 0.42:
 		fingers[i] = {"role": "stick", "pos": p}
 		stick_center = p
@@ -136,11 +162,23 @@ func _press(i: int, p: Vector2) -> void:
 		fingers[i] = {"role": "look", "pos": p}
 	get_viewport().set_input_as_handled()
 
+# The angle and height of the line between the two twisting fingers.
+func _twist():
+	var pts: Array = []
+	for f in fingers.values():
+		if f.role == "twist":
+			pts.append(f.pos)
+	if pts.size() < 2:
+		return null
+	return {"ang": (pts[1] - pts[0]).angle(), "my": (pts[0].y + pts[1].y) / 2.0}
+
 func _drag(i: int, p: Vector2, rel: Vector2) -> void:
 	var f = fingers.get(i)
 	if f == null:
 		return
 	f.pos = p
+	if starts.has(i):
+		starts[i].moved = max(float(starts[i].moved), p.distance_to(starts[i].pos))
 	match f.role:
 		"stick":
 			var d := p - stick_center
@@ -153,10 +191,22 @@ func _drag(i: int, p: Vector2, rel: Vector2) -> void:
 			sprint = move.y > 0.92 and absf(move.x) < 0.5
 		"look", "fire":
 			look += rel
+		"twist":
+			var now = _twist()
+			if now != null and twist_prev != null:
+				look.x += wrapf(now.ang - twist_prev.ang, -PI, PI) * 420.0
+				look.y += now.my - twist_prev.my
+			twist_prev = now
 	get_viewport().set_input_as_handled()
 
 func _release(i: int) -> void:
 	var f = fingers.get(i)
+	var s = starts.get(i)
+	starts.erase(i)
+	# A quick tap fires (tap and swipe schemes).
+	if s != null and f != null and scheme != "classic" and f.role in ["look", "stick", "twist"] and float(s.moved) < 14.0 and Time.get_ticks_msec() - int(s.t) < 260:
+		fire = true
+		tap_until = Time.get_ticks_msec() + 110
 	if f == null:
 		return
 	match f.role:
@@ -171,6 +221,12 @@ func _release(i: int) -> void:
 	fingers.erase(i)
 
 func _process(_d: float) -> void:
+	if tap_until and Time.get_ticks_msec() >= tap_until:
+		tap_until = 0
+		if not fingers.values().any(func(x): return x.role == "fire"):
+			fire = false
+	if scheme == "swipe" and fingers.values().filter(func(x): return x.role == "twist").size() < 2:
+		twist_prev = null
 	queue_redraw()
 
 func _draw() -> void:

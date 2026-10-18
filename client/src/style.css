@@ -3106,3 +3106,11 @@ body.ffa .score .team {
 body.topdown #crosshair {
   display: none;
 }
+
+/* Swipe scheme: the whole screen is the move/turn pad (buttons stay on top). */
+body.scheme-swipe #t-look {
+  width: 100%;
+}
+body.scheme-swipe #t-move {
+  display: none;
+}

@@ -45,6 +45,7 @@ const settings = {
   musicOn: store.get('musicOn', '1') === '1',
   gunsOn: store.get('gunsOn', '1') === '1',
   touchSens: +store.get('touch', 1),
+  scheme: ['classic', 'tap', 'swipe'].includes(store.get('scheme')) ? store.get('scheme') : 'classic',
   quality: detectQuality(),
   invertY: store.get('invert') === '1',
   view: store.get('view', 'fp') === 'chase' ? 'chase' : 'fp', // hands only (default) or full body
@@ -126,6 +127,7 @@ function saveSettings() {
   store.set('musicOn', settings.musicOn ? '1' : '0');
   store.set('gunsOn', settings.gunsOn ? '1' : '0');
   store.set('touch', settings.touchSens);
+  store.set('scheme', settings.scheme);
   store.set('view', settings.view);
   store.set('bots', settings.bots ? '1' : '0');
 }
@@ -137,6 +139,7 @@ function openSettings() {
   $('set-vol').value = settings.volume;
   $('set-sens').value = settings.sensitivity;
   $('set-touch').value = settings.touchSens;
+  $('set-scheme').value = settings.scheme;
   $('set-invert').checked = settings.invertY;
   $('set-quality').value = settings.quality;
   $('set-fov').value = settings.fov;
@@ -176,6 +179,13 @@ function bindSettings() {
   on('set-touch', 'input', (t) => {
     settings.touchSens = +t.value;
     input.touchSens = settings.touchSens;
+input.setScheme(settings.scheme);
+  });
+  on('set-scheme', 'change', (t) => {
+    settings.scheme = t.value;
+    input.setScheme(settings.scheme);
+    saveSettings();
+    toast({ classic: 'Classic controls', tap: 'Tap anywhere on the right to shoot', swipe: 'Swipe anywhere to move, twist two fingers to turn, tap to shoot' }[settings.scheme]);
   });
   on('set-view', 'change', (t) => {
     settings.view = t.value === 'chase' ? 'chase' : 'fp';
@@ -208,7 +218,7 @@ function bindSettings() {
     } catch {
       /* storage blocked */
     }
-    Object.assign(settings, { sensitivity: isTouch() ? 1.3 : 1, fov: 80, volume: 0.8, music: 0.5, musicOn: true, gunsOn: true, touchSens: 1, invertY: false, view: 'fp', bots: true });
+    Object.assign(settings, { sensitivity: isTouch() ? 1.3 : 1, fov: 80, volume: 0.8, music: 0.5, musicOn: true, gunsOn: true, touchSens: 1, scheme: 'classic', invertY: false, view: 'fp', bots: true });
     settings.quality = detectQuality();
     saveSettings();
     audio.setVolume(settings.volume);
@@ -217,6 +227,7 @@ function bindSettings() {
     music.setEnabled(settings.musicOn);
     input.sensitivity = settings.sensitivity;
     input.touchSens = settings.touchSens;
+input.setScheme(settings.scheme);
     input.invertY = settings.invertY;
     game?.cams?.setView('fp');
     if (game) game.quality = PRESETS[settings.quality];
@@ -659,6 +670,7 @@ const input = new Input($('view'));
 input.sensitivity = settings.sensitivity;
 input.invertY = settings.invertY;
 input.touchSens = settings.touchSens;
+input.setScheme(settings.scheme);
 audio.setVolume(settings.volume);
 audio.gunsOn = settings.gunsOn;
 
