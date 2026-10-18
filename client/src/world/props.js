@@ -54,15 +54,16 @@ function depthFor(tex, alphaTest = 0.45) {
 }
 
 // Bushy crown made of crossed leaf cards inside an ellipsoid, with normals pointing outward.
-function crownGeometry(rng, count, rx, ry, rz, cy, size, flat = false) {
+function crownGeometry(rng, count, rx, ry, rz, cy, size, flat = false, cone = false) {
   const geos = [];
   for (let i = 0; i < count; i++) {
     const g = new THREE.PlaneGeometry(size, size);
     eul.set(flat ? -Math.PI / 2 + (rng() - 0.5) * 0.6 : rng() * Math.PI, rng() * Math.PI, flat ? (rng() - 0.5) * 0.6 : rng() * Math.PI);
     g.applyMatrix4(m4.makeRotationFromEuler(eul));
     const a = rng() * Math.PI * 2;
-    const r = Math.sqrt(rng()) * 0.8;
     const y = (rng() - 0.5) * 1.6;
+    // Conifers: wide at the bottom, a point at the top.
+    const r = Math.sqrt(rng()) * 0.8 * (cone ? Math.max(0.08, 1 - (y + 0.8) / 1.7) * 1.3 : 1);
     g.translate(Math.cos(a) * r * rx, cy + y * ry * 0.6, Math.sin(a) * r * rz);
     geos.push(g);
   }
@@ -122,7 +123,10 @@ const TREE_TYPES = {
   iroko: { trunk: [0.32, 0.55, 9, 0], crown: [34, 4.6, 3.2, 4.6, 10.6, 3.0], leaf: '#3c6a2a' },
   eucalyptus: { trunk: [0.12, 0.26, 11, 0.3], crown: [18, 1.8, 3.6, 1.8, 10.5, 2.0], leaf: '#7a9a6a' },
   mangrove: { trunk: [0.18, 0.4, 3.8, 0], crown: [24, 3.2, 1.8, 3.2, 4.6, 2.3], leaf: '#406b33' },
-  plantain: { trunk: [0.1, 0.16, 2.4, 0], fronds: [7, 2.8, 0.9, 1.5], leaf: '#79b246' }
+  plantain: { trunk: [0.1, 0.16, 2.4, 0], fronds: [7, 2.8, 0.9, 1.5], leaf: '#79b246' },
+  pine: { trunk: [0.14, 0.3, 10, 0], crown: [46, 2.7, 5.2, 2.7, 6.6, 1.9, false, true], leaf: '#2c5236' },
+  oak: { trunk: [0.24, 0.4, 4.2, 0], crown: [32, 3.6, 2.8, 3.6, 6.0, 2.6], leaf: '#4b7432' },
+  birch: { trunk: [0.1, 0.18, 9, 0.15], crown: [18, 1.9, 3.0, 1.9, 8.6, 1.9], leaf: '#8aad4e' }
 };
 
 export function buildProps(arena, rng) {
@@ -148,7 +152,7 @@ export function buildProps(arena, rng) {
   const frondTex = T.frondCard();
   const bark = T.barkTexture();
   const barkMat = new THREE.MeshStandardMaterial({ map: bark.map, normalMap: bark.normalMap, roughness: 0.95 });
-  const dry = map.biome === 'sahel' ? 0.35 : map.biome === 'savanna' ? 0.2 : 0;
+  const dry = map.lookId === 'temperate' || map.lookId === 'snow' ? 0 : map.biome === 'sahel' ? 0.35 : map.biome === 'savanna' ? 0.2 : 0;
 
   // ---------- trees (instanced per type) ----------
   const byType = {};
@@ -182,8 +186,8 @@ export function buildProps(arena, rng) {
       if (bend) crownGeo.translate(bend, 0, 0);
       crownMat = cardMaterial(frondTex, leafCol, 0.4);
     } else {
-      const [n, rx, ry, rz, cy, size, flat] = def.crown;
-      crownGeo = crownGeometry(trng, n, rx, ry, rz, cy, size, flat);
+      const [n, rx, ry, rz, cy, size, flat, cone] = def.crown;
+      crownGeo = crownGeometry(trng, n, rx, ry, rz, cy, size, flat, cone);
       if (bend) crownGeo.translate(bend, 0, 0);
       crownMat = cardMaterial(leafTex, leafCol);
     }
@@ -215,7 +219,7 @@ export function buildProps(arena, rng) {
     const tuft = mergeGeometries([g1, g2]);
     const n = tuft.attributes.normal;
     for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
-    const tint = new THREE.Color(map.biome === 'sahel' ? '#d6c38a' : map.biome === 'savanna' ? '#cdbf7a' : '#9fbf6a');
+    const tint = new THREE.Color(map.lookId === 'snow' ? '#c9d2c0' : map.lookId === 'temperate' ? '#8fb85a' : map.biome === 'sahel' ? '#d6c38a' : map.biome === 'savanna' ? '#cdbf7a' : '#9fbf6a');
     const mat = cardMaterial(gtex, tint, 0.35);
     const wind = { value: 0 };
     mat.onBeforeCompile = (sh) => {
@@ -321,7 +325,7 @@ export function buildProps(arena, rng) {
   const steel = paint('#5b5f62', { roughness: 0.5, metalness: 0.7 });
   const yellow = paint('#d8a21a', { roughness: 0.5, metalness: 0.4 });
   const dark = paint('#222', { roughness: 0.7 });
-  const earth = new THREE.MeshStandardMaterial({ color: '#7a5a3a', roughness: 1, map: T.groundTexture(map.biome).map });
+  const earth = new THREE.MeshStandardMaterial({ color: '#7a5a3a', roughness: 1, map: T.groundTexture(map.lookId || map.biome).map });
   const flameTex = T.flameTex();
   const glowTex = T.softDot();
   const mud = T.mudTexture();
@@ -741,7 +745,7 @@ export function buildProps(arena, rng) {
       case 'landmarkSign': {
         const dz = v.z > 0 ? -1 : 1;
         const g = new THREE.Group();
-        const board = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshStandardMaterial({ map: T.signboardTexture(v.name, `${map.state.name} State · ${map.state.capital}`), roughness: 0.6 }));
+        const board = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshStandardMaterial({ map: T.signboardTexture(v.name, `${map.state.name}${map.state.type === 'State' || !map.state.type ? ' State' : ''} · ${map.state.capital || map.state.name}`), roughness: 0.6 }));
         board.position.y = 2.6;
         g.add(board);
         const back = new THREE.Mesh(new THREE.BoxGeometry(6.1, 1.6, 0.06), dark);

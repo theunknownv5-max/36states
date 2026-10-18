@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GradeShader } from './fps/grade.js';
 import { generateMap } from '../../shared/map.js';
+import { registerRegion } from '../../shared/regions.js';
 import { moveBody, raycast, dirFromAngles, spreadDir, hitSoldier, lineBlocked, insideAnyBox, normalise } from '../../shared/physics.js';
 import { WEAPONS, GEAR, FACTIONS, PLAYER, RESPAWN, MONEY, NET, ADS, KILLSTREAKS, SIDES, GEMS, DRUMS, TANKS, TILE_GEMS } from '../../shared/config.js';
 import { Arena } from './world/arena.js';
@@ -95,6 +96,7 @@ export class Game {
     this.faction = info.faction;
     this.stateId = info.state;
     this.modeId = info.mode || 'conquest';
+    if (info.region) registerRegion(info.region);
     this.map = generateMap(info.state);
     const scene = new THREE.Scene();
     this.scene = scene;

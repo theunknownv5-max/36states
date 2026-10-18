@@ -1,7 +1,8 @@
 // Deterministic battlefield generator. The same state always produces the same map,
 // so the server (hits, bots, gems) and every client (rendering, movement) agree.
 import { mulberry32, range, pick } from './rng.js';
-import { STATE_BY_ID, RESOURCES, BIOMES, stateSeed } from './states.js';
+import { RESOURCES, BIOMES, stateSeed } from './states.js';
+import { regionById, biomeBase } from './regions.js';
 import { buildIndex } from './physics.js';
 import { MATCH, DRUMS } from './config.js';
 import { VEHICLES, HOUSES, footprint } from './vehicles.js';
@@ -19,6 +20,14 @@ const BIOME_RULES = {
   urban: { buildings: 24, wall: 'plaster', roof: 'flat', trees: 30, treeTypes: ['palm', 'almond'], rocks: 0, grass: 60, cover: 85 }
 };
 
+// World biomes reuse the terrain rules of their base biome, with their own trees and buildings.
+const LOOK_RULES = {
+  desert: { trees: 12, treeTypes: ['acacia', 'neem'], grass: 20, rocks: 26, wall: 'mud', roof: 'flat' },
+  temperate: { trees: 110, treeTypes: ['oak', 'birch', 'pine', 'oak'], grass: 520, wall: 'plaster', roof: 'zinc' },
+  snow: { trees: 120, treeTypes: ['pine', 'pine', 'birch'], grass: 120, rocks: 40, wall: 'stone', roof: 'zinc' }
+};
+const WORLD_VEHICLES = { sedan: 5, suv: 3, pickup: 3, lorry: 1 };
+
 // Which vehicles turn up where (weights). Northern roads: pickups and okadas; Lagos: danfos and kekes.
 const VEHICLE_MIX = {
   urban: { sedan: 5, danfo: 3, keke: 3, okada: 2, suv: 2, pickup: 1, lorry: 1 },
@@ -32,8 +41,11 @@ const VEHICLE_MIX = {
 const PEN_KINDS = new Set(['mud', 'plaster', 'plank', 'zinc', 'crate', 'drum', 'stall', 'wreck']);
 
 export function generateMap(stateId) {
-  const state = STATE_BY_ID[stateId];
-  if (!state) throw new Error(`Unknown state ${stateId}`);
+  const region = regionById(stateId);
+  if (!region) throw new Error(`Unknown region ${stateId}`);
+  // Terrain is built with the base biome's rules; the look (palette, trees) stays the region's own.
+  const { poly, ...plain } = region;
+  const state = { ...plain, lookId: region.biome, biome: biomeBase(region.biome) };
   // Retry with a nudged seed in the rare case the layout blocks a route.
   for (let attempt = 0; attempt < 8; attempt++) {
     const map = tryGenerate(state, stateSeed(state.id) + attempt * 7919);
@@ -44,7 +56,7 @@ export function generateMap(stateId) {
 
 function tryGenerate(state, seed) {
   const rng = mulberry32(seed);
-  const rules = BIOME_RULES[state.biome];
+  const rules = { ...BIOME_RULES[state.biome], ...(LOOK_RULES[state.lookId] || {}) };
   const boxes = [];
   const visuals = [];
   const water = [];
@@ -479,7 +491,7 @@ function tryGenerate(state, seed) {
   const vehicles = [];
   const vrng = mulberry32(Math.imul(seed ^ 0x5ca7, 0x9e3779b1) >>> 0);
   for (let k = 0; k < 3; k++) vrng(); // decorrelate nearby seeds
-  const mix = Object.entries(VEHICLE_MIX[state.biome] || VEHICLE_MIX.savanna);
+  const mix = Object.entries(state.cc && state.cc !== 'NG' && state.biome !== 'urban' ? WORLD_VEHICLES : VEHICLE_MIX[state.biome] || VEHICLE_MIX.savanna);
   const total = mix.reduce((n, [, w]) => n + w, 0);
   const pickType = () => {
     let r = vrng() * total;
@@ -519,7 +531,8 @@ function tryGenerate(state, seed) {
     stateId: state.id,
     state,
     biome: state.biome,
-    look: BIOMES[state.biome],
+    lookId: state.lookId,
+    look: BIOMES[state.lookId] || BIOMES[state.biome],
     half: HALF,
     seed,
     boxes,

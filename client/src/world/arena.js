@@ -95,7 +95,10 @@ const ATMOS = {
   plateau: { fog: 0.0035, turbidity: 3, rayleigh: 2, rainChance: 0.25 },
   rainforest: { fog: 0.0058, turbidity: 8, rayleigh: 2.2, rainChance: 0.4 },
   creeks: { fog: 0.006, turbidity: 8, rayleigh: 2, rainChance: 0.35 },
-  urban: { fog: 0.005, turbidity: 10, rayleigh: 1.4, rainChance: 0.15 }
+  urban: { fog: 0.005, turbidity: 10, rayleigh: 1.4, rainChance: 0.15 },
+  desert: { fog: 0.0055, turbidity: 10, rayleigh: 1.1, rainChance: 0, dust: true },
+  temperate: { fog: 0.0045, turbidity: 4, rayleigh: 2.2, rainChance: 0.35 },
+  snow: { fog: 0.0068, turbidity: 2.5, rayleigh: 2.6, rainChance: 0 }
 };
 
 export class Arena {
@@ -122,7 +125,7 @@ export class Arena {
 
   // ---------- sky, sun, fog, weather ----------
   buildAtmosphere(rng) {
-    const a = ATMOS[this.map.biome] || ATMOS.savanna;
+    const a = ATMOS[this.map.lookId] || ATMOS[this.map.biome] || ATMOS.savanna;
     this.atmos = a;
     // 07:30 to 17:30, then sun elevation from the hour.
     this.hour = 7.5 + rng() * 10;
@@ -241,7 +244,7 @@ export class Arena {
   // ---------- terrain ----------
   buildTerrain() {
     const map = this.map;
-    const tex = T.groundTexture(map.biome);
+    const tex = T.groundTexture(map.lookId || map.biome);
     const n = mulberry32(map.seed);
     // Cheap value noise for colour variation.
     const grid = new Float32Array(64 * 64);
@@ -260,7 +263,7 @@ export class Arena {
     const mat = new THREE.MeshStandardMaterial({ map: tex.map, normalMap: tex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, vertexColors: true });
     // Blend a second surface in natural patches and add large-scale tone variation,
     // so the ground never looks like one repeated tile.
-    const patchTex = T.groundPatchTexture(map.biome).map;
+    const patchTex = T.groundPatchTexture(map.lookId || map.biome).map;
     const mask = T.maskTexture();
     // Stairwells going underground are cut out of the ground.
     const opens = (map.openings || []).slice(0, 4).map((o) => new THREE.Vector4(o.x0, o.z0, o.x1, o.z1));

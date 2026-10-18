@@ -3,7 +3,7 @@
 // (notifications, announcements, ads). Every change is written to the audit log.
 import { pidOf, lagosDay } from './control.js';
 import { rankFor, GAME } from '../shared/config.js';
-import { STATE_BY_ID } from '../shared/states.js';
+import { regionById } from '../shared/regions.js';
 
 const CAN = {
   super: () => true,
@@ -150,7 +150,7 @@ export function adminRoutes(ctx) {
       const list = [...matches.values()].map((x) => ({
         key: x.key,
         state: x.stateId,
-        stateName: STATE_BY_ID[x.stateId]?.name,
+        stateName: regionById(x.stateId)?.name,
         mode: x.modeId,
         real: !!x.opts.noBots,
         score: x.score,

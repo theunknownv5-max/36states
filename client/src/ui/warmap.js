@@ -1,8 +1,8 @@
-// The lobby: game-mode tabs, the war map of all 36 states + FCT with live battles,
-// the state briefing and "wetin you be" faction picker, and the campaign stage list.
-import { STATES, STATE_BY_ID, ZONES, BIOMES, RESOURCES } from '../../../shared/states.js';
+// The lobby: game-mode tabs, the war map of the chosen country's regions with live battles,
+// the region briefing and the side/faction picker, and the campaign stage list.
+import { STATE_BY_ID, ZONES, BIOMES, RESOURCES } from '../../../shared/states.js';
 import { FACTIONS, SIDES, WEAPONS, MODES, STAGES } from '../../../shared/config.js';
-import { OUTLINE, projector } from './nigeria.js';
+import { regionById, COUNTRY_BY_CC, flagOf } from '../../../shared/regions.js';
 
 const ZONE_COL = { NC: '#2f7a4c', NE: '#8a6a24', NW: '#9a5426', SE: '#22707e', SS: '#28588e', SW: '#6a4890' };
 const NS = 'http://www.w3.org/2000/svg';
@@ -44,14 +44,8 @@ function hexPoints(cx, cy, r) {
   return pts.join(' ');
 }
 
-// Spread tiles so neighbouring states do not overlap, keeping them near their real spot.
-function layout() {
-  const project = projector(W, H, 40);
-  const pts = STATES.map((s) => {
-    const [x, y] = project(s.lon, s.lat);
-    return { id: s.id, x, y, hx: x, hy: y };
-  });
-  const min = R * 1.86;
+// Spread tiles so neighbouring regions do not overlap, keeping them near their real spot.
+function spread(pts, min) {
   for (let it = 0; it < 220; it++) {
     for (let i = 0; i < pts.length; i++) {
       for (let j = i + 1; j < pts.length; j++) {
@@ -74,7 +68,16 @@ function layout() {
       p.y += (p.hy - p.y) * 0.02;
     }
   }
-  return { pts, project };
+  return pts;
+}
+
+// Colours for regions outside Nigeria (by biome).
+const BIOME_COL = { sahel: '#9a6a2a', desert: '#a8823a', savanna: '#7a7a2c', plateau: '#6a5a8a', rainforest: '#2f7a4c', creeks: '#28688e', urban: '#8a3a4a', temperate: '#3f7a3a', snow: '#5a7a9a' };
+
+// Shorten a region name to fit its tile.
+function shortName(name, max) {
+  const n = name.replace(/ \((State|Municipality|City|Federal District)\)$/, '').replace(/ (Prefecture|Province|Region|Governorate|Oblast|County|District|Department)$/, '');
+  return n.length > max ? n.slice(0, Math.max(3, max - 1)) + '…' : n;
 }
 
 export class WarMap {
@@ -92,7 +95,8 @@ export class WarMap {
     this.live = {};
     this.profile = null;
     this.stageSel = null;
-    this.draw();
+    this.country = null;
+    this.tiles = {};
     this.drawModes();
     $('btn-deploy').onclick = () => {
       if (this.selected && this.faction) this.onDeploy(this.selected, this.faction, this.mode);
@@ -130,43 +134,134 @@ export class WarMap {
     this.updateCounts();
   }
 
+  // Draw the chosen country: its real region shapes, and a tile per region (overseas regions
+  // far from the mainland sit in a column on the right).
+  setCountry(data) {
+    this.country = data;
+    if (this.selected && !data.regions.some((r) => r.id === this.selected)) this.selected = null;
+    this.draw();
+    if (!MODES[this.mode].solo) {
+      $('state-info').hidden = !this.selected;
+      $('state-empty').hidden = !!this.selected;
+      if (this.selected) this.renderInfo();
+    }
+    this.updateCounts();
+  }
+
   draw() {
     const svg = this.svg;
     svg.innerHTML = '';
-    const { pts, project } = layout();
+    this.tiles = {};
+    const data = this.country;
+    if (!data) return;
+    const regions = data.regions;
+    const isNG = data.cc === 'NG';
+    // Mainland: regions near the country's label point; the rest are drawn as an overseas column.
+    let [L0, L1] = data.label || [(data.bbox[0] + data.bbox[2]) / 2, (data.bbox[1] + data.bbox[3]) / 2];
+    if (L0 < data.bbox[0]) L0 += 360;
+    const dist = (r) => Math.hypot((r.lon - L0) * Math.cos((L1 * Math.PI) / 180), r.lat - L1);
+    const ds = regions.map(dist).sort((a, b) => a - b);
+    const median = ds[Math.floor(ds.length / 2)] || 0;
+    const limit = Math.max(8, median * 3);
+    const main = regions.filter((r) => dist(r) <= limit);
+    const away = regions.filter((r) => dist(r) > limit);
+    // Projection fitted to the mainland shapes.
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const r of main)
+      for (const flat of r.poly || [])
+        for (let i = 0; i < flat.length; i += 2) {
+          minX = Math.min(minX, flat[i]);
+          maxX = Math.max(maxX, flat[i]);
+          minY = Math.min(minY, flat[i + 1]);
+          maxY = Math.max(maxY, flat[i + 1]);
+        }
+    if (!isFinite(minX)) [minX, minY, maxX, maxY] = data.bbox;
+    const k = Math.cos((((minY + maxY) / 2) * Math.PI) / 180);
+    const right = away.length ? 150 : 0;
+    const pad = 46;
+    const sw = (W - right - pad * 2) / Math.max(0.01, (maxX - minX) * k);
+    const sh = (H - pad * 2) / Math.max(0.01, maxY - minY);
+    const sc = Math.min(sw, sh);
+    const ox = pad + (W - right - pad * 2 - (maxX - minX) * k * sc) / 2;
+    const oy = pad + (H - pad * 2 - (maxY - minY) * sc) / 2;
+    const project = (lon, lat) => [ox + (lon - minX) * k * sc, oy + (maxY - lat) * sc];
+    const pathOf = (rings) =>
+      rings
+        .map((flat) => {
+          let d = '';
+          for (let i = 0; i < flat.length; i += 2) {
+            const [x, y] = project(flat[i], flat[i + 1]);
+            d += `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+          }
+          return d + 'Z';
+        })
+        .join('');
     const defs = el('defs', {}, svg);
     const glow = el('filter', { id: 'glow', x: '-20%', y: '-20%', width: '140%', height: '140%' }, defs);
     el('feGaussianBlur', { stdDeviation: '6', result: 'b' }, glow);
     const merge = el('feMerge', {}, glow);
     el('feMergeNode', { in: 'b' }, merge);
     el('feMergeNode', { in: 'SourceGraphic' }, merge);
-    const d = OUTLINE.map(([lon, lat], i) => {
-      const [x, y] = project(lon, lat);
-      return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-    el('path', { d: d + 'Z', fill: 'rgba(255,122,26,0.06)', stroke: 'rgba(255,150,60,0.55)', 'stroke-width': 2.5, filter: 'url(#glow)' }, svg);
-    const river = (coords) => coords.map(([lon, lat], i) => `${i ? 'L' : 'M'}${project(lon, lat).map((v) => v.toFixed(1)).join(',')}`).join(' ');
-    el('path', { d: river([[3.6, 11.7], [4.6, 10.6], [5.5, 9.4], [6.2, 8.9], [6.75, 7.8], [6.7, 6.9], [6.45, 5.8], [6.3, 4.9]]), fill: 'none', stroke: 'rgba(80,160,220,0.35)', 'stroke-width': 3 }, svg);
-    el('path', { d: river([[12.4, 9.3], [11.2, 9.0], [9.8, 8.4], [8.6, 7.75], [7.5, 7.75], [6.75, 7.8]]), fill: 'none', stroke: 'rgba(80,160,220,0.35)', 'stroke-width': 3 }, svg);
-    this.tiles = {};
+    if (data.outline?.length) el('path', { d: pathOf(data.outline), fill: 'rgba(255,122,26,0.06)', stroke: 'rgba(255,150,60,0.55)', 'stroke-width': 2.5, filter: 'url(#glow)' }, svg);
+    const colour = (r) => (isNG ? ZONE_COL[r.zone] : BIOME_COL[r.biome]) || '#5a6a7a';
+    this.shapes = {};
+    for (const r of main) {
+      if (!r.poly?.length) continue;
+      const sh = el('path', { d: pathOf(r.poly), fill: colour(r), 'fill-opacity': 0.28, class: 'region-shape', 'data-id': r.id }, svg);
+      sh.addEventListener('click', () => this.select(r.id));
+      this.shapes[r.id] = sh;
+    }
+    if (isNG) {
+      const river = (coords) => coords.map(([lon, lat], i) => `${i ? 'L' : 'M'}${project(lon, lat).map((v) => v.toFixed(1)).join(',')}`).join(' ');
+      el('path', { d: river([[3.6, 11.7], [4.6, 10.6], [5.5, 9.4], [6.2, 8.9], [6.75, 7.8], [6.7, 6.9], [6.45, 5.8], [6.3, 4.9]]), fill: 'none', stroke: 'rgba(80,160,220,0.35)', 'stroke-width': 3, 'pointer-events': 'none' }, svg);
+      el('path', { d: river([[12.4, 9.3], [11.2, 9.0], [9.8, 8.4], [8.6, 7.75], [7.5, 7.75], [6.75, 7.8]]), fill: 'none', stroke: 'rgba(80,160,220,0.35)', 'stroke-width': 3, 'pointer-events': 'none' }, svg);
+    }
+    // Tiles: sized so every region fits.
+    const R = Math.max(13, Math.min(44, Math.sqrt(((W - right) * H) / Math.max(1, main.length)) * 0.3));
+    const pts = spread(
+      main.map((r) => {
+        const [x, y] = project(r.lon, r.lat);
+        return { id: r.id, x, y, hx: x, hy: y };
+      }),
+      R * 1.86
+    );
+    away.forEach((r, i) => {
+      const cols = Math.ceil(away.length / 12);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = W - right + 30 + col * 64;
+      const y = 70 + row * Math.min(64, (H - 90) / Math.ceil(away.length / cols));
+      pts.push({ id: r.id, x, y, hx: x, hy: y, away: true });
+    });
+    if (away.length) {
+      const t = el('text', { x: W - right + 10, y: 34, class: 'inset-label' }, svg);
+      t.textContent = 'OVERSEAS';
+    }
+    const byId = Object.fromEntries(regions.map((r) => [r.id, r]));
+    const fs = R > 24 ? 12 : R > 18 ? 10 : 9;
     for (const p of pts) {
-      const s = STATE_BY_ID[p.id];
-      const g = el('g', { class: 'state', 'data-id': s.id, tabindex: 0, role: 'button', 'aria-label': `${s.name} state` }, svg);
-      el('polygon', { points: hexPoints(p.x, p.y, R), fill: ZONE_COL[s.zone] }, g);
-      const name = s.id === 'fct' ? 'FCT' : s.name.length > 9 ? s.name.replace('Cross River', 'C. River').replace('Akwa Ibom', 'A. Ibom') : s.name;
-      const t = el('text', { x: p.x, y: p.y + 4, 'font-size': name.length > 7 ? 11 : 13 }, g);
+      const s = byId[p.id];
+      const r = p.away ? 22 : R;
+      const g = el('g', { class: 'state', 'data-id': s.id, tabindex: 0, role: 'button', 'aria-label': s.name }, svg);
+      el('polygon', { points: hexPoints(p.x, p.y, r), fill: colour(s) }, g);
+      const name = isNG && s.id === 'fct' ? 'FCT' : shortName(s.name.replace('Cross River', 'C. River').replace('Akwa Ibom', 'A. Ibom'), Math.max(4, Math.floor((r * 2.1) / (fs * 0.56))));
+      const t = el('text', { x: p.x, y: p.y + 4, 'font-size': p.away ? 9 : name.length > 7 ? fs : fs + 2 }, g);
       t.textContent = name;
-      const pip = el('circle', { cx: p.x + R * 0.62, cy: p.y - R * 0.55, r: 6, fill: '#ff4f4f', class: 'livepip', visibility: 'hidden' }, g);
-      const count = el('text', { x: p.x, y: p.y + 18, 'font-size': 10, fill: '#ffd' }, g);
+      const pip = el('circle', { cx: p.x + r * 0.62, cy: p.y - r * 0.55, r: 6, fill: '#ff4f4f', class: 'livepip', visibility: 'hidden' }, g);
+      const count = el('text', { x: p.x, y: p.y + r * 0.62, 'font-size': 10, fill: '#ffd' }, g);
       g.addEventListener('click', () => this.select(s.id));
       g.addEventListener('keydown', (e) => e.key === 'Enter' && this.select(s.id));
       this.tiles[s.id] = { g, pip, count };
     }
+    if (this.selected) this.tiles[this.selected]?.g.classList.add('sel');
   }
 
   setLobby(states, online) {
     if (online !== undefined) this.online = online;
-    for (const s of states) this.live[s.id] = s;
+    this.live = Object.fromEntries((states || []).map((s) => [s.id, s]));
     this.updateCounts();
     if (this.selected && !MODES[this.mode].solo) this.renderInfo();
   }
@@ -174,7 +269,13 @@ export class WarMap {
   // Live players for the current mode on each tile, and per mode on the tabs.
   updateCounts() {
     const totals = {};
+    for (const t of Object.values(this.tiles || {})) {
+      t.pip.setAttribute('visibility', 'hidden');
+      t.count.textContent = '';
+    }
+    const cc = this.country?.cc;
     for (const s of Object.values(this.live)) {
+      if (cc && (s.cc || 'NG') !== cc) continue;
       const n = s.modes?.[this.mode] || 0;
       const tile = this.tiles[s.id];
       if (tile) {
@@ -194,6 +295,7 @@ export class WarMap {
   select(id) {
     this.selected = id;
     for (const [k, t] of Object.entries(this.tiles)) t.g.classList.toggle('sel', k === id);
+    for (const [k, p] of Object.entries(this.shapes || {})) p.classList.toggle('sel', k === id);
     $('state-empty').hidden = true;
     $('state-info').hidden = false;
     this.renderInfo();
@@ -202,13 +304,15 @@ export class WarMap {
 
   renderInfo() {
     if (!this.selected) return;
-    const s = STATE_BY_ID[this.selected];
+    const s = regionById(this.selected);
+    if (!s) return;
     const L = this.live[s.id] || { humans: 0, bots: 0, sec: 0, out: 0, modes: {} };
     const mode = MODES[this.mode];
     const here = L.modes?.[this.mode] || 0;
-    $('si-zone').textContent = `${ZONES[s.zone]} · ${mode.icon} ${mode.label}`;
+    const c = COUNTRY_BY_CC[s.cc || 'NG'];
+    $('si-zone').textContent = `${flagOf(c?.cc)} ${c?.name || ''}${s.cc === 'NG' || !s.cc ? ` · ${ZONES[s.zone]}` : s.zone ? ` · ${s.zone}` : ''} · ${mode.icon} ${mode.label}`;
     $('si-name').textContent = s.name;
-    $('si-cap').textContent = s.capitalTerritory ? 'Federal Capital Territory' : `Capital: ${s.capital}`;
+    $('si-cap').textContent = s.capitalTerritory ? 'Federal Capital Territory' : s.capital && s.capital !== s.name ? `Capital: ${s.capital}` : s.type || '';
     $('si-biome').innerHTML = `Ground: ${esc(BIOMES[s.biome].label)}<div class="mode-blurb">${esc(mode.blurb)}</div>`;
     $('si-res').innerHTML = s.resources.map((r) => `<span><i style="background:${RESOURCES[r].colour}"></i>${RESOURCES[r].label}</span>`).join('');
     $('si-landmark').textContent = `Landmark for the map: ${s.landmark.name}`;

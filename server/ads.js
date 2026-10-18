@@ -10,8 +10,8 @@ import { randomUUID, createHash, randomBytes } from 'node:crypto';
 import { JsonStore } from './store.js';
 import { media, imageSize, IMAGE_TYPES } from './media.js';
 import { ADS } from '../shared/config.js';
-import { STATES } from '../shared/states.js';
-import { BOARD_TYPES, MAX_IMAGE_BYTES, MAX_IMAGE_PX, ratioOk, mergePricing, quote } from '../shared/billboards.js';
+import { regionById, ccOf, COUNTRY_BY_CC, payProvider } from '../shared/regions.js';
+import { BOARD_TYPES, MAX_IMAGE_BYTES, MAX_IMAGE_PX, ratioOk, mergePricing, quote, toUsd } from '../shared/billboards.js';
 
 const MAX_UNIQUES = 100000;
 const DAY = 86400000;
@@ -37,16 +37,33 @@ export function decodeImage(dataUrl) {
 }
 
 export class AdManager {
-  constructor(catalogue) {
-    // catalogue: stateId -> [{ id, type, code, label, x, z }]
+  constructor(catalogue, ensure = null) {
+    // catalogue: regionId -> [{ id, type, code, label, x, z }]. Regions outside Nigeria are
+    // generated on first use: ensure(regionId) builds that region's billboards.
     this.catalogue = catalogue;
+    this.ensure = ensure;
     this.boards = new Map();
-    for (const list of Object.values(catalogue)) for (const b of list) this.boards.set(b.id, b);
+    for (const list of Object.values(catalogue)) this.addBoards(list);
     this.store = new JsonStore('ads.json', { ads: [], version: 1, salt: randomBytes(16).toString('hex') });
     this.uniqueStore = new JsonStore('ad-uniques.json', {});
     this.seen = new Map(); // `${player}:${slot}` -> last counted time
     this.onChange = null;
     this.cache = new Map(); // stateId -> { at, result }
+  }
+
+  addBoards(list) {
+    for (const b of list || []) this.boards.set(b.id, b);
+  }
+
+  boardsOf(regionId) {
+    if (!this.catalogue[regionId] && this.ensure) this.ensure(regionId);
+    return this.catalogue[regionId] || [];
+  }
+
+  board(boardId) {
+    if (typeof boardId !== 'string') return null;
+    if (!this.boards.has(boardId)) this.boardsOf(boardId.split(':')[0]);
+    return this.boards.get(boardId) || null;
   }
 
   async load() {
@@ -80,7 +97,9 @@ export class AdManager {
   isLive(ad, now = Date.now()) {
     if (ad.paused) return false;
     if (ad.kind === 'paid') return ad.status === 'approved' && now >= ad.startMs && now < ad.endMs;
-    return (!ad.start || now >= Date.parse(ad.start)) && (!ad.end || now <= Date.parse(ad.end) + DAY);
+    // Plain dates are whole days on the Lagos clock (the admin's calendar), not UTC midnight.
+    const at = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? lagosDayMs(d) : Date.parse(d));
+    return (!ad.start || now >= at(ad.start)) && (!ad.end || now < at(ad.end) + DAY);
   }
 
   status(ad, now = Date.now()) {
@@ -95,11 +114,11 @@ export class AdManager {
     const paid = this.ads.filter((a) => a.kind === 'paid' && a.board === board.id && this.isLive(a, now)).sort((a, b) => a.startMs - b.startMs);
     const exclusive = paid.find((a) => a.exclusive);
     if (exclusive) return [exclusive];
-    const house = this.ads.filter((a) => a.kind !== 'paid' && this.isLive(a, now) && (a.states.includes('all') || a.states.includes(stateId))).sort((a, b) => a.created - b.created);
+    const house = this.ads.filter((a) => a.kind !== 'paid' && this.isLive(a, now) && (a.states.includes('all') || a.states.includes(stateId) || a.states.includes(`country:${ccOf(stateId)}`))).sort((a, b) => a.created - b.created);
     if (!paid.length) {
       // House adverts spread over the billboards (as before), so walls show different brands.
       if (!house.length) return [];
-      const idx = this.catalogue[stateId].indexOf(board);
+      const idx = this.boardsOf(stateId).indexOf(board);
       return [house[Math.max(0, idx) % house.length]];
     }
     return [...paid, ...house.slice(0, Math.max(0, this.pricing.shares - paid.length))];
@@ -110,7 +129,7 @@ export class AdManager {
     const c = this.cache.get(stateId);
     if (c && now - c.at < 30000) return c.result;
     const slots = {};
-    for (const b of this.catalogue[stateId] || []) {
+    for (const b of this.boardsOf(stateId)) {
       const live = this.liveFor(b, now);
       if (live.length) slots[b.id] = live.map((ad) => ({ adId: ad.id, image: media.url(ad.file), advertiser: ad.advertiser, link: ad.link || null, chat: ad.kind === 'paid' && !!ad.advertiserId }));
     }
@@ -131,9 +150,10 @@ export class AdManager {
   // ---------- house adverts (admin) ----------
   async create({ advertiser, title, imageDataUrl, states, start, end, priceNaira, link }) {
     const img = decodeImage(imageDataUrl);
-    const valid = new Set(['all', ...STATES.map((s) => s.id)]);
-    const targets = (Array.isArray(states) ? states : ['all']).filter((s) => valid.has(s));
-    if (!targets.length) throw new Error('Choose at least one state');
+    // Targets: 'all', whole countries ('country:GH') or single regions.
+    const ok = (s) => s === 'all' || (typeof s === 'string' && s.startsWith('country:') && !!COUNTRY_BY_CC[s.slice(8).toUpperCase()]) || !!regionById(s);
+    const targets = (Array.isArray(states) ? states : ['all']).map((s) => (String(s).startsWith('country:') ? `country:${String(s).slice(8).toUpperCase()}` : s)).filter(ok);
+    if (!targets.length) throw new Error('Choose at least one country or region');
     const id = randomUUID().slice(0, 8);
     const file = `${id}.${img.ext}`;
     await media.put(file, img.buf);
@@ -210,12 +230,17 @@ export class AdManager {
   }
 
   checkRequest({ boardId, days, exclusive, startDay }) {
-    const board = this.boards.get(boardId);
+    const board = this.board(boardId);
     if (!board) throw new Error('Pick a billboard');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDay || '') || Number.isNaN(lagosDayMs(startDay))) throw new Error('Pick a start date');
     if (startDay < lagosToday()) throw new Error('The start date has passed');
     if (lagosDayMs(startDay) > Date.now() + 180 * DAY) throw new Error('Book at most 6 months ahead');
-    const q = quote(this.pricing, { type: board.type, stateId: boardId.split(':')[0], days, exclusive: !!exclusive });
+    const regionId = boardId.split(':')[0];
+    const q = quote(this.pricing, { type: board.type, stateId: regionId, days, exclusive: !!exclusive });
+    // Paystack (naira) for billboards in Africa, Stripe (US dollars) everywhere else.
+    q.provider = payProvider(ccOf(regionId));
+    q.usd = toUsd(this.pricing, q.total);
+    q.country = ccOf(regionId);
     return { board, q, avail: this.availability(boardId, startDay, q.days, !!exclusive) };
   }
 
@@ -257,6 +282,9 @@ export class AdManager {
       startDay,
       quote: q,
       priceNaira: q.total,
+      provider: q.provider,
+      priceUsd: q.usd,
+      country: q.country,
       status: 'unpaid',
       reference: null,
       payments: [],
@@ -287,11 +315,15 @@ export class AdManager {
     if (!ad) throw new Error('Unknown payment reference');
     if (ad.status !== 'unpaid') return ad;
     if (tx.status !== 'success') throw new Error(`Payment not successful (${tx.status})`);
-    if (tx.currency !== 'NGN' || Number(tx.amount) < ad.priceNaira * 100) throw new Error('Paid amount does not match the price');
+    if (ad.provider === 'stripe') {
+      if (String(tx.currency).toUpperCase() !== 'USD' || Number(tx.amount) < ad.priceUsd * 100) throw new Error('Paid amount does not match the price');
+      ad.paymentIntent = tx.paymentIntent || null;
+      ad.paidCents = Number(tx.amount);
+    } else if (tx.currency !== 'NGN' || Number(tx.amount) < ad.priceNaira * 100) throw new Error('Paid amount does not match the price');
     ad.status = 'review';
     ad.reference = reference;
     ad.paidAt = Date.now();
-    ad.paidKobo = Number(tx.amount);
+    if (ad.provider !== 'stripe') ad.paidKobo = Number(tx.amount);
     ad.channel = tx.channel || null;
     this.bump();
     return ad;
@@ -365,7 +397,7 @@ export class AdManager {
     const day = lagosToday(now);
     const who = this.hashPlayer(player.token || player.id);
     for (const slot of slotIds.slice(0, 30)) {
-      if (typeof slot !== 'string' || !slot.startsWith(`${stateId}:`) || !this.boards.has(slot)) continue;
+      if (typeof slot !== 'string' || !slot.startsWith(`${stateId}:`) || !this.board(slot)) continue;
       const key = `${who}:${slot}`;
       if ((this.seen.get(key) || 0) > now - ADS.viewDedupeMs) continue;
       this.seen.set(key, now);
@@ -422,7 +454,7 @@ export class AdManager {
       board: ad.board,
       boardCode: ad.boardCode,
       boardType: ad.boardType,
-      boardLabel: this.boards.get(ad.board)?.label || '',
+      boardLabel: this.board(ad.board)?.label || '',
       state: ad.states[0],
       exclusive: ad.exclusive,
       days: ad.days,
@@ -430,6 +462,9 @@ export class AdManager {
       startMs: ad.startMs || null,
       endMs: ad.endMs || null,
       priceNaira: ad.priceNaira,
+      priceUsd: ad.priceUsd || null,
+      provider: ad.provider || 'paystack',
+      country: ad.country || 'NG',
       quote: ad.quote,
       status: this.status(ad, now),
       rejectReason: ad.rejectReason || null,

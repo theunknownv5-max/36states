@@ -1,6 +1,7 @@
 // Headless simulation tests: run with `npm test`.
 // Drives real matches on a fake clock and checks the rules the game depends on.
-import { debrief } from './tour.js';
+import { debrief, nextOrders } from './tour.js';
+import { mulberry32 } from '../shared/rng.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1034,6 +1035,44 @@ section('Winners, debrief and the Tour of Duty');
   check(A.profile.tour.titles.includes('Recruit'), 'the chapter title is kept');
   mm.removePlayer(B.id);
   check(wa.log.some((m) => m.t === 'left' && m.name === 'Loser' && m.humans === 1), 'others are told a real player left');
+}
+
+section('The whole world: countries, regions, biomes, new orders');
+{
+  const fs = await import('node:fs');
+  const R = await import('../shared/regions.js');
+  const { generateMap } = await import('../shared/map.js');
+  R.setCountryLoader((cc) => JSON.parse(fs.readFileSync(new URL(`../shared/world/${cc.toLowerCase()}.json`, import.meta.url), 'utf8')));
+  check(R.COUNTRIES.length > 200 && R.COUNTRIES.every((c) => c.n > 0), `${R.COUNTRIES.length} countries, every one with battlefields`);
+  check(R.payProvider('NG') === 'paystack' && R.payProvider('KE') === 'paystack' && R.payProvider('GB') === 'stripe' && R.payProvider('US') === 'stripe', 'Paystack in Africa, Stripe elsewhere');
+  check(R.regionsOf('NG').length === 37 && R.regionById('lagos').cc === 'NG', 'Nigeria keeps its 36 states and the FCT');
+  const ash = R.regionById('gh.ashanti');
+  check(ash && ash.cc === 'GH' && ash.resources.length === 3 && ash.landmark?.name, 'a region of Ghana loads with resources and a landmark');
+  check(R.regionsOf('US').length >= 50 && R.regionById('us.texas'), 'all US states');
+  const ak = generateMap('us.alaska');
+  check(ak.lookId === 'snow' && ak.biome === 'plateau' && ak.trees.some((t) => t.type === 'pine'), 'Alaska is snow and pine (built on highland rules)');
+  const eg = generateMap('eg.aswan');
+  check(eg.lookId === 'desert' && eg.biome === 'sahel', 'Aswan is desert');
+  // Every country's first region builds a playable battlefield.
+  let bad = [];
+  for (const c of R.COUNTRIES) {
+    try {
+      const m = generateMap(c.first);
+      if (m.sites.length !== 3 || !m.connected) bad.push(c.cc);
+    } catch (e) {
+      bad.push(`${c.cc}:${e.message}`);
+    }
+  }
+  check(!bad.length, `a battlefield in every country (${bad.slice(0, 5).join(', ') || 'all fine'})`);
+  const mm = new Match('gh.ashanti', hooks, 'conquest');
+  const ws = fakeWs();
+  const P = mm.addHuman(ws, 'army', profile('Kofi')).player;
+  run(mm, 3);
+  const info = mm.info(P);
+  check(info.region?.id === 'gh.ashanti' && !info.region.poly && info.region.cc === 'GH', 'match info carries the region (without its map shape)');
+  check(mm.siteView().length === 3 && [...mm.players.values()].some((p) => !p.human && p.kills + p.deaths >= 0), 'bots fight in Ghana too');
+  const orders = nextOrders('gh.ashanti', 'conquest', mulberry32(5));
+  check(orders.state.startsWith('gh.') && orders.state !== 'gh.ashanti' && orders.name, `new orders stay in the same country (${orders.name})`);
 }
 
 section('Native app data (rules and maps)');

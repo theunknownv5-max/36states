@@ -1,4 +1,5 @@
-// All 36 states of Nigeria + the FCT. Each one becomes its own battlefield.
+// Nigeria's 36 states + the FCT (hand-made). Every other country's regions come from
+// shared/world/<cc>.json via shared/regions.js. Each region becomes its own battlefield.
 // lat/lon are approximate state centres (used to draw the war map).
 // biome drives the terrain look; resources become the capture sites; landmark is built into the map.
 
@@ -17,7 +18,11 @@ export const BIOMES = {
   plateau: { label: 'Highland plateau', ground: '#8a7a5c', grass: 0.45, haze: '#b9c2c8' },
   rainforest: { label: 'Rainforest', ground: '#8a4f2c', grass: 0.7, haze: '#a9b89a' },
   creeks: { label: 'Creeks & mangroves', ground: '#5d5137', grass: 0.6, haze: '#9fb3a8' },
-  urban: { label: 'Coastal city', ground: '#77716a', grass: 0.1, haze: '#cdb99a' }
+  urban: { label: 'City', ground: '#77716a', grass: 0.1, haze: '#cdb99a' },
+  // World biomes: their own look, built with the terrain rules of the biome named in base.
+  desert: { label: 'Desert', ground: '#d8b47a', grass: 0.02, haze: '#ecd3a2', base: 'sahel' },
+  temperate: { label: 'Green countryside', ground: '#6f7a4a', grass: 0.75, haze: '#b8c6cf', base: 'savanna' },
+  snow: { label: 'Snow and pine', ground: '#e6ebef', grass: 0.15, haze: '#d4dde6', base: 'plateau' }
 };
 
 // Natural resources and the facility built for each on the map.
@@ -59,7 +64,18 @@ export const RESOURCES = {
   cotton: { label: 'Cotton', site: 'Cotton Gin', prop: 'sacks', colour: '#fafafa' },
   cashew: { label: 'Cashew', site: 'Cashew Orchard', prop: 'farm', colour: '#ffb74d' },
   hydro: { label: 'Hydropower', site: 'Hydro Station', prop: 'tanks', colour: '#29b6f6' },
-  port: { label: 'Sea trade', site: 'Seaport Depot', prop: 'containers', colour: '#e53935' }
+  port: { label: 'Sea trade', site: 'Seaport Depot', prop: 'containers', colour: '#e53935' },
+  copper: { label: 'Copper', site: 'Copper Mine', prop: 'mine', colour: '#c46f3c' },
+  potash: { label: 'Potash', site: 'Potash Works', prop: 'pans', colour: '#f0c9c9' },
+  solar: { label: 'Solar power', site: 'Solar Farm', prop: 'tanks', colour: '#3949ab' },
+  uranium: { label: 'Uranium', site: 'Uranium Mine', prop: 'mine', colour: '#c0ca33' },
+  diamonds: { label: 'Diamonds', site: 'Diamond Pit', prop: 'pit', colour: '#e0f7fa' },
+  palmoil: { label: 'Palm oil', site: 'Palm Oil Mill', prop: 'farm', colour: '#e65100' },
+  silver: { label: 'Silver', site: 'Silver Mine', prop: 'mine', colour: '#cfd8dc' },
+  wheat: { label: 'Wheat', site: 'Grain Silos', prop: 'sacks', colour: '#e6c35c' },
+  grapes: { label: 'Vineyards', site: 'Vineyard', prop: 'farm', colour: '#7b1fa2' },
+  nickel: { label: 'Nickel', site: 'Nickel Mine', prop: 'mine', colour: '#9e9d89' },
+  coffee: { label: 'Coffee', site: 'Coffee Estate', prop: 'farm', colour: '#4e342e' }
 };
 
 // Landmark types: rock (monolith), hills (boulder field), gate (ancient city gate), flare (gas flare stack),

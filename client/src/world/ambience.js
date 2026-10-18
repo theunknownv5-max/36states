@@ -85,7 +85,7 @@ export class Ambience {
     const rng = mulberry32(map.seed ^ 0xc10d);
     this.rng = rng;
     // Cloud layer, thicker in wet biomes, thin in the Sahel.
-    const cover = { sahel: 0.32, savanna: 0.45, plateau: 0.55, rainforest: 0.62, creeks: 0.6, urban: 0.5 }[map.biome] ?? 0.45;
+    const cover = { sahel: 0.32, desert: 0.2, savanna: 0.45, temperate: 0.6, snow: 0.7, plateau: 0.55, rainforest: 0.62, creeks: 0.6, urban: 0.5 }[map.lookId || map.biome] ?? 0.45;
     this.cloudTex = cloudTexture(map.seed, arena.raining ? 0.85 : cover);
     this.cloudTex.repeat.set(3, 3);
     const tint = arena.raining ? '#8a9098' : '#ffffff';

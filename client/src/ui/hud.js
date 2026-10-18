@@ -3,7 +3,7 @@
 // scoreboard and match end.
 import * as THREE from 'three';
 import { WEAPONS, GEAR, FACTIONS, SIDES, priceFor, RESPAWN, KILLSTREAKS } from '../../../shared/config.js';
-import { STATE_BY_ID } from '../../../shared/states.js';
+import { regionById, COUNTRY_BY_CC, flagOf } from '../../../shared/regions.js';
 import { AMBULANCE } from '../../../shared/vehicles.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,8 +22,9 @@ export class Hud {
   }
 
   setMatch(stateId, side, faction) {
-    const s = STATE_BY_ID[stateId];
-    $('state-tag').textContent = `${s.name.toUpperCase()} · ${SIDES[side].label} · ${FACTIONS[faction].label}`;
+    const s = regionById(stateId);
+    const c = COUNTRY_BY_CC[s?.cc || 'NG'];
+    $('state-tag').textContent = `${flagOf(c?.cc)} ${(s?.name || stateId).toUpperCase()} · ${SIDES[side].label} · ${FACTIONS[faction].label}`;
     $('killfeed').innerHTML = '';
     $('chat-log').innerHTML = '';
   }

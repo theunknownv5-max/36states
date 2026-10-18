@@ -4,7 +4,8 @@
 //
 // A chapter is finished with merit: a win is worth 3, a battle fought to the end but lost is
 // worth 1. Finishing a chapter pays gems and XP and unlocks a title.
-import { STATES, STATE_BY_ID, RESOURCES } from '../shared/states.js';
+import { RESOURCES } from '../shared/states.js';
+import { regionById, regionsOf, ccOf } from '../shared/regions.js';
 import { FACTIONS } from '../shared/config.js';
 
 export const TOUR = { winMerit: 3, lossMerit: 1, chapterMerit: 6, winGems: 1, mvpGems: 1, chapterGems: 3, chapterXp: 1000 };
@@ -60,10 +61,10 @@ export function awards(roster) {
   return out;
 }
 
-// New orders: a different region (and sometimes a different mode) with a reason to go.
+// New orders: a different region of the same country (and sometimes a different mode).
 export function nextOrders(stateId, modeId, rng = Math.random) {
-  const pool = STATES.filter((s) => s.id !== stateId);
-  const st = pool[Math.floor(rng() * pool.length)] || STATE_BY_ID[stateId];
+  const pool = regionsOf(ccOf(stateId)).filter((s) => s && s.id !== stateId);
+  const st = pool[Math.floor(rng() * pool.length)] || regionById(stateId);
   const res = RESOURCES[st.resources[Math.floor(rng() * st.resources.length)]]?.site || 'supply depot';
   const foes = Object.values(FACTIONS).filter((f) => f.side === 'out').map((f) => f.label);
   const foe = foes[Math.floor(rng() * foes.length)];

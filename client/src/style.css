@@ -2913,3 +2913,181 @@ body.waiting .dr-reticle, body.waiting .dr-left { opacity: 0.25; }
   color: var(--good);
   letter-spacing: 0.04em;
 }
+
+/* Country of play */
+.country-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.country-bar .modes {
+  flex: 1;
+  min-width: 0;
+}
+.country-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 46vw;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text, #fff);
+  cursor: pointer;
+  font: inherit;
+}
+.country-chip #cc-flag {
+  font-size: 20px;
+  line-height: 1;
+}
+.country-chip b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.country-chip small {
+  color: var(--good);
+  white-space: nowrap;
+}
+.country-chip .caret {
+  opacity: 0.6;
+}
+.country-card {
+  width: min(900px, 100%);
+}
+.cp-suggest {
+  margin: 6px 0;
+}
+.cp-map {
+  width: 100%;
+  height: auto;
+  max-height: 34vh;
+  display: block;
+  background: radial-gradient(ellipse at center, rgba(40, 70, 110, 0.35), rgba(0, 0, 0, 0.2));
+  border-radius: 10px;
+  margin: 6px 0;
+}
+.cp-land {
+  fill: rgba(255, 255, 255, 0.13);
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 0.6;
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+.cp-land:hover {
+  fill: rgba(255, 122, 26, 0.55);
+}
+.cp-land.live {
+  fill: rgba(255, 90, 60, 0.35);
+}
+.cp-land.mine {
+  fill: rgba(255, 170, 60, 0.6);
+}
+.cp-dot {
+  fill: #ff4f4f;
+  stroke: #fff;
+  stroke-width: 1;
+  pointer-events: none;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.cp-search {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font: inherit;
+  margin: 4px 0 8px;
+}
+.cp-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.cp-tabs .chip {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cp-tabs .chip.on {
+  background: var(--pod);
+  border-color: var(--pod);
+  color: #160b00;
+}
+.cp-tabs .chip i {
+  font-style: normal;
+  color: #ff6b5a;
+  font-weight: 700;
+}
+.cp-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+  max-height: 36vh;
+  overflow-y: auto;
+}
+.cp-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cp-item:hover {
+  border-color: var(--pod);
+}
+.cp-item .flag {
+  grid-row: span 2;
+  font-size: 24px;
+}
+.cp-item b {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cp-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.cp-item em {
+  color: #ff6b5a;
+  font-style: normal;
+  font-weight: 700;
+}
+.cp-item.live {
+  border-color: rgba(255, 90, 60, 0.6);
+}
+.region-shape {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1;
+  cursor: pointer;
+}
+.region-shape:hover,
+.region-shape.sel {
+  stroke: var(--pod);
+  stroke-width: 2;
+}
+.inset-label {
+  fill: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}

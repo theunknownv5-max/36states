@@ -7,7 +7,10 @@ import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { STATES, STATE_BY_ID } from '../shared/states.js';
+import { STATES } from '../shared/states.js';
+import { regionById, setCountryLoader, ccOf, COUNTRIES, COUNTRY_BY_CC, placeName } from '../shared/regions.js';
+import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { FACTIONS, GEMS, NET, rankFor, MATCH, MODES, STAGES, GAME } from '../shared/config.js';
 import { generateMap } from '../shared/map.js';
 import { Match } from './match.js';
@@ -23,6 +26,7 @@ import { Push } from './push.js';
 import { adminRoutes } from './admin-routes.js';
 import { nativeRules, nativeMap, sendGz } from './native-api.js';
 import * as paystack from './paystack.js';
+import * as stripe from './stripe.js';
 import { boardsFor, BOARD_TYPES, tierFor } from '../shared/billboards.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -30,13 +34,22 @@ const DIST = join(__dirname, '..', 'dist');
 const PORT = Number(process.env.PORT) || 2567;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me';
 
-// Billboards per state (maps are deterministic, so build the catalogue once at boot).
+// Countries and their regions load from shared/world/<cc>.json the first time they are needed.
+const WORLD_DIR = join(__dirname, '..', 'shared', 'world');
+setCountryLoader((cc) => JSON.parse(readFileSync(join(WORLD_DIR, `${cc.toLowerCase()}.json`), 'utf8')));
+
+// Billboards per region (maps are deterministic). Nigeria is built at boot, every other region
+// the first time someone plays there or an advertiser looks at it.
 const catalogue = {};
 const mapOutline = {};
-for (const s of STATES) {
-  const map = generateMap(s.id);
-  catalogue[s.id] = boardsFor(map);
-  mapOutline[s.id] = {
+let ads = null;
+function ensureRegion(id) {
+  if (catalogue[id]) return true;
+  if (!regionById(id)) return false;
+  const map = generateMap(id);
+  catalogue[id] = boardsFor(map);
+  ads?.addBoards(catalogue[id]);
+  mapOutline[id] = {
     half: map.half,
     sites: map.sites.map((x) => ({ id: x.id, x: x.x, z: x.z, label: x.label })),
     bases: { sec: { x: map.bases.sec.x, z: 0 }, out: { x: map.bases.out.x, z: 0 } },
@@ -44,10 +57,25 @@ for (const s of STATES) {
     water: map.water.map((w) => [w.x0, w.z0, w.x1, w.z1]),
     buildings: map.buildings.map((b) => [b.x0 ?? b.x - b.w / 2, b.z0 ?? b.z - b.d / 2, b.x1 ?? b.x + b.w / 2, b.z1 ?? b.z + b.d / 2])
   };
+  return true;
+}
+for (const s of STATES) ensureRegion(s.id);
+
+// Country files for the clients, gzipped once.
+const worldGz = new Map();
+function worldFile(name) {
+  if (!worldGz.has(name)) {
+    try {
+      worldGz.set(name, gzipSync(readFileSync(join(WORLD_DIR, `${name}.json`))));
+    } catch {
+      worldGz.set(name, null);
+    }
+  }
+  return worldGz.get(name);
 }
 
 await media.init();
-const ads = new AdManager(catalogue);
+ads = new AdManager(catalogue, ensureRegion);
 const advertisers = new Advertisers();
 const inbox = new Inbox();
 const control = new Control();
@@ -129,33 +157,38 @@ function profilePublic(p) {
   return { name: p.name, gems: p.gems, xp: p.xp, rank: rankFor(p.xp), kills: p.kills, deaths: p.deaths, wins: p.wins, matches: p.matches, stage: p.stage || 0, stageStars: p.stageStars || {}, tour: chapterView(p) };
 }
 
-// Live players per state, with a breakdown per mode (campaign stages are private).
+// Live players per region (only regions with a battle running), with a breakdown per mode and
+// the country they are in (campaign stages and practice ranges are private).
 function lobby() {
-  return STATES.map((s) => {
-    const modes = {};
-    let humans = 0;
-    let bots = 0;
-    let score = null;
-    let real = 0;
-    const realModes = {};
-    for (const id of Object.keys(MODES)) {
-      if (MODES[id].solo || MODES[id].private) continue;
-      for (const key of [`${id}:${s.id}`, `${id}:${s.id}:real`]) {
-        const m = matches.get(key);
-        if (!m) continue;
-        const h = m.humans().length;
-        if (key.endsWith(':real')) {
-          real += h;
-          realModes[id] = (realModes[id] || 0) + h;
-        }
-        modes[id] = (modes[id] || 0) + h;
-        humans += h;
-        bots += m.players.size - h;
-        if (h && (!score || id === 'conquest')) score = m.score;
-      }
+  const by = new Map();
+  for (const [key, m] of matches) {
+    const [id, state, real] = key.split(':');
+    if (!MODES[id] || MODES[id].solo || MODES[id].private || id === 'practice') continue;
+    let e = by.get(state);
+    if (!e) by.set(state, (e = { id: state, cc: ccOf(state), humans: 0, bots: 0, real: 0, realModes: {}, sec: 0, out: 0, live: false, modes: {}, scored: false }));
+    const h = m.humans().length;
+    if (real === 'real') {
+      e.real += h;
+      e.realModes[id] = (e.realModes[id] || 0) + h;
     }
-    return { id: s.id, humans, bots, real, realModes, sec: score?.sec || 0, out: score?.out || 0, live: humans > 0, modes };
-  });
+    e.modes[id] = (e.modes[id] || 0) + h;
+    e.humans += h;
+    e.bots += m.players.size - h;
+    if (h && (!e.scored || id === 'conquest')) {
+      e.sec = m.score.sec;
+      e.out = m.score.out;
+      e.scored = true;
+    }
+    e.live = e.humans > 0;
+  }
+  return [...by.values()].map(({ scored, ...e }) => e);
+}
+
+// Real players per country right now (for the country picker).
+function countryCounts(list = lobby()) {
+  const out = {};
+  for (const e of list) if (e.humans) out[e.cc] = (out[e.cc] || 0) + e.humans;
+  return out;
 }
 
 // Soldiers connected right now (in the lobby or in battle).
@@ -226,6 +259,22 @@ function boardView(b, now = Date.now()) {
 
 async function startPayment(req, ad, account) {
   const reference = ads.newReference(ad);
+  if (ad.provider === 'stripe') {
+    const back = `${publicOrigin(req)}/advertise?paid=${encodeURIComponent(reference)}`;
+    const cs = await stripe.checkout({
+      email: account.email,
+      amountCents: ad.priceUsd * 100,
+      reference,
+      name: `Proof of Duty billboard ${ad.boardCode} · ${ad.days} day${ad.days === 1 ? '' : 's'}${ad.exclusive ? ' · exclusive' : ''}`,
+      successUrl: back,
+      cancelUrl: `${publicOrigin(req)}/advertise?cancelled=${encodeURIComponent(reference)}`,
+      metadata: { bookingId: ad.id, billboard: ad.boardCode, business: String(account.business || '').slice(0, 100) }
+    });
+    ad.payments[ad.payments.length - 1].session = cs.id;
+    ads.store.markDirty();
+    ads.store.save();
+    return { authorization_url: cs.url, reference, provider: 'stripe' };
+  }
   const tx = await paystack.initialize({
     email: account.email,
     amountKobo: ad.priceNaira * 100,
@@ -241,9 +290,19 @@ async function confirmPayment(reference) {
   const ad = ads.byReference(reference);
   if (!ad) throw new Error('Unknown payment reference');
   if (ad.status !== 'unpaid') return ad;
+  if (ad.provider === 'stripe') {
+    const pay = ad.payments.find((p) => p.reference === reference);
+    if (!pay?.session) throw new Error('No card payment started for this booking');
+    const cs = await stripe.session(pay.session);
+    const tx = { status: cs.payment_status === 'paid' ? 'success' : cs.payment_status, currency: cs.currency, amount: cs.amount_total, channel: 'card', paymentIntent: cs.payment_intent };
+    return ads.markPaid(reference, tx);
+  }
   const tx = await paystack.verify(reference);
   return ads.markPaid(reference, tx);
 }
+
+const paymentsMode = () => ({ paystack: paystack.paystackMode(), stripe: stripe.stripeMode() });
+const canPay = (provider) => (provider === 'stripe' ? stripe.stripeReady() : paystack.paystackReady());
 
 async function advRoute(req, res, route, url) {
   const ip = clientIp(req);
@@ -251,16 +310,27 @@ async function advRoute(req, res, route, url) {
     return json(res, 200, {
       game: GAME,
       payments: paystack.paystackMode(),
+      payMethods: paymentsMode(),
       storage: SUPABASE ? 'supabase' : 'local',
       types: BOARD_TYPES,
       pricing: ads.pricing,
       today: lagosToday(),
+      countries: COUNTRIES.map((c) => ({ cc: c.cc, name: c.name, continent: c.continent, n: c.n, pay: c.pay })),
+      players: countryCounts(),
       states: STATES.map((s) => ({ id: s.id, name: s.name, zone: s.zone, biome: s.biome, tier: tierFor(ads.pricing, s.id).name, boards: catalogue[s.id].length, players: lobby().find((l) => l.id === s.id)?.humans || 0 }))
     });
   }
+  // The regions of one country for the booking page (billboards are counted when opened).
+  if (route === 'regions' && req.method === 'GET') {
+    const cc = String(url.searchParams.get('cc') || '').toUpperCase();
+    if (!COUNTRY_BY_CC[cc]) return json(res, 400, { error: 'Unknown country' });
+    const live = lobby();
+    const list = cc === 'NG' ? STATES : JSON.parse(readFileSync(join(WORLD_DIR, `${cc.toLowerCase()}.json`), 'utf8')).regions;
+    return json(res, 200, { cc, pay: COUNTRY_BY_CC[cc].pay, regions: list.map((r) => ({ id: r.id, name: r.name, zone: r.zone || '', biome: r.biome, tier: tierFor(ads.pricing, r.id).name, players: live.find((l) => l.id === r.id)?.humans || 0 })) });
+  }
   if (route === 'boards' && req.method === 'GET') {
     const st = url.searchParams.get('state');
-    if (!catalogue[st]) return json(res, 400, { error: 'Unknown state' });
+    if (!ensureRegion(st)) return json(res, 400, { error: 'Unknown region' });
     return json(res, 200, { state: st, map: mapOutline[st], boards: catalogue[st].map((b) => boardView(b)) });
   }
   if (route === 'quote' && req.method === 'POST') {
@@ -302,8 +372,10 @@ async function advRoute(req, res, route, url) {
     return json(res, 200, { thread: inbox.businessView(th) });
   }
   if (route === 'bookings' && req.method === 'POST') {
-    if (!paystack.paystackReady()) return json(res, 503, { error: 'Payments are not switched on yet. Please try again later.' });
-    const ad = await ads.createBooking(acc, await readBody(req));
+    const body = await readBody(req);
+    const { q } = ads.checkRequest({ boardId: body.boardId, days: body.days, exclusive: body.exclusive, startDay: body.startDay });
+    if (!canPay(q.provider)) return json(res, 503, { error: `${q.provider === 'stripe' ? 'Card payments (Stripe)' : 'Paystack payments'} are not switched on yet. Please try again later.` });
+    const ad = await ads.createBooking(acc, body);
     try {
       return json(res, 200, { booking: ads.publicBooking(ad), ...(await startPayment(req, ad, acc)) });
     } catch (e) {
@@ -350,7 +422,10 @@ const server = http.createServer(async (req, res) => {
   const path = url.pathname;
   try {
     if (path === '/health') return json(res, 200, { ok: true, game: GAME.name, version: GAME.version, matches: matches.size, players: [...matches.values()].reduce((n, m) => n + m.humans().length, 0) });
-    if (path === '/api/lobby') return json(res, 200, { states: lobby(), online: onlineCount() });
+    if (path === '/api/lobby') {
+      const list = lobby();
+      return json(res, 200, { states: list, countries: countryCounts(list), online: onlineCount() });
+    }
     // The native Android game: rules and maps.
     if (path === '/api/native/config') return sendGz(res, nativeRules());
     if (path.startsWith('/api/native/map/')) {
@@ -360,8 +435,17 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/leaderboard') return json(res, 200, { top: leaderboard() });
     if (path === '/api/ads') {
       const state = url.searchParams.get('state');
-      if (!STATE_BY_ID[state]) return json(res, 400, { error: 'unknown state' });
+      if (!regionById(state)) return json(res, 400, { error: 'unknown region' });
       return json(res, 200, ads.slotsFor(state));
+    }
+    // World data for the clients: the country list outline and one country's regions.
+    if (path.startsWith('/api/world/')) {
+      const name = path.slice(11).toLowerCase();
+      if (!/^([a-z]{2}|outline)$/.test(name)) return json(res, 404, { error: 'unknown country' });
+      const gz = worldFile(name);
+      if (!gz) return json(res, 404, { error: 'unknown country' });
+      res.writeHead(200, { 'content-type': 'application/json', 'content-encoding': 'gzip', 'cache-control': 'public, max-age=86400', 'access-control-allow-origin': '*' });
+      return res.end(gz);
     }
     if (path.startsWith('/ads/')) {
       const img = await ads.image(path.slice(5));
@@ -376,6 +460,26 @@ const server = http.createServer(async (req, res) => {
     if (path === '/shared/billboards.js') {
       res.writeHead(200, { 'content-type': MIME['.js'], 'cache-control': 'no-cache' });
       return res.end(await readFile(join(__dirname, '..', 'shared', 'billboards.js')));
+    }
+    if (path === '/api/stripe/webhook' && req.method === 'POST') {
+      const raw = await readRaw(req, 256 * 1024);
+      if (!stripe.validSignature(raw, req.headers['stripe-signature'])) return json(res, 401, { error: 'bad signature' });
+      const ev = JSON.parse(raw.toString('utf8'));
+      try {
+        const o = ev.data?.object || {};
+        if (ev.type === 'checkout.session.completed' && o.client_reference_id) await confirmPayment(o.client_reference_id);
+        if (ev.type === 'charge.refunded' || ev.type === 'charge.refund.updated') {
+          const ref = o.metadata?.reference;
+          const ad = ref && ads.byReference(ref);
+          if (ad) {
+            ad.refund = { ...(ad.refund || {}), status: o.refunded || o.status === 'succeeded' ? 'processed' : o.status || 'pending' };
+            ads.store.markDirty();
+          }
+        }
+      } catch (e) {
+        console.error('stripe webhook', ev.type, e.message);
+      }
+      return json(res, 200, { received: true });
     }
     if (path === '/api/paystack/webhook' && req.method === 'POST') {
       const raw = await readRaw(req, 256 * 1024);
@@ -414,11 +518,12 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, {
           states: STATES.map((s) => ({ id: s.id, name: s.name, walls: catalogue[s.id].filter((b) => b.type === 'wall').length, boards: catalogue[s.id].length })),
           lobby: lobby(),
-          ads: ads.ads.map((a) => ({ ...a, liveStatus: ads.status(a, now), image: media.url(a.file), preview: `/ads/${a.file}`, boardLabel: a.board ? catalogue[a.board.split(':')[0]].find((b) => b.id === a.board)?.label : null })),
+          ads: ads.ads.map((a) => ({ ...a, liveStatus: ads.status(a, now), image: media.url(a.file), preview: `/ads/${a.file}`, boardLabel: a.board ? ads.board(a.board)?.label || null : null })),
           pricing: ads.pricing,
           types: BOARD_TYPES,
           advertisers: advertisers.list(),
           payments: paystack.paystackMode(),
+          payMethods: paymentsMode(),
           storage: SUPABASE ? 'supabase' : 'local'
         });
       }
@@ -439,11 +544,13 @@ const server = http.createServer(async (req, res) => {
         if (!['review', 'approved'].includes(ad.status)) throw new Error('Only paid bookings can be rejected and refunded');
         let refund = { status: 'not needed' };
         if (ad.paidAt) {
+          const viaStripe = ad.provider === 'stripe';
           try {
-            const r = await paystack.refund(ad.reference);
+            const r = viaStripe ? await stripe.refund(ad.paymentIntent) : await paystack.refund(ad.reference);
             refund = { status: r.status || 'pending', id: r.id || null, at: Date.now() };
           } catch (e) {
-            return json(res, 502, { error: `Paystack refund failed: ${e.message}. Nothing was changed; try again or refund from the Paystack dashboard.` });
+            const who = viaStripe ? 'Stripe' : 'Paystack';
+            return json(res, 502, { error: `${who} refund failed: ${e.message}. Nothing was changed; try again or refund from the ${who} dashboard.` });
           }
         }
         return json(res, 200, { ad: ads.reject(ad.id, b.reason, refund) });
@@ -521,10 +628,13 @@ wss.on('connection', (ws) => {
       // build numbers, so this check is for the lite app only.)
       const ctl = control.publicState();
       const needUpdate = msg.app && !msg.native && ctl.minBuild && (Number(msg.build) || 0) < ctl.minBuild;
-      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), online: onlineCount(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile), control: ctl, push: { vapid: push.publicKey, fcm: push.fcmReady(), on: !!push.store.data.subs[r.token] }, needUpdate });
+      return send({ t: 'welcome', token: r.token, account: r.account, profile: profilePublic(conn.profile), lobby: lobby(), countries: countryCounts(), online: onlineCount(), inboxUnread: inbox.unreadFor(r.token), daily: daily.view(conn.profile), control: ctl, push: { vapid: push.publicKey, fcm: push.fcmReady(), on: !!push.store.data.subs[r.token] }, needUpdate });
     }
     if (!conn.profile) return;
-    if (msg.t === 'lobby') return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile), online: onlineCount() });
+    if (msg.t === 'lobby') {
+      const list = lobby();
+      return send({ t: 'lobby', states: list, countries: countryCounts(list), profile: profilePublic(conn.profile), online: onlineCount() });
+    }
     if (msg.t === 'join') {
       if (control.store.data.maintenance.on) return send({ t: 'joinError', error: control.store.data.maintenance.message });
       const mode = MODES[msg.mode] ? msg.mode : 'conquest';
@@ -540,7 +650,7 @@ wss.on('connection', (ws) => {
         key = `stage:${conn.profile.token}`;
         opts = { stage: i };
       }
-      if (!STATE_BY_ID[state] || !FACTIONS[faction]) return send({ t: 'joinError', error: 'Pick state and side first.' });
+      if (!regionById(state) || !FACTIONS[faction]) return send({ t: 'joinError', error: 'Pick a region and a side first.' });
       if (conn.match) conn.match.removePlayer(conn.player.id);
       // One live session per profile.
       for (const m of matches.values()) for (const p of m.humans()) if (p.profile === conn.profile) m.removePlayer(p.id);
@@ -702,7 +812,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'leave') {
       if (conn.match) conn.match.removePlayer(conn.player.id);
       conn.match = conn.player = null;
-      return send({ t: 'lobby', states: lobby(), profile: profilePublic(conn.profile), online: onlineCount() });
+      return send({ t: 'lobby', states: lobby(), countries: countryCounts(), profile: profilePublic(conn.profile), online: onlineCount() });
     }
     if (conn.match && conn.player) {
       try {
@@ -761,6 +871,6 @@ process.on('SIGTERM', shutdown);
 
 server.listen(PORT, () => {
   console.log(`${GAME.name} ${GAME.version} server on http://localhost:${PORT}  (game /ws, ad portal /advertise, admin /admin)`);
-  console.log(`Storage: ${SUPABASE ? 'Supabase' : 'local files (set SUPABASE_URL + SUPABASE_SERVICE_KEY to keep data across restarts)'}. Payments: Paystack ${paystack.paystackMode()}.`);
+  console.log(`Storage: ${SUPABASE ? 'Supabase' : 'local files (set SUPABASE_URL + SUPABASE_SERVICE_KEY to keep data across restarts)'}. Payments: Paystack ${paystack.paystackMode()}, Stripe ${stripe.stripeMode()}.`);
   if (ADMIN_KEY === 'change-me') console.log('Set ADMIN_KEY before going live.');
 });

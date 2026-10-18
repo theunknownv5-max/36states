@@ -6,6 +6,7 @@ import { WEAPONS, GEAR, FACTIONS, SIDES, KILLSTREAKS, GEMS, RESPAWN, MATCH, MONE
 import { generateMap, inWater, tileGemSpots } from '../shared/map.js';
 import { raycast, hitSoldier, lineBlocked, insideAnyBox, spreadDir, normalise, holeAt } from '../shared/physics.js';
 import { RESOURCES } from '../shared/states.js';
+import { regionById } from '../shared/regions.js';
 import { mulberry32 } from '../shared/rng.js';
 import { BotBrain, botName, botLoadout } from './bots.js';
 import { createMode } from './modes.js';
@@ -349,11 +350,20 @@ export class Match {
     });
   }
 
+  // The region being fought over (without its map shape), so any client can build the battlefield.
+  regionView() {
+    const r = regionById(this.stateId);
+    if (!r) return null;
+    const { poly, ...rest } = r;
+    return rest;
+  }
+
   // Everything a newly joined player needs to know about the match.
   info(p) {
     return {
       t: 'matchInfo',
       state: this.stateId,
+      region: this.regionView(),
       you: p.id,
       side: p.side,
       faction: p.faction,

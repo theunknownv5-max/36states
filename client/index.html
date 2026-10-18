@@ -80,10 +80,13 @@
         </div>
       </header>
       <div id="announce" class="announce" hidden></div>
-      <nav class="modes" id="modes"></nav>
+      <div class="country-bar">
+        <button class="country-chip" id="btn-country" title="Change your country of play"><span id="cc-flag">🌍</span><b id="cc-name">Select country</b><small id="cc-live"></small><span class="caret">▾</span></button>
+        <nav class="modes" id="modes"></nav>
+      </div>
       <div class="lobby-body">
         <div class="map-wrap" id="map-wrap">
-          <svg id="warmap" viewBox="0 0 1000 860" role="img" aria-label="Map of Nigeria 36 states and Abuja"></svg>
+          <svg id="warmap" viewBox="0 0 1000 860" role="img" aria-label="Map of the regions of your country"></svg>
           <div class="map-legend">
             <span><i class="dot live"></i> Battle in progress</span><span><i class="dot quiet"></i> Bots only</span>
             <span class="muted">Pick the region you want to fight for</span>
@@ -364,6 +367,17 @@
     </div>
 
     <!-- Leaderboard -->
+    <div id="country-sheet" class="sheet" hidden>
+      <div class="card sheet-card country-card">
+        <div class="menu-head"><h2>🌍 Select your country of play</h2><button class="x" id="cp-close">✕</button></div>
+        <p class="muted small">Every country is split into its real regions, and each region is its own battlefield. You can change country any time from the lobby.</p>
+        <div id="cp-suggest" class="cp-suggest"></div>
+        <svg id="cp-map" class="cp-map" viewBox="0 0 1000 420" role="img" aria-label="World map"></svg>
+        <input id="cp-search" class="cp-search" type="search" placeholder="Search for a country…" autocomplete="off" />
+        <div id="cp-tabs" class="cp-tabs"></div>
+        <div id="cp-list" class="cp-list"></div>
+      </div>
+    </div>
     <div id="top" class="sheet" hidden>
       <div class="card sheet-card">
         <div class="menu-head"><h2>🏆 Top soldiers</h2><button class="x" data-close-sheet="top">✕</button></div>

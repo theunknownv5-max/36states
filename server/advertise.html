@@ -205,11 +205,11 @@
       <div class="hero">
         <div>
           <h1>Put your brand <em>inside the battle.</em></h1>
-          <p>Proof of Duty is a Nigerian tactical shooter played across all 36 states and the FCT. Your artwork goes on HD billboards that soldiers see while they fight. You pay in naira, and you see every view.</p>
+          <p>Proof of Duty is a tactical online shooter played in real regions of countries all over the world. Your artwork goes on HD billboards that soldiers in the country you choose see while they fight. Pay with Paystack in Africa or by card everywhere else, and see every view.</p>
           <a class="btn" href="#book">Book a billboard</a>
           <div class="stats">
             <div class="stat"><b id="s-boards">–</b><small>Billboards</small></div>
-            <div class="stat"><b>37</b><small>Battlefields</small></div>
+            <div class="stat"><b id="s-fields">–</b><small>Battlefields</small></div>
             <div class="stat"><b id="s-live">–</b><small>Soldiers online</small></div>
             <div class="stat"><b id="s-from">–</b><small>From / day</small></div>
           </div>
@@ -226,16 +226,17 @@
       </div>
 
       <div class="steps">
-        <div><b>1</b>Pick a state and a billboard.</div>
+        <div><b>1</b>Pick a country, a region and a billboard.</div>
         <div><b>2</b>Upload HD artwork and choose your dates.</div>
-        <div><b>3</b>Pay in naira with Paystack (card, transfer or USSD).</div>
+        <div><b>3</b>Pay with Paystack in Africa (card, transfer or USSD) or by card with Stripe everywhere else.</div>
         <div><b>4</b>We check your artwork and it goes live. Track your views here.</div>
       </div>
 
       <section class="card" id="book">
-        <h2><span class="n">1</span>Choose a state</h2>
-        <p class="sub">Premium states (Lagos, FCT, Rivers) see the most players and cost more.</p>
-        <input class="search" id="state-q" placeholder="Search states…" autocomplete="off" />
+        <h2><span class="n">1</span>Choose a country and a region</h2>
+        <p class="sub">Your advert is shown to soldiers fighting in the country you pick. Premium regions see the most players and cost more.</p>
+        <select class="search" id="country"></select>
+        <input class="search" id="state-q" placeholder="Search regions…" autocomplete="off" />
         <div class="states" id="states"></div>
       </section>
 
@@ -372,7 +373,7 @@
     </footer>
 
     <script type="module">
-      import { BOARD_TYPES, quote, ratioOk, naira, MAX_IMAGE_PX, MAX_IMAGE_BYTES } from '/shared/billboards.js';
+      import { BOARD_TYPES, quote, ratioOk, naira, usd, toUsd, MAX_IMAGE_PX, MAX_IMAGE_BYTES } from '/shared/billboards.js';
 
       const $ = (s) => document.querySelector(s);
       const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -403,24 +404,52 @@
       S.cfg = await api('/api/adv/config');
       const P = S.cfg.pricing;
       $('#ver').textContent = S.cfg.game.version;
-      $('#s-boards').textContent = S.cfg.states.reduce((n, s) => n + s.boards, 0);
-      $('#s-live').textContent = S.cfg.states.reduce((n, s) => n + s.players, 0);
-      $('#s-from').textContent = naira(Math.min(...Object.values(P.daily)));
+      $('#s-boards').textContent = '20,000+';
+      $('#s-fields').textContent = S.cfg.countries.reduce((n, c) => n + c.n, 0).toLocaleString();
+      $('#s-live').textContent = Object.values(S.cfg.players || {}).reduce((n, v) => n + v, 0);
+      // Prices: naira through Paystack in Africa, US dollars through Stripe elsewhere.
+      const payOf = () => S.cfg.countries.find((c) => c.cc === S.cc)?.pay || 'paystack';
+      const money = (n) => (payOf() === 'stripe' ? usd(toUsd(P, n)) : naira(n));
+      const payName = () => (payOf() === 'stripe' ? 'card (Stripe)' : 'Paystack');
+      const payOn = () => (S.cfg.payMethods ? S.cfg.payMethods[payOf()] !== 'off' : S.cfg.payments !== 'off');
+      S.cc = localStorage.getItem('pod.adv.country') || 'NG';
+      const flag = (cc) => String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+      const conts = [...new Set(S.cfg.countries.map((c) => c.continent))].sort();
+      $('#country').innerHTML = conts
+        .map((ct) => `<optgroup label="${esc(ct)}">${S.cfg.countries.filter((c) => c.continent === ct).map((c) => `<option value="${c.cc}" ${c.cc === S.cc ? 'selected' : ''}>${flag(c.cc)} ${esc(c.name)}${S.cfg.players?.[c.cc] ? ` · ${S.cfg.players[c.cc]} playing` : ''}</option>`).join('')}</optgroup>`)
+        .join('');
+      $('#country').addEventListener('change', () => loadRegions($('#country').value));
+      $('#s-from').textContent = money(Math.min(...Object.values(P.daily)));
       $('#b-shares').textContent = P.shares;
       $('#b-rot').textContent = P.rotateSecs;
-      $('#pay-off').hidden = S.cfg.payments !== 'off';
+      $('#pay-off').hidden = payOn();
       $('#start').min = S.cfg.today;
       $('#start').value = S.cfg.today;
       $('#days').min = P.minDays;
       $('#days').max = P.maxDays;
 
-      // ---------- states ----------
+      // ---------- countries and regions ----------
+      S.regions = [];
+      async function loadRegions(cc) {
+        S.cc = cc;
+        localStorage.setItem('pod.adv.country', cc);
+        S.state = null;
+        S.board = null;
+        $('#step-board').hidden = true;
+        $('#states').innerHTML = '<p class="muted">Loading regions…</p>';
+        const r = await api(`/api/adv/regions?cc=${cc}`);
+        S.regions = r.regions;
+        $('#pay-off').hidden = payOn();
+        $('#s-from').textContent = money(Math.min(...Object.values(P.daily)));
+        drawStates();
+        updateSteps();
+      }
       function drawStates() {
         const q = $('#state-q').value.trim().toLowerCase();
-        $('#states').innerHTML = S.cfg.states
+        $('#states').innerHTML = S.regions
           .filter((s) => !q || s.name.toLowerCase().includes(q))
-          .sort((a, b) => (b.tier !== 'Standard state') - (a.tier !== 'Standard state') || a.name.localeCompare(b.name))
-          .map((s) => `<button class="st ${s.tier === 'Premium state' ? 'premium' : ''} ${S.state === s.id ? 'on' : ''}" data-id="${s.id}">${esc(s.name)}<small>${esc(s.tier)} · ${s.boards} boards${s.players ? ` · <span class="live">${s.players} online</span>` : ''}</small></button>`)
+          .sort((a, b) => (b.tier !== 'Standard region') - (a.tier !== 'Standard region') || a.name.localeCompare(b.name))
+          .map((s) => `<button class="st ${s.tier === 'Premium region' ? 'premium' : ''} ${S.state === s.id ? 'on' : ''}" data-id="${s.id}">${esc(s.name)}<small>${esc(s.tier)}${s.players ? ` · <span class="live">${s.players} online</span>` : ''}</small></button>`)
           .join('');
       }
       $('#state-q').addEventListener('input', drawStates);
@@ -428,7 +457,7 @@
         const b = e.target.closest('.st');
         if (b) pickState(b.dataset.id);
       });
-      drawStates();
+      loadRegions(S.cc);
 
       async function pickState(id, keepBoard) {
         S.state = id;
@@ -436,7 +465,7 @@
         const r = await api(`/api/adv/boards?state=${id}`);
         S.boards = r.boards;
         S.map = r.map;
-        $('#b-state').textContent = S.cfg.states.find((s) => s.id === id).name;
+        $('#b-state').textContent = S.regions.find((s) => s.id === id)?.name || id;
         $('#step-board').hidden = false;
         if (!keepBoard) S.board = null;
         drawTabs();
@@ -467,7 +496,7 @@
             const full = b.usedToday >= b.shares;
             return `<button class="bd ${S.board?.id === b.id ? 'on' : ''}" data-id="${b.id}">
               <span class="code">${esc(b.code)}</span><span class="type">${esc(t.name)} <span class="muted">· ${t.ratio.join(':')}</span></span>
-              <span class="price">${naira(fromPrice(b))}<span class="muted">/day</span></span>
+              <span class="price">${money(fromPrice(b))}<span class="muted">/day</span></span>
               <span class="lab">${esc(b.label)}</span>
               <span class="meta"><span class="chip ${full ? 'full' : 'free'}">${full ? 'Full today' : `${b.shares - b.usedToday} of ${b.shares} slots free today`}</span>${b.estViews ? `<span>≈ ${b.estViews.toLocaleString()} views/day</span>` : '<span>New billboard</span>'}</span>
             </button>`;
@@ -645,8 +674,8 @@
         S.blocked = err;
         if (q) {
           const end = new Date(Date.parse(`${$('#start').value}T00:00:00+01:00`) + q.days * 86400000 - 1);
-          $('#sum-lines').innerHTML = `<b>${esc(S.board.code)}</b> · ${esc(BOARD_TYPES[S.board.type].name)} · ${esc(q.tier)}<br>${naira(q.perDay)} × ${q.days} day${q.days > 1 ? 's' : ''}${q.exclusive ? ' · exclusive' : ` · shared (rotates with up to ${P.shares - 1} others)`}${q.discountPct ? ` · <b>${q.discountPct}% off</b>` : ''}<br><span class="muted">Runs ${esc($('#start').value)} to ${end.toISOString().slice(0, 10)}, from the day we approve it if that is later.</span>`;
-          $('#sum-total').textContent = naira(q.total);
+          $('#sum-lines').innerHTML = `<b>${esc(S.board.code)}</b> · ${esc(BOARD_TYPES[S.board.type].name)} · ${esc(q.tier)}<br>${money(q.perDay)} × ${q.days} day${q.days > 1 ? 's' : ''}${q.exclusive ? ' · exclusive' : ` · shared (rotates with up to ${P.shares - 1} others)`}${q.discountPct ? ` · <b>${q.discountPct}% off</b>` : ''}<br><span class="muted">Runs ${esc($('#start').value)} to ${end.toISOString().slice(0, 10)}, from the day we approve it if that is later.</span>`;
+          $('#sum-total').textContent = money(q.total);
         }
         $('#sum-err').hidden = !err;
         $('#sum-err').textContent = err || '';
@@ -655,10 +684,10 @@
 
       function updateSteps() {
         const problems = imageProblems();
-        const ready = S.board && S.quote && !S.blocked && !problems.length && S.cfg.payments !== 'off';
+        const ready = S.board && S.quote && !S.blocked && !problems.length && payOn();
         $('#need-login').hidden = !!S.token;
         $('#pay').disabled = !ready || !S.token;
-        $('#pay').textContent = S.quote ? `Pay ${naira(S.quote.total)} with Paystack` : 'Pay with Paystack';
+        $('#pay').textContent = S.quote ? `Pay ${money(S.quote.total)} with ${payName()}` : `Pay with ${payName()}`;
         if (!S.token) $('#pay-note').textContent = 'Create an account or log in above first.';
         else if (problems.length) $('#pay-note').textContent = problems[0] === 'Upload your artwork' ? 'Upload your artwork first.' : 'Fix the artwork checks above first.';
         else $('#pay-note').textContent = 'Your advert goes live after we check the artwork (usually within 24 hours). If we can’t accept it, you get a full refund.';
@@ -667,7 +696,7 @@
       $('#pay').addEventListener('click', async () => {
         const btn = $('#pay');
         btn.disabled = true;
-        btn.textContent = 'Opening Paystack…';
+        btn.textContent = `Opening ${payName()}…`;
         try {
           const r = await api('/api/adv/bookings', {
             method: 'POST',
@@ -842,7 +871,7 @@
                   <img src="${esc(b.image)}" alt="" loading="lazy">
                   <div>
                     <h3>${esc(b.title || b.boardCode)} <span class="chip st-${b.status}">${esc(STATUS[b.status] || b.status)}</span></h3>
-                    <div class="kv"><span><b>${esc(b.boardCode)}</b> ${esc(BOARD_TYPES[b.boardType]?.name || '')}${b.exclusive ? ' · exclusive' : ''}</span><span>${esc(when)}</span><span>Paid <b>${naira(b.priceNaira)}</b></span></div>
+                    <div class="kv"><span><b>${esc(b.boardCode)}</b> ${esc(BOARD_TYPES[b.boardType]?.name || '')}${b.exclusive ? ' · exclusive' : ''}</span><span>${esc(when)}</span><span>Paid <b>${b.provider === 'stripe' ? usd(b.priceUsd) : naira(b.priceNaira)}</b></span></div>
                     ${b.status === 'rejected' ? `<div class="err">Reason: ${esc(b.rejectReason || 'not given')}. Refund: ${esc(b.refund?.status || 'requested')}.</div>` : ''}
                     <div class="nums"><div><b>${b.stats.views.toLocaleString()}</b><small>Views</small></div><div><b>${b.stats.uniques.toLocaleString()}</b><small>Unique players</small></div><div><b>${(b.stats.bySide?.sec || 0).toLocaleString()}</b><small>Security</small></div><div><b>${(b.stats.bySide?.out || 0).toLocaleString()}</b><small>Outlaws</small></div></div>
                     ${days.length ? `<div class="spark" title="Views per day">${days.map(([d, v]) => `<i style="height:${Math.round((v / max) * 100)}%" title="${d}: ${v}"></i>`).join('')}</div>` : ''}

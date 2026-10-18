@@ -88,8 +88,8 @@ function describeSpot(map, x, z) {
 export const DEFAULT_PRICING = {
   daily: { sky: 25000, led: 12000, ground: 15000, wall: 5000 }, // naira per day for one shared slot
   tiers: [
-    { name: 'Premium state', mult: 1.5, states: ['lagos', 'fct', 'rivers'] },
-    { name: 'Major state', mult: 1.25, states: ['kano', 'oyo', 'kaduna', 'enugu', 'delta', 'anambra', 'edo', 'ogun', 'akwaibom'] }
+    { name: 'Premium region', mult: 1.5, states: ['lagos', 'fct', 'rivers'] },
+    { name: 'Major region', mult: 1.25, states: ['kano', 'oyo', 'kaduna', 'enugu', 'delta', 'anambra', 'edo', 'ogun', 'akwaibom'] }
   ],
   exclusiveMult: 3, // a billboard all to yourself (no rotation) costs this many shared slots
   shares: 4, // advertisers rotating on one billboard
@@ -99,8 +99,15 @@ export const DEFAULT_PRICING = {
     { days: 7, off: 10 }
   ],
   minDays: 1,
-  maxDays: 90
+  maxDays: 90,
+  usdRate: 1550 // naira per US dollar, for card payments outside Africa (Stripe, in USD)
 };
+
+// The same price in whole US dollars (never below $5) for Stripe checkouts.
+export function toUsd(pricing, naira) {
+  return Math.max(5, Math.ceil(naira / (pricing.usdRate || DEFAULT_PRICING.usdRate)));
+}
+export const usd = (n) => '$' + Math.round(n).toLocaleString('en-US');
 
 export function mergePricing(p = {}) {
   const d = DEFAULT_PRICING;
@@ -108,13 +115,14 @@ export function mergePricing(p = {}) {
     ...d,
     ...p,
     daily: { ...d.daily, ...(p.daily || {}) },
-    tiers: Array.isArray(p.tiers) ? p.tiers : d.tiers,
+    // Older saved prices called them "Premium state" and "Major state".
+    tiers: (Array.isArray(p.tiers) ? p.tiers : d.tiers).map((t) => ({ ...t, name: t.name.replace(/ state$/, ' region') })),
     discounts: Array.isArray(p.discounts) ? p.discounts : d.discounts
   };
 }
 
 export function tierFor(pricing, stateId) {
-  return pricing.tiers.find((t) => t.states.includes(stateId)) || { name: 'Standard state', mult: 1 };
+  return pricing.tiers.find((t) => t.states.includes(stateId)) || { name: 'Standard region', mult: 1 };
 }
 
 export function quote(pricing, { type, stateId, days, exclusive }) {

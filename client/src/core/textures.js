@@ -137,7 +137,10 @@ const GROUND = {
   plateau: { a: '#7d6f55', b: '#635743', c: '#958a74', grain: 0.5, pebbles: 0.02 },
   rainforest: { a: '#8f4f2b', b: '#6e3a1f', c: '#a8653a', grain: 0.35, pebbles: 0.006 },
   creeks: { a: '#5a4e36', b: '#433a28', c: '#6c6044', grain: 0.3, pebbles: 0.002 },
-  urban: { a: '#6f6a64', b: '#5a5650', c: '#837e77', grain: 0.45, pebbles: 0.01 }
+  urban: { a: '#6f6a64', b: '#5a5650', c: '#837e77', grain: 0.45, pebbles: 0.01 },
+  desert: { a: '#dcb57a', b: '#c49a5e', c: '#ead09c', grain: 0.3, pebbles: 0.003 },
+  temperate: { a: '#5f5a3e', b: '#4a4630', c: '#716a4c', grain: 0.4, pebbles: 0.008 },
+  snow: { a: '#e9eef2', b: '#cfd8e0', c: '#f7fafc', grain: 0.25, pebbles: 0.004 }
 };
 export function groundTexture(biome) {
   const g = GROUND[biome] || GROUND.savanna;
@@ -165,7 +168,10 @@ const PATCH = {
   plateau: { a: '#7e7a6c', b: '#5c584c', grass: 0.2, stones: true },
   rainforest: { a: '#4f6e2c', b: '#36501e', grass: 1 },
   creeks: { a: '#465a2c', b: '#2f3c1c', grass: 0.7, wet: true },
-  urban: { a: '#4a4844', b: '#33312e', grass: 0, cracks: true }
+  urban: { a: '#4a4844', b: '#33312e', grass: 0, cracks: true },
+  desert: { a: '#ecd3a0', b: '#d4b27a', grass: 0.0, ripples: true },
+  temperate: { a: '#4f7a2e', b: '#3a5e20', grass: 1 },
+  snow: { a: '#f4f7fa', b: '#dde5ec', grass: 0.05 }
 };
 export function groundPatchTexture(biome) {
   const g = PATCH[biome] || PATCH.savanna;

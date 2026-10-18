@@ -3,7 +3,8 @@
 // balance change here reaches both apps at once.
 import { gzipSync } from 'node:zlib';
 import * as C from '../shared/config.js';
-import { STATES, BIOMES, RESOURCES, ZONES, STATE_BY_ID } from '../shared/states.js';
+import { STATES, BIOMES, RESOURCES, ZONES } from '../shared/states.js';
+import { regionById, COUNTRIES } from '../shared/regions.js';
 import { VEHICLES } from '../shared/vehicles.js';
 import { SKILLS, DROWN } from '../shared/skills.js';
 import { DIG } from '../shared/underworld.js';
@@ -35,6 +36,7 @@ export function nativeRules() {
     RANKS: C.RANKS,
     NET: C.NET,
     STATES,
+    COUNTRIES,
     BIOMES,
     RESOURCES,
     ZONES,
@@ -50,12 +52,14 @@ export function nativeRules() {
 // Everything the native app needs to draw and walk a state's battlefield. The collision
 // index and bot navigation grid stay on the server (the app builds its own index).
 export function nativeMap(stateId) {
-  if (!STATE_BY_ID[stateId]) return null;
+  if (!regionById(stateId)) return null;
   if (mapCache.has(stateId)) return mapCache.get(stateId);
   const m = generateMap(stateId);
   const { index, nav, ...rest } = m;
   const gz = gzipSync(JSON.stringify(rest));
   mapCache.set(stateId, gz);
+  // Keep the most recent 160 battlefields.
+  if (mapCache.size > 160) mapCache.delete(mapCache.keys().next().value);
   return gz;
 }
 

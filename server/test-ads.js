@@ -58,6 +58,10 @@ const objects = new Map();
 let bucket = null;
 const txs = new Map();
 const refunds = [];
+const stripeSessions = new Map();
+const stripeRefunds = [];
+const STRIPE_KEY = 'sk_test_stripe_mock';
+const STRIPE_HOOK = 'whsec_mock';
 let badKeyHeader = 0;
 const mock = http.createServer(async (req, res) => {
   const chunks = [];
@@ -92,6 +96,30 @@ const mock = http.createServer(async (req, res) => {
     if (p === '/refund') {
       refunds.push(JSON.parse(body));
       return send(200, { status: true, data: { status: 'pending', id: refunds.length } });
+    }
+  }
+  // Stripe
+  if (p.startsWith('/v1/') || p.startsWith('/checkout/')) {
+    if (p.startsWith('/checkout/')) {
+      const cs = stripeSessions.get(p.slice(10));
+      if (cs) cs.payment_status = 'paid';
+      return send(200, { ok: !!cs });
+    }
+    if (req.headers.authorization !== `Bearer ${STRIPE_KEY}`) return send(401, { error: { message: 'Invalid API key' } });
+    const f = new URLSearchParams(body.toString());
+    if (p === '/v1/checkout/sessions' && req.method === 'POST') {
+      const id = `cs_test_${stripeSessions.size + 1}`;
+      const cs = { id, url: `${MOCK}/checkout/${id}`, client_reference_id: f.get('client_reference_id'), amount_total: Number(f.get('line_items[0][price_data][unit_amount]')), currency: f.get('line_items[0][price_data][currency]'), payment_status: 'unpaid', payment_intent: `pi_${id}`, success_url: f.get('success_url'), email: f.get('customer_email') };
+      stripeSessions.set(id, cs);
+      return send(200, cs);
+    }
+    if (p.startsWith('/v1/checkout/sessions/')) {
+      const cs = stripeSessions.get(decodeURIComponent(p.slice(22)));
+      return cs ? send(200, cs) : send(404, { error: { message: 'No such session' } });
+    }
+    if (p === '/v1/refunds') {
+      stripeRefunds.push(Object.fromEntries(f));
+      return send(200, { id: `re_${stripeRefunds.length}`, status: 'pending' });
     }
   }
   // Supabase
@@ -135,7 +163,7 @@ let proc;
 async function startServer() {
   proc = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), ADMIN_KEY: 'adminkey', DATA_DIR: mkdtempSync(join(tmpdir(), 'pod-ads-')), SUPABASE_URL: MOCK, SUPABASE_SERVICE_KEY: 'sb_secret_mock', PAYSTACK_BASE: MOCK, PAYSTACK_SECRET_KEY: SECRET, PUBLIC_URL: 'https://pod.example' },
+    env: { ...process.env, PORT: String(PORT), ADMIN_KEY: 'adminkey', DATA_DIR: mkdtempSync(join(tmpdir(), 'pod-ads-')), SUPABASE_URL: MOCK, SUPABASE_SERVICE_KEY: 'sb_secret_mock', PAYSTACK_BASE: MOCK, PAYSTACK_SECRET_KEY: SECRET, STRIPE_BASE: MOCK, STRIPE_SECRET_KEY: STRIPE_KEY, STRIPE_WEBHOOK_SECRET: STRIPE_HOOK, PUBLIC_URL: 'https://pod.example' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let log = '';
@@ -248,6 +276,47 @@ try {
   check(pr.pricing?.daily.wall === 6000, 'admin can change prices');
   check((await call('GET', '/api/admin/overview')).code === 401, 'admin API needs the admin key');
 
+  section('Countries: regions, targeted adverts, Stripe outside Africa');
+  check(cfg.countries.length > 200 && cfg.countries.find((c) => c.cc === 'GH')?.pay === 'paystack' && cfg.countries.find((c) => c.cc === 'US')?.pay === 'stripe', 'portal lists every country with its payment provider');
+  check(cfg.payMethods?.stripe === 'test' && cfg.payMethods?.paystack === 'test', 'both payment providers are on (test mode)');
+  const usr = await call('GET', '/api/adv/regions?cc=US');
+  check(usr.pay === 'stripe' && usr.regions.some((r) => r.id === 'us.texas'), 'regions of a country (United States)');
+  const tx2 = await call('GET', '/api/adv/boards?state=us.texas');
+  const txSky = tx2.boards?.find((b) => b.type === 'sky');
+  check(!!txSky && tx2.map.sites.length === 3, 'billboards in Texas are built on first use');
+  const uq = await call('POST', '/api/adv/quote', { boardId: txSky.id, days: 2, startDay: cfg.today });
+  check(uq.quote.provider === 'stripe' && uq.quote.usd === Math.max(5, Math.ceil(uq.quote.total / 1550)), `Texas is paid in dollars with Stripe ($${uq.quote.usd})`);
+  const ghr = await call('GET', '/api/adv/regions?cc=GH');
+  const gh = await call('GET', `/api/adv/boards?state=${ghr.regions[0].id}`);
+  const gq = await call('POST', '/api/adv/quote', { boardId: gh.boards[0].id, days: 2, startDay: cfg.today });
+  check(gq.quote.provider === 'paystack', 'Ghana is paid with Paystack');
+  const sb = await call('POST', '/api/adv/bookings', { boardId: txSky.id, days: 2, startDay: cfg.today, imageDataUrl: dataUrl(1920, 1080), title: 'Texas BBQ' }, auth);
+  const cs = [...stripeSessions.values()].at(-1);
+  check(sb.authorization_url === cs?.url && cs.amount_total === uq.quote.usd * 100 && cs.currency === 'usd' && cs.email === 'chidi@example.com', 'booking goes to Stripe Checkout with the dollar amount');
+  check(cs.success_url === `https://pod.example/advertise?paid=${encodeURIComponent(sb.reference)}`, 'Stripe sends the advertiser back to the portal');
+  check((await call('GET', `/api/adv/verify?reference=${sb.reference}`)).error, 'not paid before checkout completes');
+  await fetch(sb.authorization_url);
+  const sv = await call('GET', `/api/adv/verify?reference=${sb.reference}`);
+  check(sv.booking?.status === 'review' && sv.booking.provider === 'stripe', 'paid by card, waiting for review');
+  const sevt = JSON.stringify({ type: 'checkout.session.completed', data: { object: { client_reference_id: sb.reference } } });
+  const t = Math.floor(Date.now() / 1000);
+  const ssig = `t=${t},v1=${createHmac('sha256', STRIPE_HOOK).update(`${t}.${sevt}`).digest('hex')}`;
+  check((await call('POST', '/api/stripe/webhook', sevt, { 'stripe-signature': `t=${t},v1=bad` })).code === 401, 'forged Stripe webhook refused');
+  check((await call('POST', '/api/stripe/webhook', sevt, { 'stripe-signature': ssig })).received, 'signed Stripe webhook accepted');
+  const srj = await call('POST', `/api/admin/bookings/${sb.booking.id}/reject`, { reason: 'Wrong size text' }, admin);
+  check(srj.ad?.status === 'rejected' && stripeRefunds.at(-1)?.payment_intent === cs.payment_intent, 'reject refunds through Stripe');
+  // A house advert for one whole country shows there and nowhere else.
+  const house = await call('POST', '/api/admin/ads', { advertiser: 'Ghana Malt', title: 'Ghana only', imageDataUrl: dataUrl(1920, 1080), states: ['country:gh'], start: cfg.today, end: cfg.today }, admin);
+  check(house.ad?.states?.[0] === 'country:GH', 'admin can target a whole country');
+  const ghFeed = await call('GET', `/api/ads?state=${ghr.regions[0].id}`);
+  const usFeed = await call('GET', '/api/ads?state=us.texas');
+  const has = (f) => Object.values(f.slots || {}).some((l) => l.some((x) => x.adId === house.ad.id));
+  check(has(ghFeed) && !has(usFeed), 'country advert shows in Ghana, not in Texas');
+  const w = await fetch(BASE + '/api/world/gh');
+  const wj = await w.json();
+  check(w.ok && wj.cc === 'GH' && wj.regions.length > 5 && wj.regions[0].poly, 'country map data served to the apps');
+  check((await fetch(BASE + '/api/world/zz1')).status === 404 && (await fetch(BASE + '/api/world/qq')).status === 404, 'world endpoint only serves country files');
+
   section('Players chat with the business');
   {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
@@ -303,10 +372,11 @@ try {
   }
 
   section('Survives a restart');
+  const meBefore = await call('GET', '/api/adv/me', undefined, auth);
   await stopServer();
   await startServer();
   const me2 = await call('GET', '/api/adv/me', undefined, auth);
-  check(me2.bookings?.length === me.bookings.length, 'accounts, sessions and bookings reloaded from Supabase');
+  check(me2.bookings?.length === meBefore.bookings.length, 'accounts, sessions and bookings reloaded from Supabase');
   check((await call('GET', '/api/adv/inbox', undefined, auth)).threads?.length === 1, 'conversations kept');
   feed = await call('GET', '/api/ads?state=lagos');
   check(!!feed.slots[sky.id], 'live advert still on its billboard after restart');

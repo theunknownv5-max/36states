@@ -13,7 +13,8 @@ import { Game } from './game.js';
 import { InboxUI, toast } from './ui/chat.js';
 import { Notices } from './ui/notices.js';
 import { api, IS_APP } from './core/server.js';
-import { STATE_BY_ID } from '../../shared/states.js';
+import { regionById, ccOf, COUNTRY_BY_CC, flagOf } from '../../shared/regions.js';
+import { CountryPicker, loadCountry, savedCountry } from './ui/countries.js';
 import { FACTIONS, RESPAWN, GEMS, GAME, MODES, BOMB } from '../../shared/config.js';
 
 const $ = (id) => document.getElementById(id);
@@ -456,7 +457,7 @@ function crewPane(s) {
       <button class="btn primary" data-act="practice">🎯 Open the crew practice range</button>`;
   return c.members
     .sort((a, b) => b.online - a.online)
-    .map((f) => `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${esc(f.name)}</b><small>${esc(f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}` : f.online ? 'Online · in the lobby' : 'Offline')} · 🏊 ${f.swim} · 💪 ${f.fitness}</small></div><div class="sq-acts">${f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}</div></div>`)
+    .map((f) => `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${esc(f.name)}</b><small>${esc(f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${regionName(f.where.state)}` : f.online ? 'Online · in the lobby' : 'Offline')} · 🏊 ${f.swim} · 💪 ${f.fitness}</small></div><div class="sq-acts">${f.where && f.code !== s.code ? `<button class="btn primary" data-act="joinFriend" data-code="${f.code}">Join</button>` : ''}</div></div>`)
     .join('') + '<button class="btn danger" data-act="crewLeave" style="margin-top:12px">Leave crew</button>';
 }
 function renderSquad() {
@@ -467,7 +468,7 @@ function renderSquad() {
     return;
   }
   const person = (f, actions) => {
-    const where = f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${STATE_BY_ID[f.where.state]?.name || f.where.state}${f.where.real ? ' · real players' : ''}` : f.online ? 'Online · in the lobby' : 'Offline';
+    const where = f.where ? `⚔ ${MODE_NAMES[f.where.mode] || f.where.mode} · ${regionName(f.where.state)}${f.where.real ? ' · real players' : ''}` : f.online ? 'Online · in the lobby' : 'Offline';
     return `<div class="sq-person"><i class="dot ${f.online ? 'on' : ''}"></i><div><b>${f.tag ? `[${esc(f.tag)}] ` : ''}${esc(f.name)}</b><small>${esc(where)}</small></div><div class="sq-acts">${actions}</div></div>`;
   };
   if (squadTab === 'friends') {
@@ -518,7 +519,7 @@ function setupDaily(d) {
     // Wait for the first-time "how to play" card to close so the two never overlap.
     const pop = () => {
       if (inGame) return;
-      if (!$('modal').hidden) return setTimeout(pop, 700);
+      if (!$('modal').hidden || countryPicker?.isOpen) return setTimeout(pop, 700);
       $('btn-daily').click();
     };
     setTimeout(pop, 900);
@@ -570,6 +571,39 @@ function showProfile(p) {
   $('p-d').textContent = p.deaths;
   $('p-w').textContent = p.wins;
   warmap?.setProfile(p);
+}
+
+// ---------- country of play ----------
+let countryPicker = null;
+let countryCounts = {};
+function setCountryCounts(c) {
+  if (!c) return;
+  countryCounts = c;
+  countryPicker?.setCounts(c);
+  paintCountryChip();
+}
+function paintCountryChip() {
+  const cc = warmap?.country?.cc || savedCountry();
+  const c = COUNTRY_BY_CC[cc];
+  $('cc-flag').textContent = c ? flagOf(cc) : '🌍';
+  $('cc-name').textContent = c ? c.name : 'Select country';
+  const n = (c && countryCounts[cc]) || 0;
+  $('cc-live').textContent = n ? `● ${n} playing` : '';
+}
+async function applyCountry(cc) {
+  $('cc-name').textContent = 'Loading…';
+  try {
+    const data = await loadCountry(cc);
+    warmap.setCountry(data);
+  } catch {
+    toast('Could not load that country. Check your network and try again.');
+  }
+  paintCountryChip();
+}
+
+// A region's name even before its country has loaded ("gh.greater-accra" -> "Greater Accra").
+function regionName(id) {
+  return regionById(id)?.name || String(id).replace(/^[a-z]{2}\./, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 let lobbyTimer;
@@ -660,10 +694,16 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     }
   });
   if (boot.lobby) warmap.setLobby(boot.lobby);
+  // Country of play: the war map shows the chosen country's regions.
+  countryPicker = new CountryPicker({ onPick: (cc) => applyCountry(cc) });
+  $('btn-country').onclick = () => countryPicker.open();
   const welcome = await showAuth();
   showProfile(welcome.profile);
   warmap.setLobby(welcome.lobby, welcome.online);
   setOnline(welcome.online);
+  setCountryCounts(welcome.countries);
+  if (savedCountry()) applyCountry(savedCountry());
+  else countryPicker.open(true);
   game = new Game({
     renderer,
     net,
@@ -734,6 +774,7 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
   }
   net.on('lobby', (m) => {
     warmap.setLobby(m.states, m.online);
+    setCountryCounts(m.countries);
     setOnline(m.online);
     showProfile(m.profile);
   });
@@ -787,8 +828,12 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
   // Deep link: ?state=lagos&as=police[&mode=tdm] deploys straight away; ?stage=1 starts a stage.
   const qs = new URLSearchParams(location.search);
   const st = qs.get('state');
+  if (st && COUNTRY_BY_CC[ccOf(st)]) {
+    countryPicker.close();
+    await applyCountry(ccOf(st)).catch(() => {});
+  }
   if (qs.has('stage')) startStage(+qs.get('stage') || 0);
-  else if (st && STATE_BY_ID[st]) {
+  else if (st && regionById(st)) {
     const mode = MODES[qs.get('mode')] ? qs.get('mode') : warmap.mode === 'stage' ? 'conquest' : warmap.mode;
     warmap.setMode(mode);
     warmap.select(st);
@@ -800,7 +845,12 @@ for (const ev of ['pointerdown', 'touchend', 'keydown'])
     }
   }
   if (!store.get('seenHelp') && !lastJoin) {
-    store.set('seenHelp', '1');
-    howToPlay();
+    // First visit: the country picker first, then how to play.
+    const help = () => {
+      if (countryPicker.isOpen) return setTimeout(help, 700);
+      store.set('seenHelp', '1');
+      howToPlay();
+    };
+    help();
   }
 })();
