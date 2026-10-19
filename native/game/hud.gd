@@ -27,6 +27,8 @@ var kit_lbl: Label
 var score_sec: Label
 var score_out: Label
 var timer_lbl: Label
+var live_lbl: Label
+var brd_lbl: Label
 var sites_box: HBoxContainer
 var feed: VBoxContainer
 var toasts: VBoxContainer
@@ -94,6 +96,20 @@ func _ready() -> void:
 	sites_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	sites_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(sites_box)
+	# Real players in this battle, and the BRD kill counter.
+	live_lbl = Kit.label("", 14, Kit.GOOD, true)
+	live_lbl.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	live_lbl.position.y = 80
+	live_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	live_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(live_lbl)
+	brd_lbl = Kit.label("", 22, Color("#ff5a4f"), true)
+	brd_lbl.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	brd_lbl.position.y = 46
+	brd_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	brd_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	brd_lbl.visible = false
+	frame.add_child(brd_lbl)
 	# Kill feed (top right).
 	feed = VBoxContainer.new()
 	feed.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -226,6 +242,20 @@ func set_me(me: Dictionary, ammo: Dictionary, wname: String, melee: bool) -> voi
 			bits.append("%s ×%d" % [k[1], n])
 	kit_lbl.text = "  ".join(bits)
 
+func live_count(n) -> void:
+	if n == null:
+		return
+	live_lbl.text = "● %d real %s" % [int(n), "player" if int(n) == 1 else "players"]
+
+# BRD: no team scores; a kill counter and the leader instead.
+func set_ffa(on: bool) -> void:
+	score_sec.visible = not on
+	score_out.visible = not on
+	brd_lbl.visible = on
+
+func brd_counter(mine: int, target: int, leader: String, lead_kills: int) -> void:
+	brd_lbl.text = "KILLS %d/%d%s" % [mine, target, ("   ·   LEADER %s %d" % [leader, lead_kills]) if leader != "" else ("   ·   YOU LEAD" if mine > 0 else "")]
+
 func set_score(score: Dictionary, left_ms: float, sites: Array, my_side: String) -> void:
 	score_sec.text = str(int(score.get("sec", 0)))
 	score_out.text = str(int(score.get("out", 0)))
@@ -322,7 +352,7 @@ func _process(delta: float) -> void:
 
 func _draw_cross() -> void:
 	var c := cross.size / 2.0
-	if battle == null:
+	if battle == null or battle.top_down:
 		return
 	if scoped:
 		# Sniper scope: black ring and fine reticle.
@@ -402,7 +432,7 @@ func close_panel() -> void:
 	panel = null
 	panel_kind = ""
 
-func _overlay(kind: String, dim := 0.55) -> VBoxContainer:
+func _overlay(kind: String, dim := 0.55, scroll := false) -> VBoxContainer:
 	close_panel()
 	panel_kind = kind
 	panel = Control.new()
@@ -418,7 +448,15 @@ func _overlay(kind: String, dim := 0.55) -> VBoxContainer:
 	card.custom_minimum_size = Vector2(min(760.0, size.x - 40.0), 0)
 	center.add_child(card)
 	var v := Kit.vbox(10)
-	card.add_child(v)
+	if scroll:
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.custom_minimum_size = Vector2(0, max(200.0, size.y - 80.0))
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sc.add_child(v)
+		card.add_child(sc)
+	else:
+		card.add_child(v)
 	return v
 
 ## The armoury: weapons by slot and gear, with prices for your faction.
@@ -513,11 +551,27 @@ func show_death(by: String, gems: int, can_respawn: bool, practice: bool) -> voi
 	v.add_child(Kit.title("YOU ARE DOWN", 30))
 	v.add_child(Kit.para(("%s got you." % by) if by != "" else "You went down.", 17, Kit.TEXT))
 	if practice:
-		v.add_child(Kit.para("Practice range: you get back up in 3 seconds.", 16))
+		v.add_child(Kit.para("You get back up in a few seconds.", 16))
 		return
 	if not can_respawn:
 		v.add_child(Kit.para("No respawn in this mode. You join the next round.", 16))
 		return
+	# Come back where you fell, or start fresh at your base.
+	var cb := Kit.hbox(8)
+	cb.add_child(Kit.label("Come back:", 16, Kit.MUTED))
+	var here := Kit.chip("Where I fell", come_back == "here")
+	var base := Kit.chip("At my base", come_back == "base")
+	here.pressed.connect(func():
+		come_back = "here"
+		here.set_pressed_no_signal(true)
+		base.set_pressed_no_signal(false))
+	base.pressed.connect(func():
+		come_back = "base"
+		base.set_pressed_no_signal(true)
+		here.set_pressed_no_signal(false))
+	cb.add_child(here)
+	cb.add_child(base)
+	v.add_child(cb)
 	var row := Kit.hbox(10)
 	v.add_child(row)
 	var resp: Dictionary = Cfg.rules.get("RESPAWN", {})
@@ -539,24 +593,83 @@ func show_death(by: String, gems: int, can_respawn: bool, practice: bool) -> voi
 	row.add_child(md)
 	v.add_child(Kit.para("If you do not choose, a medevac picks you up after 60 seconds.", 14))
 
+signal orders(o: Dictionary)
+var come_back := "here"
+var end_box: VBoxContainer
+
 func show_end(m: Dictionary, my_side: String, my_id: String) -> void:
-	var v := _overlay("end", 0.6)
+	var v := _overlay("end", 0.6, true)
+	end_box = v
 	var win: String = str(m.get("winner", ""))
-	var won := win == my_side
+	var ffa: bool = m.get("modeState", {}).get("ffa", false)
+	var won := win == (my_id if ffa else my_side)
 	var t := Kit.title("VICTORY!" if won else ("DRAW" if win == "" else "DEFEAT"), 40)
 	t.add_theme_color_override("font_color", Kit.GOOD if won else Kit.BAD if win != "" else Color.WHITE)
 	v.add_child(t)
-	var sc: Dictionary = m.get("score", {})
-	v.add_child(Kit.label("Security %d  :  %d Outlaws" % [int(sc.get("sec", 0)), int(sc.get("out", 0))], 20, Color.WHITE, true))
+	var roster: Array = m.get("roster", [])
+	if ffa:
+		var champ := ""
+		for r in roster:
+			if r.id == win:
+				champ = str(r.name)
+		v.add_child(Kit.label("Last one standing. Nobody butchers like you!" if won else ("%s won the bloodbath." % champ if champ != "" else "Nobody won."), 18, Color.WHITE, true))
+	else:
+		var sc: Dictionary = m.get("score", {})
+		v.add_child(Kit.label("Security %d  :  %d Outlaws" % [int(sc.get("sec", 0)), int(sc.get("out", 0))], 20, Color.WHITE, true))
 	if m.get("mvp"):
 		v.add_child(Kit.label("MVP: %s" % str(m.mvp), 18, Kit.GOLD, true))
-	var roster: Array = m.get("roster", [])
-	for r in roster.slice(0, 8):
+	for r in roster.slice(0, 6):
 		v.add_child(Kit.label("%s  %d kills · %d pts" % [r.name, int(r.kills), int(r.points)], 15, Color.WHITE if r.id == my_id else Kit.MUTED))
-	v.add_child(Kit.para("The next battle starts soon…", 15))
+	v.add_child(Kit.para("Rest and refit · the next battle here starts soon…", 15))
 	var l := Kit.button("Leave to the war map")
 	l.pressed.connect(func(): leave.emit())
 	v.add_child(l)
+
+## Your debrief: medals, what you earned, the Tour of Duty and new orders from HQ.
+func show_debrief(d: Dictionary) -> void:
+	if end_box == null or not is_instance_valid(end_box):
+		return
+	var v := end_box
+	var medals: Array = d.get("medals", [])
+	if medals.size():
+		var names: Array = medals.map(func(x): return "🎖 " + str(x.medal))
+		v.add_child(Kit.label("  ".join(names), 18, Kit.GOLD, true))
+	var earned: Array = []
+	if int(d.get("gems", 0)):
+		earned.append("+%d ◆" % int(d.gems))
+	if int(d.get("xp", 0)):
+		earned.append("+%d XP" % int(d.xp))
+	if earned.size():
+		v.add_child(Kit.label("  ".join(earned), 22, Kit.GEM, true))
+	var fin = d.get("finished")
+	if fin is Dictionary:
+		v.add_child(Kit.label("CHAPTER COMPLETE: %s · new title %s" % [str(fin.title).to_upper(), str(fin.rank)], 18, Kit.GOOD, true))
+	var c: Dictionary = d.get("chapter", {})
+	var tour := Kit.panel(10)
+	var tv := Kit.vbox(4)
+	tour.add_child(tv)
+	tv.add_child(Kit.label("TOUR OF DUTY · CHAPTER %d/%d · %s" % [int(c.get("n", 1)), int(c.get("of", 8)), str(c.get("title", ""))], 16, Kit.POD2, true))
+	var bar := ProgressBar.new()
+	bar.max_value = float(c.get("need", 6))
+	bar.value = float(c.get("merit", 0))
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 10)
+	bar.add_theme_stylebox_override("background", Kit.box(Color(1, 1, 1, 0.08), 5, Color(0, 0, 0, 0), 0, 0))
+	bar.add_theme_stylebox_override("fill", Kit.box(Kit.POD, 5, Color(0, 0, 0, 0), 0, 0))
+	tv.add_child(bar)
+	tv.add_child(Kit.para("Merit %d/%d · a win gives 3, a loss 1. %s" % [int(c.get("merit", 0)), int(c.get("need", 6)), str(c.get("story", ""))], 14, Kit.MUTED))
+	v.add_child(tour)
+	var o = d.get("orders")
+	if o is Dictionary:
+		var op := Kit.panel(10)
+		var ov := Kit.vbox(6)
+		op.add_child(ov)
+		ov.add_child(Kit.label("NEW ORDERS FROM HQ", 16, Kit.BAD, true))
+		ov.add_child(Kit.para(str(o.get("brief", "")), 15, Kit.TEXT))
+		var go := Kit.button("Deploy to %s" % str(o.get("name", "")), true, 18)
+		go.pressed.connect(func(): orders.emit(o))
+		ov.add_child(go)
+		v.add_child(op)
 
 func show_pause() -> void:
 	var v := _overlay("pause", 0.6)

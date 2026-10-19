@@ -13,6 +13,7 @@ var welcome := {}
 var profile := {}
 var lobby_states: Array = []
 var online := 0
+var country_counts := {}   # country code -> real players fighting there now
 var last_join := {}
 var in_battle := false
 var last_spawn := {}
@@ -86,6 +87,7 @@ func _on_welcome(m: Dictionary) -> void:
 	profile = m.get("profile", {})
 	lobby_states = m.get("lobby", [])
 	online = int(m.get("online", 0))
+	country_counts = m.get("countries", {})
 	if not m.get("account", false):
 		Cfg.set_s("token", str(m.get("token", "")))
 	if in_battle:
@@ -99,6 +101,7 @@ func _on_lobby(m: Dictionary) -> void:
 	lobby_states = m.get("states", lobby_states)
 	profile = m.get("profile", profile)
 	online = int(m.get("online", online))
+	country_counts = m.get("countries", country_counts)
 	if screen and screen.has_method("refresh"):
 		screen.refresh()
 
@@ -112,6 +115,12 @@ func _on_net_status(on: bool) -> void:
 		battle.net_status(on)
 
 ## Deploy: ask the server for a seat in a battle.
+# New orders from the debrief: leave this battle and go straight into the next region.
+func follow_orders(o: Dictionary) -> void:
+	var fac := str(Cfg.get_s("faction", "army"))
+	leave_battle()
+	join(str(o.get("state", "")), fac, str(o.get("mode", "conquest")))
+
 func join(state: String, faction: String, mode: String) -> void:
 	last_join = {"t": "join", "state": state, "faction": faction, "mode": mode, "bots": Cfg.get_s("bots", true)}
 	Cfg.set_s("faction", faction)

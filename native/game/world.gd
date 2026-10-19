@@ -13,13 +13,20 @@ const ATMOS := {
 	"rainforest": {"fog": 0.0058, "rain": 0.4},
 	"creeks": {"fog": 0.006, "rain": 0.35},
 	"urban": {"fog": 0.005, "rain": 0.15},
+	"desert": {"fog": 0.0055, "rain": 0.0, "dust": true},
+	"temperate": {"fog": 0.0045, "rain": 0.35},
+	"snow": {"fog": 0.0068, "rain": 0.0, "snow": true},
 }
-const GROUND_TEX := {"sahel": "ground_sand", "savanna": "ground_dirt", "plateau": "ground_gravel", "rainforest": "ground_red", "creeks": "ground_mud", "urban": "ground_urban"}
+const GROUND_TEX := {"sahel": "ground_sand", "savanna": "ground_red", "plateau": "ground_gravel", "rainforest": "grass", "creeks": "ground_mud", "urban": "ground_urban", "desert": "ground_sand", "temperate": "grass", "snow": "snow"}
+const PATCH_TEX := {"sahel": "ground_dirt", "savanna": "grass", "plateau": "grass", "rainforest": "ground_red", "creeks": "grass", "urban": "ground_dirt", "desert": "ground_sand", "temperate": "ground_dirt", "snow": "snow"}
+# Photo-scanned CC0 materials from Poly Haven (native/assets/pbr), used on medium and high.
+const PBR := {"ground_sand": "ground_sand", "ground_dirt": "ground_dirt", "ground_gravel": "ground_gravel", "ground_red": "ground_red", "ground_mud": "ground_mud", "ground_urban": "paving", "grass": "grass", "concrete": "concrete", "plaster": "plaster", "plank": "planks", "stone": "stone_wall", "zinc": "corrugated", "metal": "metal", "rust": "rust", "mud": "mud_wall", "rock": "rock", "bark": "bark", "sandbag": "burlap", "container": "painted_metal"}
 
 var map: Dictionary
 var phys: Phys
 var quality := "medium"
 var biome := "savanna"
+var look_id := "savanna"   # the region's own look (desert, temperate, snow...) on top of the base biome
 var look := {}
 var rng := RandomNumberGenerator.new()
 var texcache := {}
@@ -42,6 +49,7 @@ func build(m: Dictionary, p: Phys, q: String) -> void:
 	quality = q
 	shadows = q != "low"
 	biome = str(m.get("biome", "savanna"))
+	look_id = str(m.get("lookId", biome))
 	look = m.get("look", {})
 	rng.seed = int(m.get("seed", 1)) ^ 0xa5a5
 	_atmosphere()
@@ -57,10 +65,24 @@ func build(m: Dictionary, p: Phys, q: String) -> void:
 func tex(name: String) -> Texture2D:
 	if texcache.has(name):
 		return texcache[name]
-	var path := "res://textures/%s.png" % name
-	var tx: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	var tx: Texture2D = null
+	var base := name.trim_suffix("_n")
+	if quality != "low" and PBR.has(base):
+		var p := "res://assets/pbr/%s/%s.jpg" % [PBR[base], "normal" if name.ends_with("_n") else "albedo"]
+		if ResourceLoader.exists(p):
+			tx = load(p)
+	if tx == null:
+		var path := "res://textures/%s.png" % name
+		tx = load(path) if ResourceLoader.exists(path) else null
 	texcache[name] = tx
 	return tx
+
+# Roughness and ambient occlusion of a photo material (Poly Haven ARM: R = AO, G = rough, B = metal).
+func arm(name: String) -> Texture2D:
+	if quality == "low" or not PBR.has(name):
+		return null
+	var p := "res://assets/pbr/%s/arm.jpg" % PBR[name]
+	return load(p) if ResourceLoader.exists(p) else null
 
 func smat(name: String, rough := 0.9, metal := 0.0, normal := true) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -73,6 +95,15 @@ func smat(name: String, rough := 0.9, metal := 0.0, normal := true) -> StandardM
 		m.normal_enabled = true
 		m.normal_texture = tex(name + "_n")
 		m.normal_scale = 0.9
+	var a := arm(name)
+	if a:
+		m.roughness_texture = a
+		m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+		m.roughness = 1.0
+		m.ao_enabled = true
+		m.ao_texture = a
+		m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		m.ao_light_affect = 0.4
 	return m
 
 static func flat(col: Color, rough := 0.85, metal := 0.0) -> StandardMaterial3D:
@@ -96,7 +127,7 @@ func _hash(x: float, z: float) -> float:
 
 # ---------- sky, sun, fog, weather ----------
 func _atmosphere() -> void:
-	var a: Dictionary = ATMOS.get(biome, ATMOS.savanna)
+	var a: Dictionary = ATMOS.get(look_id, ATMOS.get(biome, ATMOS.savanna))
 	var hour := 7.5 + rng.randf() * 10.0
 	var elev: float = max(8.0, sin((hour - 6.0) / 12.0 * PI) * 68.0)
 	var azim := 95.0 if hour < 12.0 else 265.0
@@ -124,6 +155,16 @@ func _atmosphere() -> void:
 	sky_mat.sky_curve = 0.12
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	# Medium and high: a real photographed sky (HDRI, Poly Haven) that also lights the scene.
+	if quality != "low":
+		var which := "overcast" if raining or look_id == "snow" else "golden" if low else "clear" if rng.randf() < 0.5 else "cloudy"
+		var hp := "res://assets/sky/%s.hdr" % which
+		if ResourceLoader.exists(hp):
+			var pano := PanoramaSkyMaterial.new()
+			pano.panorama = load(hp)
+			pano.energy_multiplier = 0.9 if which != "golden" else 0.8
+			sky.sky_material = pano
+			sky.radiance_size = Sky.RADIANCE_SIZE_128
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
@@ -152,6 +193,8 @@ func _atmosphere() -> void:
 		_rain()
 	if a.get("dust", false):
 		_dust()
+	if a.get("snow", false):
+		_snowfall()
 
 func _rain() -> void:
 	rain = GPUParticles3D.new()
@@ -177,6 +220,35 @@ func _rain() -> void:
 	q.material = mm
 	rain.draw_pass_1 = q
 	add_child(rain)
+
+func _snowfall() -> void:
+	var s := GPUParticles3D.new()
+	s.amount = 900 if quality != "low" else 350
+	s.lifetime = 6.0
+	s.visibility_aabb = AABB(Vector3(-30, -2, -30), Vector3(60, 30, 60))
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(28, 1, 28)
+	pm.direction = Vector3(0.2, -1, 0.1)
+	pm.spread = 25.0
+	pm.initial_velocity_min = 1.2
+	pm.initial_velocity_max = 2.4
+	pm.gravity = Vector3.ZERO
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 0.6
+	s.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.06, 0.06)
+	var mm := StandardMaterial3D.new()
+	mm.albedo_color = Color(1, 1, 1, 0.85)
+	mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	q.material = mm
+	s.draw_pass_1 = q
+	s.position.y = 22.0
+	rain = s  # follows the camera like the rain does
+	add_child(s)
 
 func _dust() -> void:
 	dust = GPUParticles3D.new()
@@ -268,11 +340,11 @@ void fragment() {
 """
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	var gname: String = GROUND_TEX.get(biome, "ground_dirt")
+	var gname: String = GROUND_TEX.get(look_id, GROUND_TEX.get(biome, "ground_dirt"))
 	mat.set_shader_parameter("ground_tex", tex(gname))
 	mat.set_shader_parameter("ground_n", tex(gname + "_n"))
 	var green := float(look.get("grass", 0.3))
-	mat.set_shader_parameter("patch_tex", tex("grass") if green > 0.3 else tex({"sahel": "ground_dirt", "urban": "concrete", "savanna": "grass", "plateau": "ground_dirt"}.get(biome, "ground_sand")))
+	mat.set_shader_parameter("patch_tex", tex(PATCH_TEX.get(look_id, "grass")))
 	var nt := NoiseTexture2D.new()
 	nt.seamless = true
 	nt.width = 256
@@ -670,8 +742,16 @@ func _tree_mesh(type: String) -> Array:
 			for k in 5:
 				var a := TAU * k / 5.0
 				_canopy(leaves, "leaves", top + Vector3(cos(a) * 1.4, 0.6, sin(a) * 1.4), 1.6, 1.6, Color(0.75, 0.9, 0.7))
-		_:  # mango, neem, shea, almond: round canopies
-			var tall := {"mango": 4.0, "neem": 5.0, "shea": 3.6, "almond": 4.2}.get(type, 4.0)
+		"pine":
+			var top := _trunk(bark, "bark", 10.0, 0.3, 0.12)
+			for k in 5:
+				_canopy(leaves, "leaves", top + Vector3(0, -6.8 + k * 1.65, 0), 2.5 - k * 0.45, 1.5, Color(0.55, 0.72, 0.6))
+		"birch":
+			var top := _trunk(bark, "bark", 9.0, 0.18, 0.08, 0.15)
+			for k in 4:
+				_canopy(leaves, "leaves", top + Vector3(rr.randf_range(-0.8, 0.8), -2.5 + k * 1.1, rr.randf_range(-0.8, 0.8)), 1.4, 1.8, Color(1.05, 1.15, 0.8))
+		_:  # mango, neem, shea, almond, oak: round canopies
+			var tall := {"mango": 4.0, "neem": 5.0, "shea": 3.6, "almond": 4.2, "oak": 4.6}.get(type, 4.0)
 			var top := _trunk(bark, "bark", tall, 0.3, 0.2, 0.2)
 			for k in 6:
 				var a := TAU * k / 6.0

@@ -4,3 +4,6 @@ build/
 !textures/*.import
 !sounds/*.wav.import
 export_credentials.cfg
+
+!assets/pbr/*/*.import
+!assets/sky/*.import

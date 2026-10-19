@@ -71,6 +71,15 @@ var heart_t := 0.0
 var settings_overlay: Control
 var paused := false
 var amb_t := 3.0
+var ffa := false             # BRD: every soldier is an enemy
+var top_down := false        # BRD: the assassin drone view from above
+var mode_state := {}
+var animals: Animals
+var me_sol: Soldier            # BRD: your own soldier, seen from above
+var me_ring: MeshInstance3D
+var aid_nodes: Array = []
+var last_look_at := 0
+var top_cam := Vector3.ZERO
 
 func begin(m: Dictionary) -> void:
 	info = m
@@ -79,6 +88,10 @@ func begin(m: Dictionary) -> void:
 	faction = str(m.get("faction", "army"))
 	mode_id = str(m.get("mode", "conquest"))
 	state_id = str(m.get("state", ""))
+	Cfg.register_region(m.get("region"))
+	Kit.cash_cc = Cfg.cc_of(state_id)
+	ffa = bool(Cfg.rules.get("MODES", {}).get(mode_id, {}).get("ffa", false))
+	top_down = bool(Cfg.rules.get("MODES", {}).get(mode_id, {}).get("topDown", false))
 	P = Cfg.player()
 	stamina = float(P.get("stamina", 6))
 	eye = float(P.get("eye", 1.62))
@@ -108,9 +121,11 @@ func _ui() -> void:
 	hud.battle = self
 	ui.add_child(hud)
 	hud.buy.connect(func(item): Net.send({"t": "buy", "item": item}))
-	hud.respawn.connect(func(mode): Net.send({"t": "respawn", "mode": mode}))
+	hud.respawn.connect(func(mode): Net.send({"t": "respawn", "mode": mode, "at": hud.come_back}))
 	hud.quick_chat.connect(func(i): Net.send({"t": "chat", "text": Hud.QUICK[i], "team": true}))
 	hud.leave.connect(func(): main.leave_battle())
+	hud.orders.connect(func(o): main.follow_orders(o))
+	hud.set_ffa(ffa)
 	hud.settings.connect(_open_settings)
 	hud.resume.connect(func(): paused = false)
 	loading = Control.new()
@@ -184,6 +199,13 @@ func _build(m: Dictionary) -> void:
 	var wv: Dictionary = info.get("world", {})
 	vehicles.apply_view(wv.get("v", []))
 	Sfx.ambience(world.biome, world.raining)
+	animals = Animals.new()
+	add_child(animals)
+	animals.apply(info.get("dogs"), "dog")
+	animals.apply(info.get("crocs"), "croc")
+	mode_state = info.get("modeState", {})
+	if top_down:
+		_build_top_down()
 	ready_world = true
 	loading.queue_free()
 	loading = null
@@ -305,7 +327,45 @@ func _subscribe() -> void:
 		if hud.panel_kind == "buy":
 			hud.call_deferred("show_buy", me, int(me.get("level", 1))))
 	Net.on("spirit", func(_m): hud.toast("Find any glowing gem on an advert wall!", "gem", 5))
+	Net.on("lunge", func(m):
+		body.x = float(m.x)
+		body.z = float(m.z))
+	Net.on("tank", func(m):
+		hud.show_banner("FUEL TANK EXPLODED!", Kit.BAD, 3.0)
+		fx.shake = min(1.6, fx.shake + 1.0)
+		Sfx.play("explosion", Vector3(float(m.x), 2, float(m.z)), {"ref": 30.0}))
+	Net.on("dog", func(m):
+		var a = animals.dogs.get(int(m.i)) if animals else null
+		var pos = a.node.global_position if a else null
+		var mine := str(m.get("id", "")) == my_id
+		if str(m.a) == "bite":
+			Sfx.play("hurt" if mine else "punch", pos)
+			if mine:
+				fx.shake = min(1.0, fx.shake + 0.3)
+		elif str(m.a) in ["yelp", "dead"]:
+			Sfx.play("hit", pos))
+	Net.on("aid", func(m):
+		var list: Array = mode_state.get("aid", [])
+		var i := int(m.i)
+		if i < list.size():
+			list[i][2] = 1 if m.on else 0
+		if top_down:
+			_draw_aid()
+		if str(m.get("by", "")) == my_id:
+			hud.toast("✚ First aid: +50 health", "good", 1.5)
+			Sfx.play("heal"))
+	Net.on("debrief", func(d):
+		hud.show_debrief(d)
+		if d.get("finished") is Dictionary:
+			Sfx.ui("alert"))
+	Net.on("joined", func(m):
+		hud.live_count(m.get("humans"))
+		if m.get("name"):
+			hud.toast("%s joined the battle" % str(m.name), "info", 2.5))
 	Net.on("left", func(m):
+		hud.live_count(m.get("humans"))
+		if m.get("name"):
+			hud.toast("%s left the battle" % str(m.name), "info", 2.5)
 		var s = soldiers.get(m.id)
 		if s:
 			s.queue_free()
@@ -391,7 +451,7 @@ func _on_status(prev: String, now: String) -> void:
 	if now == "dead":
 		touch.reset()
 		var can: bool = Cfg.rules.get("MODES", {}).get(mode_id, {}).get("respawn", true)
-		hud.show_death(death_by, int(me.get("gems", 0)), can, mode_id == "practice")
+		hud.show_death(death_by, int(me.get("gems", 0)), can, mode_id == "practice" or ffa)
 		hud.status_lbl.text = ""
 	elif now == "downed":
 		hud.close_panel()
@@ -417,6 +477,9 @@ func _on_snapshot(m: Dictionary) -> void:
 	if not ready_world:
 		return
 	var ts := float(m.ts)
+	if animals:
+		animals.apply(m.get("dg"), "dog")
+		animals.apply(m.get("ck"), "croc")
 	var seen := {}
 	for e in m.get("p", []):
 		var id := str(e[0])
@@ -428,7 +491,8 @@ func _on_snapshot(m: Dictionary) -> void:
 			var r: Dictionary = roster.get(id, {"id": id, "side": "out", "faction": "bandit", "name": "?"})
 			s = Soldier.new()
 			add_child(s)
-			s.setup(r, r.get("side") == side)
+			s.setup(r, not ffa and r.get("side") == side)
+			s.show_hp = ffa
 			s.phys = phys
 			s.biome = world.biome
 			soldiers[id] = s
@@ -443,6 +507,9 @@ func _on_snapshot(m: Dictionary) -> void:
 
 func _on_score(m: Dictionary) -> void:
 	score = m.get("score", score)
+	hud.live_count(m.get("humans"))
+	if m.has("modeState"):
+		mode_state = m.modeState
 	sites = m.get("sites", sites)
 	if m.has("roster"):
 		roster_list = m.roster
@@ -858,12 +925,18 @@ func _process(delta: float) -> void:
 	if mouse_look:
 		look += _mouse_delta * 0.0022 * float(Cfg.get_s("sens", 1.0))
 	_mouse_delta = Vector2.ZERO
+	if look.length() > 0.0005:
+		last_look_at = now
 	if not menu and status in ["alive", "spirit", "downed"]:
-		var assist := _aim_assist()
+		var assist := 1.0 if top_down else _aim_assist()
 		yaw -= look.x / zoom * assist
 		pitch = clamp(pitch - look.y / zoom * assist, -1.5, 1.5)
+	if top_down:
+		_top_facing(dt, now)
 	_move(dt, now)
 	_camera(dt, now, look)
+	if top_down:
+		_top_update(dt, s_now)
 	# Fire.
 	var firing: bool = (touch.fire or keys.get("fire", false)) and not menu
 	if status == "alive" and firing and not sprinting and driving == null:
@@ -922,7 +995,7 @@ func _process(delta: float) -> void:
 	hud.spread = _spread_now(w, vel.length())
 	hud.scoped = ads_on and w.has("zoom") and zoom > 2.5
 	hud.ping_lbl.text = "%d ms" % int(Net.rtt)
-	touch.show_buy = status == "alive" and _in_buy_zone()
+	touch.show_buy = status == "alive" and not ffa and _in_buy_zone()
 	var near_v = vehicles.nearest(body.x, body.z) if status == "alive" and driving == null else null
 	var mate = _downed_mate()
 	touch.show_use = driving != null or near_v != null or mate != null
@@ -1068,6 +1141,10 @@ func _move(dt: float, now: float) -> void:
 	var c := cos(yaw)
 	var wx := mv.x * c - mv.y * s
 	var wz := -mv.x * s - mv.y * c
+	if top_down:
+		# From above the stick moves you on the screen (up is north), not where you face.
+		wx = mv.x
+		wz = -mv.y
 	var w := Cfg.weapon(_weapon())
 	var fac: Dictionary = Cfg.faction(faction).get("perks", {})
 	if status == "spirit":
@@ -1193,6 +1270,17 @@ func _camera(dt: float, now: float, look: Vector2) -> void:
 		cam.global_position = target - dir * back + Vector3(0, 0.8, 0)
 		cam.look_at(target + dir * 3.0, Vector3.UP)
 		return
+	if top_down:
+		vm.visible = false
+		cam.fov = 58.0
+		var want := Vector3(body.x - sin(yaw) * 1.6, body.y + 9.5, body.z - cos(yaw) * 1.6 + 4.0)
+		top_cam = want if top_cam == Vector3.ZERO else top_cam.lerp(want, min(1.0, dt * 6.0))
+		cam.global_position = top_cam + shake_v
+		cam.rotation = Vector3(-1.17, 0, 0)
+		# Cut away everything more than ~3 m above the ground (roofs, upper floors), like a
+		# cross-section, so you can always see yourself indoors.
+		cam.near = 6.6
+		return
 	cam.global_position = Vector3(body.x, body.y + eye, body.z) + shake_v
 	cam.rotation = Vector3(pitch + punch.x, yaw + punch.y, 0)
 	if status == "dead" or status == "medevac":
@@ -1223,6 +1311,7 @@ func _try_fire(now: float) -> void:
 		if now - last_fire < 520:
 			return
 		last_fire = now
+		_melee_assist(4.2)
 		Net.send({"t": "melee"})
 		vm.swing()
 		Sfx.play("swing")
@@ -1246,6 +1335,11 @@ func _try_fire(now: float) -> void:
 	ammo.mag = int(ammo.mag) - 1
 	var o := cam.global_position
 	var d := Phys.dir_from_angles(yaw + punch.y, pitch + punch.x)
+	if top_down:
+		# From above: shots leave your eyes level with the ground, at the enemy you face.
+		o = Vector3(body.x, body.y + eye, body.z)
+		var tg = _assist_target(30.0, 0.42)
+		d = (tg.chest() - o).normalized() if tg != null else Phys.dir_from_angles(yaw, 0.0)
 	if not w.has("pellets"):
 		d = Phys.spread_dir(d, _spread_now(w, vel.length()))
 	Net.send({"t": "fire", "w": id, "o": [snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(o.z, 0.001)], "d": [snappedf(d.x, 0.0001), snappedf(d.y, 0.0001), snappedf(d.z, 0.0001)], "ts": int(Net.server_now() - INTERP_MS)})
@@ -1256,6 +1350,8 @@ func _try_fire(now: float) -> void:
 	vm.fire(kick)
 	Sfx.gunshot(str(w.get("sound", "rifle")), null, true)
 	var muzzle := cam.global_position + cam.global_basis * Vector3(0.1, -0.08, -0.55)
+	if top_down:
+		muzzle = o + d * 0.8 + Vector3(0, -0.25, 0)
 	fx.muzzle(muzzle, 1.3 if w.has("pellets") else 1.0)
 	fx.shake = min(1.0, fx.shake + (0.25 if w.has("pellets") or float(w.dmg) > 50 else 0.06))
 	_hud_me()
@@ -1409,6 +1505,118 @@ func _downed_mate():
 		if so.is_mate and so.flags & 2 and so.position.distance_to(Vector3(body.x, body.y, body.z)) < 2.4:
 			return so
 	return null
+
+# ---------- BRD: the assassin view from above ----------
+func _build_top_down() -> void:
+	me_sol = Soldier.new()
+	add_child(me_sol)
+	me_sol.setup({"id": my_id, "side": side, "faction": faction, "name": ""}, true)
+	me_sol.phys = phys
+	me_sol.biome = world.biome
+	me_ring = MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.62
+	tm.outer_radius = 0.8
+	tm.rings = 32
+	me_ring.mesh = tm
+	me_ring.scale = Vector3(1, 0.08, 1)
+	me_ring.material_override = World.glow(Color("#39d7ff"), 2.5)
+	add_child(me_ring)
+	_draw_aid()
+
+func _draw_aid() -> void:
+	var list: Array = mode_state.get("aid", [])
+	if aid_nodes.size() != list.size():
+		for n in aid_nodes:
+			n.queue_free()
+		aid_nodes.clear()
+		for a in list:
+			var g := Node3D.new()
+			var box := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.9, 0.55, 0.65)
+			box.mesh = bm
+			box.position.y = 0.3
+			box.material_override = World.flat(Color("#f2f2f2"), 0.5)
+			g.add_child(box)
+			for r in [0.0, PI / 2.0]:
+				var c := MeshInstance3D.new()
+				var cm := BoxMesh.new()
+				cm.size = Vector3(0.5, 0.02, 0.14)
+				c.mesh = cm
+				c.position.y = 0.585
+				c.rotation.y = r
+				c.material_override = World.glow(Color("#e02424"), 1.5)
+				g.add_child(c)
+			g.position = Vector3(float(a[0]), 0, float(a[1]))
+			add_child(g)
+			aid_nodes.append(g)
+	for i in list.size():
+		aid_nodes[i].visible = int(list[i][2]) == 1
+
+func _top_update(dt: float, s_now: float) -> void:
+	if me_sol:
+		var alive := status in ["alive", "downed"]
+		me_sol.visible = alive
+		me_ring.visible = status == "alive"
+		if alive:
+			var wi: int = Cfg.weapon_ids().find(_weapon())
+			me_sol.push(s_now, [my_id, body.x, body.y, body.z, yaw, -0.05, (1 if body.crouch else 0) | (2 if status == "downed" else 0) | (128 if sprinting else 0), wi, int(me.get("health", 100))])
+			me_sol.update(dt, s_now, cam.global_position)
+			me_ring.global_position = Vector3(body.x, body.y + 0.06, body.z)
+	var mine := int(roster.get(my_id, {}).get("kills", 0))
+	var lead: Dictionary = mode_state.get("leader", {}) if mode_state.get("leader") is Dictionary else {}
+	var lname := "" if lead.is_empty() or str(lead.get("id", "")) == my_id else str(lead.get("name", ""))
+	hud.brd_counter(mine, int(mode_state.get("target", 8)), lname, int(lead.get("kills", 0)))
+
+# You face the enemy closest to where you look; with nobody near, where you run.
+func _top_facing(dt: float, now: int) -> void:
+	pitch = -0.08
+	if status != "alive" or now - last_look_at < 700:
+		return
+	var turn_to := func(y: float, k: float):
+		yaw += wrapf(y - yaw, -PI, PI) * min(1.0, dt * k)
+	var t = _assist_target(12.0, PI * 0.75)
+	if t != null:
+		var p: Vector3 = t.position
+		turn_to.call(atan2(-(p.x - body.x), -(p.z - body.z)), 9.0)
+		return
+	var mv: Vector2 = touch.move + _kmove()
+	if mv.length() > 0.25:
+		turn_to.call(atan2(-mv.x, mv.y), 8.0)
+
+func _assist_target(rng_m: float, cone: float):
+	var fwd := Vector2(-sin(yaw), -cos(yaw))
+	var best = null
+	var bs := INF
+	for so in soldiers.values():
+		if not so.visible or so.is_mate or so.flags & (256 | 4):
+			continue
+		var dv := Vector2(so.position.x - body.x, so.position.z - body.z)
+		var d := dv.length()
+		if d > rng_m or d < 0.01:
+			continue
+		var ang := acos(clamp(dv.normalized().dot(fwd), -1.0, 1.0))
+		if ang > cone:
+			continue
+		if phys.line_blocked(Vector3(body.x, body.y + 1.4, body.z), so.chest()):
+			continue
+		var sc := d * (1.0 + ang * 2.0)
+		if sc < bs:
+			bs = sc
+			best = so
+	return best
+
+# Snap to the nearest enemy in reach before a blade or punch, and tell the server at once.
+func _melee_assist(reach: float) -> void:
+	if not top_down:
+		return
+	var t = _assist_target(reach, PI)
+	if t == null:
+		return
+	var p: Vector3 = t.position
+	yaw = atan2(-(p.x - body.x), -(p.z - body.z))
+	Net.send({"t": "st", "x": snappedf(body.x, 0.01), "y": snappedf(body.y, 0.01), "z": snappedf(body.z, 0.01), "yaw": snappedf(yaw, 0.001), "pitch": 0.0, "c": 1 if body.crouch else 0, "a": 0, "r": 0})
 
 ## Touch aim help: look slows a little when the crosshair is on an enemy.
 func _aim_assist() -> float:

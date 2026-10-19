@@ -237,6 +237,11 @@ static func safe_margin(gutter := 16) -> MarginContainer:
 static func side_color(side: String) -> Color:
 	return SEC if side == "sec" else OUT
 
+# Battle cash: naira in Nigeria, dollars everywhere else (Kit.cash_cc is set when a battle starts).
+static var cash_cc := "NG"
+static func cash_sign() -> String:
+	return "₦" if cash_cc == "NG" else "$"
+
 static func naira(n) -> String:
 	var s := str(int(n))
 	var out := ""
@@ -246,4 +251,4 @@ static func naira(n) -> String:
 		c += 1
 		if c % 3 == 0 and i > 0 and s[i - 1] != "-":
 			out = "," + out
-	return "₦" + out
+	return cash_sign() + out

@@ -23,6 +23,7 @@ var settings := {
 	"aim_assist": true,
 	"left_hand_fire": false,
 	"scheme": "classic",
+	"country": "",
 }
 
 signal rules_loaded
@@ -105,11 +106,70 @@ func weapon_ids() -> Array:
 func player() -> Dictionary:
 	return rules.get("PLAYER", {})
 
+# ---------- countries and regions ----------
+var regions := {}        # region id -> region (from loaded countries and match info)
+var countries_data := {} # country code -> country file (outline, regions with shapes)
+
 func state_by_id(id: String) -> Dictionary:
 	for s in rules.get("STATES", []):
 		if s.id == id:
 			return s
+	return regions.get(id, {})
+
+func register_region(r) -> void:
+	if r is Dictionary and r.has("id"):
+		regions[str(r.id)] = r
+
+func cc_of(id: String) -> String:
+	return id.split(".")[0].to_upper() if "." in id else "NG"
+
+func countries() -> Array:
+	return rules.get("COUNTRIES", [])
+
+func country(cc: String) -> Dictionary:
+	for c in countries():
+		if c.cc == cc:
+			return c
 	return {}
+
+# A country's own war map (its regions and shapes), cached on the phone.
+func load_country(cc: String, done: Callable) -> void:
+	cc = cc.to_upper()
+	if countries_data.has(cc):
+		done.call(countries_data[cc])
+		return
+	var cache := "user://world/%s.json" % cc.to_lower()
+	var http := HTTPRequest.new()
+	http.timeout = 30
+	add_child(http)
+	http.request_completed.connect(func(result, code, _h, body):
+		http.queue_free()
+		var txt := ""
+		if result == HTTPRequest.RESULT_SUCCESS and code == 200:
+			txt = body.get_string_from_utf8()
+			DirAccess.make_dir_recursive_absolute("user://world")
+			var f := FileAccess.open(cache, FileAccess.WRITE)
+			if f:
+				f.store_string(txt)
+		elif FileAccess.file_exists(cache):
+			txt = FileAccess.get_file_as_string(cache)
+		var d = JSON.parse_string(txt) if txt != "" else null
+		if d is Dictionary:
+			countries_data[cc] = d
+			if cc != "NG":
+				for r in d.get("regions", []):
+					r["cc"] = cc
+					register_region(r)
+			done.call(d)
+		else:
+			done.call({}))
+	http.request(api("/api/world/" + cc.to_lower()))
+
+# The flag of a country, drawn from its code (regional indicator letters).
+static func flag(cc: String) -> String:
+	if cc.length() != 2:
+		return ""
+	return char(0x1F1E6 + cc.unicode_at(0) - 65) + char(0x1F1E6 + cc.unicode_at(1) - 65)
 
 func faction(id: String) -> Dictionary:
 	return rules.get("FACTIONS", {}).get(id, {})

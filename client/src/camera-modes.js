@@ -288,11 +288,17 @@ export class CameraModes {
     const ahead = 2;
     const tx = b.x - Math.sin(g.yaw) * ahead;
     const tz = b.z - Math.cos(g.yaw) * ahead;
-    const target = new THREE.Vector3(tx, (b.y || 0) + 12.5, tz + 5.2);
+    const target = new THREE.Vector3(tx, (b.y || 0) + 10.5, tz + 4.4);
     this.smooth ||= target.clone();
     this.smooth.lerp(target, Math.min(1, dt * 6));
     cam.position.copy(this.smooth);
     cam.rotation.set(-1.17, 0, 0);
+    // Cut away everything more than ~3 m above the ground (roofs, upper floors) like a
+    // cross-section, so you can always see yourself indoors.
+    if (cam.near !== 7.4) {
+      cam.near = 7.4;
+      cam.updateProjectionMatrix();
+    }
     if (g.ownSoldier?.root) g.ownSoldier.root.visible = true;
     return true;
   }

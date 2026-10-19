@@ -165,6 +165,10 @@ func set_state(i: int, s: int) -> void:
 	if s == 3 and e.has("fire"):
 		e.fire.queue_free()
 		e.erase("fire")
+	# Crushed by a lorry: flattened.
+	if s == 4:
+		e.node.scale = Vector3(1.05, 0.3, 1.0)
+		Sfx.play("explosion_far", e.node.global_position, {"ref": 6.0})
 
 func _fire() -> GPUParticles3D:
 	var f := GPUParticles3D.new()

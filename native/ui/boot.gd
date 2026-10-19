@@ -104,7 +104,10 @@ func _ready() -> void:
 func _on_rules(ok: bool) -> void:
 	if ok:
 		loaded = true
-		status.text = "Ready. %d regions are waiting for you." % Cfg.rules.get("STATES", []).size()
+		var n := 0
+		for c in Cfg.countries():
+			n += int(c.get("n", 0))
+		status.text = "Ready. %d battlefields in %d countries are waiting for you." % [max(n, 37), max(1, Cfg.countries().size())]
 		enter.visible = true
 		Sfx.ui("alert")
 	else:

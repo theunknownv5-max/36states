@@ -1,58 +1,97 @@
 extends Control
-## The war map: Nigeria's outline and a hex tile for every state (zone colours), glowing where
-## battles are live. Tap a state to pick it.
+## The war map of the chosen country: its real region shapes and a hex tile for every region
+## (Nigeria by zone colours, other countries by biome), glowing where battles are live.
+## Regions far from the mainland (overseas) sit in a column on the right. Tap one to pick it.
 
 signal picked(state_id: String)
 
 const ZONE_COL := {"NC": Color("#2f7a4c"), "NE": Color("#8a6a24"), "NW": Color("#9a5426"), "SE": Color("#22707e"), "SS": Color("#28588e"), "SW": Color("#6a4890")}
-const OUTLINE := [
-	[2.69, 6.37], [2.72, 7.1], [2.76, 7.9], [2.85, 8.6], [3.12, 9.1], [3.58, 9.95], [3.65, 10.45], [3.58, 11.1],
-	[3.62, 11.7], [3.85, 12.3], [4.1, 13.05], [4.4, 13.65], [5.0, 13.8], [5.6, 13.86], [6.2, 13.65], [6.75, 13.3],
-	[7.45, 13.1], [8.1, 13.02], [8.65, 12.92], [9.25, 12.83], [9.85, 13.15], [10.6, 13.35], [11.4, 13.37], [12.2, 13.2],
-	[12.85, 13.5], [13.35, 13.72], [13.65, 13.3], [14.1, 13.05], [14.2, 12.45], [14.58, 12.12], [14.35, 11.5], [13.9, 11.0],
-	[13.55, 10.65], [13.25, 10.1], [13.2, 9.55], [12.95, 9.0], [12.75, 8.55], [12.25, 8.25], [12.0, 7.65], [11.75, 7.15],
-	[11.3, 6.6], [11.05, 6.45], [10.7, 6.95], [10.25, 6.9], [9.75, 6.55], [9.3, 6.4], [8.85, 5.85], [8.62, 5.05],
-	[8.5, 4.65], [8.25, 4.55], [7.55, 4.45], [7.05, 4.4], [6.55, 4.3], [6.05, 4.28], [5.6, 4.6], [5.4, 5.1],
-	[5.1, 5.55], [4.75, 6.05], [4.3, 6.25], [3.75, 6.42], [3.35, 6.4], [2.69, 6.37]
-]
-const RIVERS := [
-	[[3.6, 11.7], [4.6, 10.6], [5.5, 9.4], [6.2, 8.9], [6.75, 7.8], [6.7, 6.9], [6.45, 5.8], [6.3, 4.9]],
-	[[12.4, 9.3], [11.2, 9.0], [9.8, 8.4], [8.6, 7.75], [7.5, 7.75], [6.75, 7.8]],
-]
+const BIOME_COL := {"sahel": Color("#9a6a2a"), "desert": Color("#a8823a"), "savanna": Color("#7a7a2c"), "plateau": Color("#6a5a8a"), "rainforest": Color("#2f7a4c"), "creeks": Color("#28688e"), "urban": Color("#8a3a4a"), "temperate": Color("#3f7a3a"), "snow": Color("#5a7a9a")}
 const W := 1000.0
 const H := 860.0
-const R := 30.0
 
-var tiles: Array = []   # {id, x, y, zone, name}
+var tiles: Array = []   # {id, x, y, col, name, away}
+var shapes: Array = []  # [PackedVector2Array (map units), Color, id]
+var outline: Array = [] # PackedVector2Array per ring
 var selected := ""
 var live := {}          # id -> lobby entry
 var t := 0.0
 var font: Font
+var R := 30.0
+var country := {}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	font = Kit.font_bold
+
+func set_country(data: Dictionary) -> void:
+	country = data
 	_layout()
+	queue_redraw()
 
-func _project(lon: float, lat: float) -> Vector2:
-	var minLon := 2.5
-	var maxLon := 14.8
-	var minLat := 4.1
-	var maxLat := 14.0
-	var pad := 40.0
-	var s: float = min((W - pad * 2) / (maxLon - minLon), (H - pad * 2) / (maxLat - minLat))
-	var ox := (W - (maxLon - minLon) * s) / 2.0
-	var oy := (H - (maxLat - minLat) * s) / 2.0
-	return Vector2(ox + (lon - minLon) * s, oy + (maxLat - lat) * s)
-
-## Spread tiles so neighbours don't overlap, keeping them near their real spot (as the lite app).
 func _layout() -> void:
 	tiles.clear()
-	for s in Cfg.rules.get("STATES", []):
-		var p := _project(float(s.lon), float(s.lat))
-		tiles.append({"id": s.id, "name": s.name, "zone": s.zone, "x": p.x, "y": p.y, "hx": p.x, "hy": p.y})
+	shapes.clear()
+	outline.clear()
+	var regs: Array = country.get("regions", [])
+	if regs.is_empty():
+		return
+	var is_ng: bool = country.get("cc", "") == "NG"
+	var bb: Array = country.get("bbox", [0, 0, 1, 1])
+	var lab: Array = country.get("label", [(bb[0] + bb[2]) / 2.0, (bb[1] + bb[3]) / 2.0])
+	var L0: float = lab[0]
+	var L1: float = lab[1]
+	if L0 < float(bb[0]):
+		L0 += 360.0
+	var cl := cos(deg_to_rad(L1))
+	var dists: Array = []
+	for r in regs:
+		dists.append(Vector2((float(r.lon) - L0) * cl, float(r.lat) - L1).length())
+	var sorted := dists.duplicate()
+	sorted.sort()
+	var limit: float = max(8.0, float(sorted[sorted.size() / 2]) * 3.0)
+	var main: Array = []
+	var away: Array = []
+	for i in regs.size():
+		(main if float(dists[i]) <= limit else away).append(regs[i])
+	# Fit the mainland shapes.
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for r in main:
+		for flat in r.get("poly", []):
+			for k in range(0, flat.size(), 2):
+				mn.x = min(mn.x, float(flat[k]))
+				mx.x = max(mx.x, float(flat[k]))
+				mn.y = min(mn.y, float(flat[k + 1]))
+				mx.y = max(mx.y, float(flat[k + 1]))
+	if mn.x == INF:
+		mn = Vector2(bb[0], bb[1])
+		mx = Vector2(bb[2], bb[3])
+	var kx := cos(deg_to_rad((mn.y + mx.y) / 2.0))
+	var right := 150.0 if not away.is_empty() else 0.0
+	var pad := 46.0
+	var sc: float = min((W - right - pad * 2) / max(0.01, (mx.x - mn.x) * kx), (H - pad * 2) / max(0.01, mx.y - mn.y))
+	var ox: float = pad + (W - right - pad * 2 - (mx.x - mn.x) * kx * sc) / 2.0
+	var oy: float = pad + (H - pad * 2 - (mx.y - mn.y) * sc) / 2.0
+	var proj := func(lon: float, lat: float) -> Vector2: return Vector2(ox + (lon - mn.x) * kx * sc, oy + (mx.y - lat) * sc)
+	for flat in country.get("outline", []):
+		var pl := PackedVector2Array()
+		for k in range(0, flat.size(), 2):
+			pl.append(proj.call(float(flat[k]), float(flat[k + 1])))
+		outline.append(pl)
+	for r in main:
+		var col: Color = ZONE_COL.get(r.get("zone", ""), Color.GRAY) if is_ng else BIOME_COL.get(r.get("biome", ""), Color("#5a6a7a"))
+		for flat in r.get("poly", []):
+			var pl := PackedVector2Array()
+			for k in range(0, flat.size(), 2):
+				pl.append(proj.call(float(flat[k]), float(flat[k + 1])))
+			if pl.size() >= 3:
+				shapes.append([pl, col, r.id])
+		var p: Vector2 = proj.call(float(r.lon), float(r.lat))
+		tiles.append({"id": r.id, "name": r.name, "col": col, "x": p.x, "y": p.y, "hx": p.x, "hy": p.y, "away": false})
+	R = clamp(sqrt((W - right) * H / max(1, main.size())) * 0.3, 13.0, 44.0)
 	var mind := R * 1.86
-	for it in 220:
+	for it in 160:
 		for i in tiles.size():
 			for j in range(i + 1, tiles.size()):
 				var a: Dictionary = tiles[i]
@@ -69,6 +108,14 @@ func _layout() -> void:
 		for p in tiles:
 			p.x += (p.hx - p.x) * 0.02
 			p.y += (p.hy - p.y) * 0.02
+	var cols := int(ceil(away.size() / 12.0))
+	for i in away.size():
+		var r: Dictionary = away[i]
+		var col: int = i % max(1, cols)
+		var row: int = i / max(1, cols)
+		var x: float = W - right + 30.0 + col * 64.0
+		var y: float = 70.0 + row * min(64.0, (H - 90.0) / ceil(float(away.size()) / max(1, cols)))
+		tiles.append({"id": r.id, "name": r.name, "col": BIOME_COL.get(r.get("biome", ""), Color("#5a6a7a")), "x": x, "y": y, "hx": x, "hy": y, "away": true})
 
 func _xf() -> Array:
 	var sc: float = min(size.x / W, size.y / H)
@@ -84,22 +131,26 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _gui_input(e: InputEvent) -> void:
-	var pos := Vector2.ZERO
-	var tap := false
-	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-		pos = e.position
-		tap = true
-	if not tap:
+	if not (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
 		return
+	var pos: Vector2 = e.position
 	var x := _xf()
 	var best := ""
 	var bd := 1e9
 	for tl in tiles:
+		var r: float = (22.0 if tl.away else R) * x[0]
 		var sp: Vector2 = Vector2(tl.x, tl.y) * x[0] + x[1]
 		var d := sp.distance_to(pos)
-		if d < bd and d < R * x[0] * 1.3:
+		if d < bd and d < max(r * 1.3, 22.0):
 			bd = d
 			best = tl.id
+	# Or the region shape under the finger.
+	if best == "":
+		var mp: Vector2 = (pos - x[1]) / x[0]
+		for s in shapes:
+			if Geometry2D.is_point_in_polygon(mp, s[0]):
+				best = s[2]
+				break
 	if best != "":
 		selected = best
 		Sfx.ui("click")
@@ -114,25 +165,39 @@ func _hex(c: Vector2, r: float) -> PackedVector2Array:
 	return pts
 
 func _draw() -> void:
+	if tiles.is_empty():
+		var msg := "Loading the war map…"
+		draw_string(Kit.font_bold, size / 2.0 - Vector2(120, 0), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Kit.MUTED)
+		return
 	var x := _xf()
 	var sc: float = x[0]
-	# Country outline with a glow.
-	var outline := PackedVector2Array()
-	for p in OUTLINE:
-		outline.append(_to_screen(_project(p[0], p[1])))
-	draw_colored_polygon(outline, Color(1, 0.48, 0.1, 0.06))
-	for w in [8.0, 4.0]:
-		draw_polyline(outline, Color(1, 0.59, 0.24, 0.12 if w > 5 else 0.55), w * sc, true)
-	for rv in RIVERS:
-		var pl := PackedVector2Array()
-		for p in rv:
-			pl.append(_to_screen(_project(p[0], p[1])))
-		draw_polyline(pl, Color(0.31, 0.63, 0.86, 0.35), 3.0 * sc, true)
-	# State tiles.
+	var xform := Transform2D(0.0, Vector2(sc, sc), 0.0, x[1])
+	draw_set_transform_matrix(xform)
+	for pl in outline:
+		if pl.size() >= 3:
+			var closed: PackedVector2Array = pl.duplicate()
+			closed.append(pl[0])
+			draw_polyline(closed, Color(1, 0.59, 0.24, 0.5), 3.0, true)
+	for s in shapes:
+		var c: Color = s[1]
+		var sel: bool = s[2] == selected
+		var fill := Color(c.r, c.g, c.b, 0.45 if sel else 0.26)
+		var tris := Geometry2D.triangulate_polygon(s[0])
+		if tris.size() >= 3:
+			var cols := PackedColorArray()
+			cols.resize(s[0].size())
+			cols.fill(fill)
+			RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), tris, s[0], cols)
+		var ring: PackedVector2Array = s[0].duplicate()
+		ring.append(s[0][0])
+		draw_polyline(ring, Kit.POD if sel else Color(1, 1, 1, 0.16), 2.0 if sel else 1.0, true)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	if tiles.any(func(tl): return tl.away):
+		draw_string(font, _to_screen(Vector2(W - 140, 34)), "OVERSEAS", HORIZONTAL_ALIGNMENT_LEFT, -1, int(max(10.0, 12.0 * sc)), Kit.MUTED)
 	for tl in tiles:
 		var c := _to_screen(Vector2(tl.x, tl.y))
-		var r := R * sc
-		var col: Color = ZONE_COL.get(tl.zone, Color.GRAY)
+		var r: float = (22.0 if tl.away else R) * sc
+		var col: Color = tl.col
 		var lv: Dictionary = live.get(tl.id, {})
 		var humans := int(lv.get("humans", 0))
 		var sel: bool = tl.id == selected
@@ -143,10 +208,11 @@ func _draw() -> void:
 		var ring := _hex(c, r)
 		ring.append(ring[0])
 		draw_polyline(ring, Kit.POD if sel else Color(1, 1, 1, 0.25), (3.0 if sel else 1.2) * sc, true)
-		var nm: String = tl.name
-		if nm.length() > 9:
-			nm = nm.substr(0, 8) + "."
-		var fs := int(max(9.0, 13.0 * sc))
+		var fs := int(max(8.0, (13.0 if r > 20 else 10.0) * sc * (1.0 if r > 14 else 0.85)))
+		var maxc: int = max(4, int(r * 2.1 / (fs * 0.56)))
+		var nm: String = str(tl.name)
+		if nm.length() > maxc:
+			nm = nm.substr(0, maxc - 1) + "."
 		var tw := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		draw_string(font, c + Vector2(-tw / 2.0, fs * 0.35), nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 		if humans > 0:

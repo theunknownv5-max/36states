@@ -1,10 +1,11 @@
 extends Control
-## The lobby: your soldier, online count, game modes, the war map of all 36 states + FCT,
-## the state briefing, your side and faction, bots or real players, and Deploy.
+## The lobby: your soldier, online count, your country of play, game modes, that country's war
+## map, the region briefing, your side and faction, bots or real players, and Deploy.
 
 const WarMap = preload("res://ui/warmap.gd")
 const Settings = preload("res://ui/settings.gd")
-const NATIVE_MODES := ["conquest", "tdm", "practice"]
+const NATIVE_MODES := ["conquest", "tdm", "brd", "practice"]
+const CONTINENTS := ["Africa", "Europe", "Asia", "North America", "South America", "Oceania", "Antarctica"]
 
 var main: Node
 var map: Control
@@ -19,6 +20,8 @@ var mode_chips := {}
 var deploy: Button
 var err: Label
 var overlay: Control
+var country_btn: Button
+var cc := ""
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -47,6 +50,10 @@ func _ready() -> void:
 	top.add_child(gems_label)
 	online_label = Kit.label("", 16, Kit.GOOD)
 	top.add_child(online_label)
+	country_btn = Kit.button("Country ▾")
+	country_btn.custom_minimum_size = Vector2(0, 48)
+	country_btn.pressed.connect(func(): _open_countries(false))
+	top.add_child(country_btn)
 	var set_b := Kit.button("⚙")
 	set_b.custom_minimum_size = Vector2(52, 48)
 	set_b.pressed.connect(_open_settings)
@@ -64,7 +71,7 @@ func _ready() -> void:
 	var modes := Kit.hbox(8)
 	col.add_child(modes)
 	var defs: Dictionary = Cfg.rules.get("MODES", {})
-	for id in ["conquest", "tdm", "practice", "bomb", "stage"]:
+	for id in ["conquest", "tdm", "brd", "practice", "bomb", "stage"]:
 		if not defs.has(id):
 			continue
 		var c := Kit.chip(defs[id].label, id == mode)
@@ -106,6 +113,101 @@ func _ready() -> void:
 	if last != "":
 		map.selected = last
 	refresh()
+	# Country of play: pick one the first time, then its own war map.
+	cc = str(Cfg.get_s("country", ""))
+	if cc == "":
+		_open_countries(true)
+	else:
+		_load_country(cc)
+
+func _load_country(code: String) -> void:
+	cc = code
+	Cfg.set_s("country", code)
+	var c := Cfg.country(code)
+	country_btn.text = "%s · %s ▾" % [code, str(c.get("name", code))]
+	map.set_country({})
+	Cfg.load_country(code, func(d):
+		if not is_inside_tree():
+			return
+		if d.is_empty():
+			err.text = "We could not load that country. Check your network."
+			err.visible = true
+			return
+		map.set_country(d)
+		if map.selected != "" and Cfg.state_by_id(map.selected).is_empty():
+			map.selected = ""
+		_render_info())
+
+## Select your country of play: search, continents, live players.
+func _open_countries(first: bool) -> void:
+	var o := Control.new()
+	o.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	o.mouse_filter = Control.MOUSE_FILTER_STOP
+	o.add_child(Kit.bg_rect(Color("#07080b")))
+	var m := Kit.safe_margin(16)
+	o.add_child(m)
+	var v := Kit.vbox(8)
+	m.add_child(v)
+	var head := Kit.hbox(10)
+	head.add_child(Kit.grow(Kit.title("SELECT YOUR COUNTRY OF PLAY", 24)))
+	if not first:
+		var x := Kit.button("Close")
+		x.pressed.connect(func(): o.queue_free(); overlay = null)
+		head.add_child(x)
+	v.add_child(head)
+	v.add_child(Kit.para("Every country is split into its real regions, and each region is its own battlefield. Change country any time.", 15, Kit.MUTED))
+	var search := LineEdit.new()
+	search.placeholder_text = "Search for a country…"
+	search.custom_minimum_size = Vector2(0, 46)
+	v.add_child(search)
+	var tabs := Kit.hbox(6)
+	var tsc := ScrollContainer.new()
+	tsc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tsc.custom_minimum_size = Vector2(0, 50)
+	tsc.add_child(tabs)
+	v.add_child(tsc)
+	var sc := Kit.scroller()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(sc)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	sc.add_child(grid)
+	var state := {"cont": "all"}
+	var fill := func():
+		for c in grid.get_children():
+			c.queue_free()
+		var q := search.text.strip_edges().to_lower()
+		var list: Array = Cfg.countries().filter(func(c): return (state.cont == "all" or c.continent == state.cont) and (q == "" or str(c.name).to_lower().contains(q) or str(c.cc).to_lower() == q))
+		var counts: Dictionary = main.country_counts if main else {}
+		list.sort_custom(func(a, b): return int(counts.get(a.cc, 0)) > int(counts.get(b.cc, 0)) or (int(counts.get(a.cc, 0)) == int(counts.get(b.cc, 0)) and str(a.name) < str(b.name)))
+		for c in list:
+			var n := int(counts.get(c.cc, 0))
+			var b := Kit.button("%s  %s\n%d battlefields%s" % [c.cc, c.name, int(c.n), ("  ·  %d playing" % n) if n else ""], false, 15)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.custom_minimum_size = Vector2(0, 62)
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			if n:
+				b.add_theme_color_override("font_color", Kit.GOOD)
+			b.pressed.connect(func():
+				o.queue_free()
+				overlay = null
+				_load_country(str(c.cc)))
+			grid.add_child(b)
+	for id in ["all"] + CONTINENTS:
+		var chip := Kit.chip("All" if id == "all" else id, id == "all")
+		chip.pressed.connect(func():
+			state.cont = id
+			for k in tabs.get_children():
+				k.set_pressed_no_signal(k == chip)
+			fill.call())
+		tabs.add_child(chip)
+	search.text_changed.connect(func(_t): fill.call())
+	fill.call()
+	overlay = o
+	add_child(o)
 
 func refresh() -> void:
 	if main == null:
@@ -149,7 +251,13 @@ func _render_info() -> void:
 			lv = s
 	info.add_child(Kit.title(str(st.get("name", sid)).to_upper(), 26))
 	var biome: Dictionary = Cfg.rules.get("BIOMES", {}).get(st.get("biome", ""), {})
-	info.add_child(Kit.para("Capital: %s · %s · %s" % [st.get("capital", ""), Cfg.rules.get("ZONES", {}).get(st.get("zone", ""), ""), biome.get("label", "")], 15))
+	var where := ""
+	if cc == "NG" or not "." in sid:
+		where = "Capital: %s · %s · %s" % [st.get("capital", ""), Cfg.rules.get("ZONES", {}).get(st.get("zone", ""), ""), biome.get("label", "")]
+	else:
+		var cap := str(st.get("capital", ""))
+		where = "%s%s · %s" % [str(Cfg.country(Cfg.cc_of(sid)).get("name", "")), (" · Capital: " + cap) if cap != "" and cap != str(st.get("name", "")) else "", biome.get("label", "")]
+	info.add_child(Kit.para(where, 15))
 	var res: Array = []
 	for r in st.get("resources", []):
 		res.append(Cfg.rules.get("RESOURCES", {}).get(r, {}).get("site", r))

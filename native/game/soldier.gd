@@ -11,6 +11,7 @@ var side := "sec"
 var faction := "army"
 var pname := ""
 var is_mate := false
+var show_hp := false   # BRD: health over every head
 var bot := false
 var buf: Array = []          # [ts, Vector3 pos, yaw, pitch, flags, weapon, health]
 var state := {}              # current interpolated state
@@ -270,8 +271,8 @@ func update(dt: float, render_ts: float, cam_pos: Vector3) -> void:
 			m.albedo_color.a = 0.35
 	# Name over teammates; enemies only when close.
 	var d := cam_pos.distance_to(pos)
-	tag.visible = (is_mate and d < 90.0) or (not is_mate and d < 14.0 and flags & 2048 == 0)
-	if tag.visible and is_mate and health >= 0:
+	tag.visible = (is_mate and d < 90.0) or (not is_mate and ((show_hp and d < 45.0) or (d < 14.0 and flags & 2048 == 0)))
+	if tag.visible and (is_mate or show_hp) and health >= 0:
 		tag.text = "%s  %d" % [pname, health]
 	elif tag.visible:
 		tag.text = pname
